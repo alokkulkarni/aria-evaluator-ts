@@ -9,15 +9,35 @@ interface FieldDef {
   placeholder?: string;
 }
 
-const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
+interface SectionDef {
+  section: string;
+  collapsible: boolean;
+  defaultOpen?: boolean;
+  fields: FieldDef[];
+}
+
+const PROVIDER_OPTIONS = [
+  { value: 'connect',  label: 'Amazon Connect' },
+  { value: 'lex',      label: 'Amazon Lex' },
+  { value: 'azure',    label: 'Azure Bot (Direct Line)' },
+  { value: 'strands',  label: 'Strands / AgentCore' },
+  { value: 'copilot',  label: 'Microsoft Copilot' },
+  { value: 'custom',   label: 'Custom Chat' },
+  { value: 'openapi',  label: 'OpenAPI' },
+];
+
+const FIELDS: SectionDef[] = [
   {
     section: 'Provider Defaults',
+    collapsible: false,
     fields: [
-      { key: 'EVAL_PROVIDER_DEFAULT', label: 'Default Provider (connect|lex|azure|strands|copilot|custom|openapi)', placeholder: 'connect' },
+      { key: 'EVAL_PROVIDER_DEFAULT', label: 'Default Provider' },
     ],
   },
   {
     section: 'Amazon Connect',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'CONNECT_INSTANCE_ID', label: 'Connect Instance ID' },
       { key: 'CONNECT_REGION', label: 'Connect Region', placeholder: 'eu-west-2' },
@@ -31,6 +51,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Amazon Lex',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'LEX_BOT_ID', label: 'Lex Bot ID' },
       { key: 'LEX_BOT_ALIAS_ID', label: 'Lex Bot Alias ID' },
@@ -40,6 +62,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Azure Bot (Direct Line)',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'AZURE_DIRECT_LINE_SECRET', label: 'Direct Line Secret' },
       { key: 'AZURE_DIRECT_LINE_ENDPOINT', label: 'Direct Line Endpoint', placeholder: 'https://directline.botframework.com/v3/directline' },
@@ -48,6 +72,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Custom Chat Provider',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'CUSTOM_CHAT_ENDPOINT', label: 'Chat Endpoint URL' },
       { key: 'CUSTOM_CHAT_METHOD', label: 'HTTP Method (POST|PUT)', placeholder: 'POST' },
@@ -59,6 +85,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Strands / AgentCore Chat Provider',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'STRANDS_ENDPOINT', label: 'Strands Endpoint URL' },
       { key: 'STRANDS_METHOD', label: 'HTTP Method (POST|PUT)', placeholder: 'POST' },
@@ -75,6 +103,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Microsoft Copilot Provider',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'COPILOT_DIRECT_LINE_SECRET', label: 'Copilot Direct Line Secret' },
       { key: 'COPILOT_DIRECT_LINE_ENDPOINT', label: 'Copilot Direct Line Endpoint', placeholder: 'https://directline.botframework.com/v3/directline' },
@@ -83,6 +113,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Custom Voice Provider',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'CUSTOM_VOICE_PROTOCOL', label: 'Voice Protocol (deepgram|agentcore|generic-json)', placeholder: 'deepgram' },
       { key: 'DEEPGRAM_VOICE_WS_URL', label: 'Deepgram Voice WS URL' },
@@ -99,6 +131,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Evaluation Defaults',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'EVAL_CUSTOMER_ID', label: 'Customer ID', placeholder: 'CUST-001' },
       { key: 'EVAL_CUSTOMER_NAME', label: 'Customer Name', placeholder: 'James Wilson' },
@@ -107,6 +141,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'OpenAPI Chat Provider',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'OPENAPI_SPEC_URL', label: 'OpenAPI Spec URL', placeholder: 'https://api.example.com/openapi.yaml' },
       { key: 'OPENAPI_ENDPOINT_URL', label: 'Chat Endpoint URL (override auto-detected)', placeholder: 'https://api.example.com/chat' },
@@ -121,6 +157,8 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
   },
   {
     section: 'Voice Timing',
+    collapsible: true,
+    defaultOpen: false,
     fields: [
       { key: 'VOICE_INITIAL_GREETING_TIMEOUT_MS', label: 'Initial Greeting Timeout (ms)', placeholder: '120000' },
       { key: 'VOICE_GREETING_FOLLOWUP_TIMEOUT_MS', label: 'Greeting Follow-up Timeout (ms)', placeholder: '6000' },
@@ -133,6 +171,42 @@ const FIELDS: Array<{ section: string; fields: FieldDef[] }> = [
     ],
   },
 ];
+
+// ── Collapsible section wrapper ───────────────────────────────────────────────
+function CollapsibleSection({
+  title,
+  collapsible,
+  children,
+}: {
+  title: string;
+  collapsible: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(!collapsible);
+
+  return (
+    <div className="card">
+      <button
+        type="button"
+        onClick={() => collapsible && setOpen((v) => !v)}
+        className={`w-full flex items-center justify-between text-left ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        <h3 className="font-semibold text-slate-900">{title}</h3>
+        {collapsible && (
+          <span
+            className="text-slate-400 transition-transform duration-200"
+            style={{ display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
+        )}
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsMap>({});
@@ -175,7 +249,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Settings</h2>
         <p className="text-slate-500 mt-1">
@@ -184,25 +258,44 @@ export function SettingsPage() {
       </div>
 
       {FIELDS.map((group) => (
-        <div key={group.section} className="card space-y-4">
-          <h3 className="font-semibold text-slate-900">{group.section}</h3>
+        <CollapsibleSection
+          key={group.section}
+          title={group.section}
+          collapsible={group.collapsible}
+        >
           <div className="grid md:grid-cols-2 gap-3">
             {group.fields.map((field) => (
               <label key={field.key} className="space-y-1">
                 <span className="text-xs font-medium text-slate-500">{field.label}</span>
-                <input
-                  value={settings[field.key] ?? ''}
-                  onChange={(e) => updateValue(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D2A66]"
-                />
+
+                {/* Provider default uses a dropdown */}
+                {field.key === 'EVAL_PROVIDER_DEFAULT' ? (
+                  <select
+                    value={settings[field.key] ?? 'connect'}
+                    onChange={(e) => updateValue(field.key, e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0D2A66]"
+                  >
+                    {PROVIDER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={settings[field.key] ?? ''}
+                    onChange={(e) => updateValue(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D2A66]"
+                  />
+                )}
               </label>
             ))}
           </div>
-        </div>
+        </CollapsibleSection>
       ))}
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 pt-2">
         <button
           onClick={() => { void save(); }}
           disabled={saving}

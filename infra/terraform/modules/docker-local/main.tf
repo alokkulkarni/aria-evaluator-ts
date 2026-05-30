@@ -1,7 +1,23 @@
 locals {
   name_prefix = "${var.app_name}-${var.environment}"
 
-  # Detect whether the host has AWS credentials available.
+  # ── Resolve build context ──────────────────────────────────────────────────
+  # The Dockerfile lives at the repo root, which is four levels above this
+  # module directory:
+  #   modules/docker-local/  →  modules/  →  terraform/  →  infra/  →  repo root
+  #
+  # When the caller explicitly sets app_dockerfile_context we use that value.
+  # Otherwise we derive the repo root automatically so `terraform apply` always
+  # builds the image locally instead of trying to pull from Docker Hub.
+  repo_root = abspath("${path.module}/../../../..")
+
+  effective_build_context = (
+    var.app_dockerfile_context != ""
+    ? var.app_dockerfile_context
+    : local.repo_root
+  )
+
+  # ── AWS credentials detection ──────────────────────────────────────────────
   # Checks both ~/.aws/credentials (key-based) and ~/.aws/config (SSO / named profiles).
   # When true, ~/.aws is mounted read-only into every container that needs AWS access.
   aws_dir_available = (
@@ -9,9 +25,10 @@ locals {
     fileexists(pathexpand("~/.aws/config"))
   )
 
-  # Base environment variables mirroring the ECS base_environment pattern (modules/ecs/main.tf).
-  # AWS_S3_STATE_BUCKET is deliberately left empty — the entrypoint script detects this and
-  # skips all S3 restore/sync operations, giving a clean local-only startup.
+  # ── Base environment variables ─────────────────────────────────────────────
+  # Mirrors the ECS base_environment pattern (modules/ecs/main.tf).
+  # AWS_S3_STATE_BUCKET is deliberately left empty — the entrypoint script
+  # detects this and skips all S3 restore/sync operations for local runs.
   base_environment = [
     { name = "NODE_ENV",               value = "production" },
     { name = "API_PORT",               value = tostring(var.container_port) },
@@ -57,28 +74,35 @@ resource "docker_volume" "state" {
 }
 
 # ── Application image ──────────────────────────────────────────────────────────
-# When app_dockerfile_context is set Terraform builds the image automatically.
-# Otherwise the image is expected to already exist locally (user ran docker build).
+# Always builds the image locally from local.effective_build_context.
+# This prevents Terraform from attempting a Docker Hub pull for a local-only
+# image name like "aria-evaluator:local" that does not exist in any registry.
+#
+# Build context resolution (in priority order):
+#   1. var.app_dockerfile_context  — explicit absolute path set by the caller
+#   2. auto-detected repo root     — four levels above this module directory
+#
+# To force a full rebuild without changing the Dockerfile, taint the resource:
+#   terraform taint module.docker_local.docker_image.app
 
 resource "docker_image" "app" {
   name         = var.app_image_name
   keep_locally = true
 
-  dynamic "build" {
-    for_each = var.app_dockerfile_context != "" ? [1] : []
-    content {
-      context    = var.app_dockerfile_context
-      dockerfile = "Dockerfile"
-      # Tags applied to the built image
-      tag = [var.app_image_name]
-    }
+  build {
+    context    = local.effective_build_context
+    dockerfile = "Dockerfile"
+    # Tag the built image so it is addressable by name:tag locally.
+    tag = [var.app_image_name]
   }
 
-  # Rebuild when the Dockerfile itself changes (cheap single-file hash).
-  # For a full source rebuild, destroy and re-apply, or change the image tag.
-  triggers = var.app_dockerfile_context != "" ? {
-    dockerfile_sha = filesha1("${var.app_dockerfile_context}/Dockerfile")
-  } : {}
+  # Rebuild automatically when the Dockerfile changes.
+  # For a full source rebuild (e.g. after src/ changes), either:
+  #   a) change app_image_name to a new tag, or
+  #   b) run: terraform taint module.docker_local.docker_image.app && terraform apply
+  triggers = {
+    dockerfile_sha = filesha1("${local.effective_build_context}/Dockerfile")
+  }
 }
 
 # ── Application container ──────────────────────────────────────────────────────
@@ -155,19 +179,22 @@ resource "docker_image" "bedrock_proxy" {
   name         = var.bedrock_proxy_image_name
   keep_locally = true
 
-  dynamic "build" {
-    for_each = var.bedrock_proxy_dockerfile_context != "" ? [1] : []
-    content {
-      context    = var.bedrock_proxy_dockerfile_context
-      dockerfile = "Dockerfile.local"
-      tag        = [var.bedrock_proxy_image_name]
-    }
+  # Build context: use the explicit path if provided, otherwise derive it from
+  # the repo root (same auto-detection as the main app image).
+  build {
+    context = (
+      var.bedrock_proxy_dockerfile_context != ""
+      ? var.bedrock_proxy_dockerfile_context
+      : "${local.repo_root}/lambda/bedrock_proxy"
+    )
+    dockerfile = "Dockerfile.local"
+    tag        = [var.bedrock_proxy_image_name]
   }
 
-  triggers = (var.bedrock_proxy_enabled && var.bedrock_proxy_dockerfile_context != "") ? {
-    handler_sha    = filesha1("${var.bedrock_proxy_dockerfile_context}/handler.py")
-    server_sha     = filesha1("${var.bedrock_proxy_dockerfile_context}/server.py")
-    dockerfile_sha = filesha1("${var.bedrock_proxy_dockerfile_context}/Dockerfile.local")
+  triggers = var.bedrock_proxy_enabled ? {
+    handler_sha    = filesha1("${local.repo_root}/lambda/bedrock_proxy/handler.py")
+    server_sha     = filesha1("${local.repo_root}/lambda/bedrock_proxy/server.py")
+    dockerfile_sha = filesha1("${local.repo_root}/lambda/bedrock_proxy/Dockerfile.local")
   } : {}
 }
 

@@ -20,9 +20,11 @@ variable "app_image_name" {
 
 variable "app_dockerfile_context" {
   description = <<-EOT
-    Absolute path to the directory containing the Dockerfile (usually the repo root).
-    When non-empty, Terraform builds the image with `docker build` before starting the container.
-    Leave empty to use a pre-built image (run `docker build -t <app_image_name> .` yourself).
+    Absolute path to the directory containing the Dockerfile (the repo root).
+    Terraform always builds the image locally — it never pulls from a registry.
+    Leave empty (default) to let the module auto-detect the repo root from its
+    own path (four levels up from modules/docker-local/).
+    Set explicitly when the module is used from a non-standard location.
   EOT
   type        = string
   default     = ""
