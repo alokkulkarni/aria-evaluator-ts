@@ -1,0 +1,337 @@
+openapi: 3.0.3
+info:
+  title: Bedrock Proxy API
+  description: |
+    Serverless proxy that forwards chat requests to an Amazon Bedrock model
+    (any model family, any region) and returns the model's response.
+
+    **Authentication**
+
+    `POST /chat` is protected by AWS IAM authorization at the API Gateway level.
+    Callers must sign requests with AWS Signature Version 4 (SigV4) and have
+    the `execute-api:Invoke` IAM permission on this API's ARN. No application-level
+    API key is required — authentication is handled entirely by AWS.
+
+    `GET /health` is always unauthenticated.
+
+    **Cross-region models**
+
+    Set `BEDROCK_MODEL_ID` to any of the following:
+
+    - A bare model ID such as `anthropic.claude-3-5-sonnet-20241022-v2:0`
+    - A cross-region inference profile ID such as `eu.anthropic.claude-3-5-sonnet-20241022-v2:0`
+    - A full foundation-model ARN such as `arn:aws:bedrock:eu-west-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`
+    - A provisioned throughput ARN such as `arn:aws:bedrock:eu-west-2:123456789012:provisioned-model/my-provisioned-model`
+    - An inference profile ARN such as `arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-4-5`
+
+    When the model ID contains an ARN, the region is automatically extracted.
+    Otherwise, `BEDROCK_REGION` (default `eu-west-2`) is used.
+  version: "1.0.0"
+  contact:
+    name: Platform Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com
+    description: API Gateway HTTP API (auto-generated URL)
+    variables:
+      apiId:
+        default: "replace-with-api-id"
+      region:
+        default: "eu-west-2"
+
+tags:
+  - name: chat
+    description: Bedrock chat inference endpoints
+  - name: ops
+    description: Operational endpoints
+
+paths:
+  /chat:
+    post:
+      operationId: invokeChat
+      summary: Send a message to the configured Bedrock model
+      tags: [chat]
+      x-amazon-apigateway-auth:
+        type: AWS_IAM
+      description: |
+        Requires AWS SigV4 request signing. Callers must have the
+        `execute-api:Invoke` IAM permission on this API's ARN.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+            examples:
+              single_turn:
+                summary: Single-turn message
+                value:
+                  message: "Explain transformer attention in one sentence."
+              multi_turn:
+                summary: Multi-turn conversation
+                value:
+                  messages:
+                    - role: user
+                      content: "What is retrieval-augmented generation?"
+                    - role: assistant
+                      content: "RAG combines a retrieval system with a generative model to ground answers in external documents."
+                    - role: user
+                      content: "How does it differ from fine-tuning?"
+              with_overrides:
+                summary: Single-turn with inference overrides
+                value:
+                  message: "Write a haiku about distributed systems."
+                  max_tokens: 256
+                  temperature: 0.9
+                  system_prompt: "You are a concise technical poet."
+      responses:
+        "200":
+          description: Successful model response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+              examples:
+                success:
+                  value:
+                    reply: "RAG grounds generation in retrieved documents, while fine-tuning updates model weights on domain data."
+                    model_id: "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
+                    region: "eu-west-2"
+                    stop_reason: "end_turn"
+                    usage:
+                      input_tokens: 42
+                      output_tokens: 31
+        "400":
+          description: Invalid request — malformed body, missing fields, or bad inference parameters
+          description: Route not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Lambda configuration error (e.g., BEDROCK_MODEL_ID not set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing_config:
+                  value:
+                    error: "BEDROCK_MODEL_ID is not configured"
+                    code: "MISSING_CONFIG"
+        "502":
+          description: Upstream Bedrock error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                bedrock_error:
+                  value:
+                    error: "The specified model is not available in this region."
+                    code: "ValidationException"
+
+    options:
+      operationId: chatCors
+      summary: CORS preflight for /chat
+      tags: [chat]
+      responses:
+        "204":
+          description: CORS preflight success
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check — always unauthenticated
+      tags: [ops]
+      responses:
+        "200":
+          description: Lambda and configuration are healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              examples:
+                healthy:
+                  value:
+                    status: "ok"
+                    model_id: "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
+                    bedrock_region: "eu-west-2"
+                    configured: true
+                unconfigured:
+                  value:
+                    status: "ok"
+                    model_id: null
+                    bedrock_region: "eu-west-2"
+                    configured: false
+
+components:
+  securitySchemes:
+    AwsSigV4:
+      type: http
+      scheme: aws-sigv4
+      description: |
+        All `/chat` requests must be signed with AWS Signature Version 4.
+        The caller's IAM identity must have `execute-api:Invoke` permission
+        on this API ARN. Authentication is handled entirely by API Gateway —
+        no application-level API key is required.
+
+  schemas:
+    ChatRequest:
+      type: object
+      description: |
+        Exactly one of `message` (single-turn) or `messages` (multi-turn) must be provided.
+      properties:
+        message:
+          type: string
+          minLength: 1
+          description: User message for a single-turn conversation.
+          example: "What is the capital of France?"
+        messages:
+          type: array
+          minItems: 1
+          description: |
+            Conversation history for multi-turn chat.
+            Must end with a `user` turn.
+          items:
+            $ref: "#/components/schemas/Message"
+        system_prompt:
+          type: string
+          description: |
+            Override the default system prompt for this request only.
+            When omitted the Lambda's `SYSTEM_PROMPT` environment variable is used.
+          example: "You are a concise technical assistant. Reply in bullet points."
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 32768
+          description: Maximum number of tokens to generate. Overrides `MAX_TOKENS` env var.
+          example: 1024
+        temperature:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Sampling temperature. Overrides `TEMPERATURE` env var.
+          example: 0.7
+        top_p:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Nucleus sampling top-p. Overrides `TOP_P` env var.
+          example: 0.9
+      additionalProperties: false
+
+    Message:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+          description: Speaker role for this turn.
+        content:
+          oneOf:
+            - type: string
+              description: Plain text content (shorthand form).
+              example: "Hello, how are you?"
+            - type: array
+              description: |
+                Multi-modal content blocks (Bedrock Converse content-block format).
+                Use this form for images or other media types.
+              items:
+                $ref: "#/components/schemas/ContentBlock"
+      additionalProperties: false
+
+    ContentBlock:
+      type: object
+      description: A single content block in Bedrock Converse format.
+      properties:
+        type:
+          type: string
+          description: Content type. Defaults to `text` when omitted.
+          example: "text"
+        text:
+          type: string
+          description: Text content (required when type is `text`).
+      additionalProperties: true
+
+    ChatResponse:
+      type: object
+      required: [reply, model_id, region, stop_reason, usage]
+      properties:
+        reply:
+          type: string
+          description: The model's generated text response.
+        model_id:
+          type: string
+          description: The model ID / ARN that was invoked.
+        region:
+          type: string
+          description: The AWS region the Bedrock API call was made against.
+        stop_reason:
+          type: string
+          description: |
+            The reason the model stopped generating.
+            Common values: `end_turn`, `max_tokens`, `stop_sequence`.
+          example: "end_turn"
+        usage:
+          $ref: "#/components/schemas/TokenUsage"
+
+    TokenUsage:
+      type: object
+      required: [input_tokens, output_tokens]
+      properties:
+        input_tokens:
+          type: integer
+          description: Number of input tokens consumed.
+          example: 42
+        output_tokens:
+          type: integer
+          description: Number of output tokens generated.
+          example: 31
+
+    HealthResponse:
+      type: object
+      required: [status, bedrock_region, configured]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        model_id:
+          type: string
+          nullable: true
+          description: The configured `BEDROCK_MODEL_ID`, or null if not set.
+        bedrock_region:
+          type: string
+          description: The region that will be used for Bedrock API calls.
+          example: "eu-west-2"
+        configured:
+          type: boolean
+          description: True when `BEDROCK_MODEL_ID` is set.
+
+    ErrorResponse:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+          example: "Request body must include 'message' (string) or 'messages' (list)"
+        code:
+          type: string
+          description: Machine-readable error code.
+          example: "INVALID_REQUEST"

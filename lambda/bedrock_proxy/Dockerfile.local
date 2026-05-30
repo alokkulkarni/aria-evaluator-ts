@@ -1,0 +1,34 @@
+# ── Bedrock proxy — local Docker image ────────────────────────────────────────
+# Minimal Python image for running the Lambda handler locally via server.py.
+# No Lambda runtime needed; server.py provides a plain HTTP wrapper.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# boto3 is the only runtime dependency.
+RUN pip install --no-cache-dir boto3
+
+COPY handler.py server.py ./
+
+EXPOSE 8000
+
+# Environment variables expected at runtime (set via `docker run -e` or
+# Terraform extra_environment_vars / docker_container.env):
+#
+#   BEDROCK_MODEL_ID   — model ID or inference profile ARN
+#   BEDROCK_REGION     — primary AWS region (default: us-east-1)
+#   SYSTEM_PROMPT      — system prompt injected into every conversation
+#   MAX_TOKENS         — max tokens in the response (default: 2048)
+#   TEMPERATURE        — sampling temperature (default: 0.7)
+#   TOP_P              — nucleus sampling p (default: 0.9)
+#   ALLOWED_ORIGINS    — comma-separated CORS origins (default: *)
+#   PORT               — HTTP listen port (default: 8000)
+#   LOG_LEVEL          — DEBUG | INFO | WARNING | ERROR (default: INFO)
+#
+# AWS credentials must be available via one of:
+#   - ~/.aws/credentials mounted as /root/.aws (Terraform mounts it read-only)
+#   - AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN env vars
+#   - IAM instance/task role (when running in AWS ECS/EC2)
+
+CMD ["python", "server.py"]

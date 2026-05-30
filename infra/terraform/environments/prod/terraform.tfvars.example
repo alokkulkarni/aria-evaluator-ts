@@ -1,0 +1,57 @@
+# ── Prod environment — example tfvars ────────────────────────────────────────
+# Copy to terraform.tfvars and replace all REPLACE_* placeholders.
+# terraform.tfvars is gitignored; this example file is safe to commit.
+
+# ── Core ──────────────────────────────────────────────────────────────────────
+aws_region  = "eu-west-2"
+app_name    = "aria-evaluator"
+environment = "prod"
+
+bucket_suffix = "123456"
+
+# ── Networking ────────────────────────────────────────────────────────────────
+vpc_cidr            = "10.43.0.0/16"
+public_subnet_cidrs = ["10.43.1.0/24", "10.43.2.0/24"]
+
+# ── ECS ───────────────────────────────────────────────────────────────────────
+# Use an immutable tag (git SHA or semver) in prod — never "latest".
+app_image_uri  = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/aria-evaluator:v1.0.0"
+container_port = 3001
+cpu            = 512
+memory         = 1024
+desired_count  = 1
+
+s3_state_prefix          = "aria-evaluator"
+s3_sync_interval_seconds = 30
+log_retention_days       = 30
+
+# ── Amazon Connect ────────────────────────────────────────────────────────────
+connect_instance_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# ── CloudFront ────────────────────────────────────────────────────────────────
+cloudfront_price_class = "PriceClass_100"
+# For a custom domain, set the ACM cert ARN (must be in us-east-1).
+acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+cloudfront_aliases  = ["aria.example.com"]
+
+# ── App-specific environment variables ────────────────────────────────────────
+extra_environment_vars = [
+  { name = "CONNECT_INSTANCE_ID",           value = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
+  { name = "CONNECT_REGION",                value = "eu-west-2" },
+  { name = "CONNECT_CONTACT_FLOW_NAME",     value = "conversation bot flow" },
+  { name = "CONNECT_WEBRTC_FLOW_ID",        value = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
+  { name = "BEDROCK_REGION",                value = "eu-west-2" },
+  { name = "JUDGE_MODEL_ID",                value = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0" },
+  { name = "EVAL_CUSTOMER_ID",              value = "CUST-001" },
+  { name = "EVAL_CUSTOMER_NAME",            value = "James Wilson" },
+  { name = "EVAL_PROVIDER_DEFAULT",         value = "connect" },
+  { name = "POLLY_VOICE_ID",                value = "Amy" },
+  { name = "EVAL_RESPONSE_TIMEOUT_SECONDS", value = "120" },
+  { name = "VOICE_PRE_SEND_DELAY_MS",       value = "1200" },
+]
+
+# ── Extra tags ────────────────────────────────────────────────────────────────
+tags = {
+  CostCentre = "engineering"
+  Owner      = "platform-team"
+}

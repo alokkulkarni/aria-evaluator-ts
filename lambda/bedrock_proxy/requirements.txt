@@ -1,0 +1,2 @@
+# boto3 is provided by the Lambda Python 3.12 managed runtime — no extra deps needed.
+# Add third-party packages here only if the handler imports them.

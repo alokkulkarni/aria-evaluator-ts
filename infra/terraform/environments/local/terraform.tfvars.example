@@ -1,0 +1,88 @@
+# ── Local Docker deployment — terraform.tfvars ────────────────────────────────
+# Copy this file to terraform.tfvars, fill in your values, then run:
+#
+#   terraform init
+#   terraform apply
+#
+# The application will be available at http://localhost:<host_port>
+# Persistent data is stored in the Docker volume `aria-evaluator-local-state`.
+#
+# To destroy all resources (containers, network, volume):
+#   terraform destroy
+# ─────────────────────────────────────────────────────────────────────────────
+
+app_name    = "aria-evaluator"
+environment = "local"
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+# Option A — let Terraform build the image automatically:
+#   Set app_dockerfile_context to the absolute path of the repo root.
+#   Terraform will run `docker build` when the Dockerfile changes.
+#
+#   app_dockerfile_context = "/absolute/path/to/aria-evaluator-ts"
+#
+# Option B — pre-build the image yourself (recommended for faster apply):
+#   docker build -t aria-evaluator:local .
+#   Leave app_dockerfile_context empty (default).
+
+app_image_name         = "aria-evaluator:local"
+app_dockerfile_context = ""   # Set to repo root path for auto-build
+
+# ── Ports ─────────────────────────────────────────────────────────────────────
+host_port = 3001   # http://localhost:3001
+
+# ── App-specific environment variables ────────────────────────────────────────
+# Mirrors dev/terraform.tfvars extra_environment_vars.
+# At minimum, set the values relevant for your chosen eval provider.
+
+extra_environment_vars = [
+  # ── Amazon Connect (leave blank if not testing Connect) ──────────────────
+  { name = "CONNECT_INSTANCE_ID",       value = "f969d4b4-f716-4974-a325-bb7899f2f293" },
+  { name = "CONNECT_REGION",            value = "eu-west-2" },
+  { name = "CONNECT_CONTACT_FLOW_NAME", value = "conversation bot flow" },
+  { name = "CONNECT_WEBRTC_FLOW_ID",    value = "f6d6545f-c9ae-4ca4-a4d8-6fdc8ba0494f" },
+
+  # ── Bedrock (judge model — used regardless of eval provider) ─────────────
+  { name = "BEDROCK_REGION",  value = "eu-west-2" },
+  { name = "JUDGE_MODEL_ID",  value = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0" },
+
+  # ── Bedrock Lambda endpoint (Option A for Bedrock eval provider) ─────────
+  # Point at your deployed AWS API Gateway URL if bedrock_proxy_enabled = false.
+  # { name = "BEDROCK_LAMBDA_ENDPOINT", value = "https://<id>.execute-api.eu-west-2.amazonaws.com" },
+
+  # ── Evaluation defaults ───────────────────────────────────────────────────
+  { name = "EVAL_CUSTOMER_ID",          value = "CUST-001" },
+  { name = "EVAL_CUSTOMER_NAME",        value = "James Wilson" },
+  { name = "EVAL_PROVIDER_DEFAULT",     value = "connect" },  # connect | bedrock | openapi
+  { name = "POLLY_VOICE_ID",            value = "Amy" },
+  { name = "EVAL_RESPONSE_TIMEOUT_SECONDS", value = "120" },
+  { name = "VOICE_PRE_SEND_DELAY_MS",   value = "1200" },
+]
+
+# ── Local Bedrock proxy (Option B — run Bedrock calls locally) ────────────────
+# Set bedrock_proxy_enabled = true to deploy a companion proxy container that
+# calls Bedrock directly using your local AWS credentials.
+#
+# AWS credentials are automatically mapped from ~/.aws into both the main app
+# container and this proxy container — no manual volume configuration needed.
+# Both ~/.aws/credentials (key-based) and ~/.aws/config (SSO profiles) are
+# detected and mounted read-only at /root/.aws inside each container.
+#
+# The proxy is then available at http://localhost:<bedrock_proxy_host_port>
+# and aria-evaluator automatically uses it when BEDROCK_LAMBDA_ENDPOINT is
+# left unset.
+#
+# Prerequisites:
+#   - AWS credentials with bedrock:InvokeModel on the host machine
+#   - The proxy image built: docker build -f lambda/bedrock_proxy/Dockerfile.local \
+#       -t aria-bedrock-proxy:local lambda/bedrock_proxy/
+#     OR set bedrock_proxy_dockerfile_context (below) for auto-build.
+
+bedrock_proxy_enabled = false
+
+# bedrock_proxy_dockerfile_context = "/absolute/path/to/aria-evaluator-ts/lambda/bedrock_proxy"
+bedrock_proxy_host_port   = 8765
+bedrock_model_id          = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+bedrock_region            = "eu-west-2"
+bedrock_system_prompt     = "You are a helpful AI assistant for customer service."
+bedrock_max_tokens        = 2048

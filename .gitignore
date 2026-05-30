@@ -1,0 +1,110 @@
+# =============================================================================
+# aria-evaluator-ts — .gitignore
+# =============================================================================
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+# The real .env file contains API keys and credentials — never commit it.
+# Only .env.example (with placeholder values) is committed.
+.env
+.env.local
+.env.*.local
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Runtime output — generated at runtime, may contain PII ───────────────────
+
+# Evaluation reports (HTML + JSON)
+reports/
+
+# Conversation transcripts (JSON) — may contain sensitive test data
+transcripts/
+
+# Temporary portal run YAML files
+.tmp/
+
+# Scenarios directory — populated at runtime from S3 or local upload
+scenarios/
+
+# ── Database ──────────────────────────────────────────────────────────────────
+# SQLite files in both data/ and prisma/data/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/runtime-settings.json
+prisma/data/*.db
+prisma/data/*.db-shm
+prisma/data/*.db-wal
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── TypeScript ────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# ── Python (lambda/) ──────────────────────────────────────────────────────────
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist-info/
+.venv/
+venv/
+env/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# =============================================================================
+# Terraform
+# =============================================================================
+
+# Terraform working directories (provider binaries, module cache, lock files)
+infra/terraform/**/.terraform/
+infra/terraform/**/.terraform.lock.hcl
+
+# Variable files with real values — *.tfvars.example files ARE committed
+infra/terraform/**/terraform.tfvars
+infra/terraform/**/*.auto.tfvars
+infra/terraform/**/*.auto.tfvars.json
+
+# Local Terraform state — local env uses local backend (no S3)
+infra/terraform/environments/local/terraform.tfstate
+infra/terraform/environments/local/terraform.tfstate.backup
+infra/terraform/environments/local/*.tfstate
+infra/terraform/environments/local/*.tfstate.*
+
+# Plan files — contain sensitive resource details
+infra/terraform/**/*.tfplan
+infra/terraform/**/*.plan
+
+# Crash logs
+infra/terraform/**/crash.log
+infra/terraform/**/crash.*.log
+
+# Override files (local developer overrides)
+infra/terraform/**/override.tf
+infra/terraform/**/override.tf.json
+infra/terraform/**/*_override.tf
+infra/terraform/**/*_override.tf.json

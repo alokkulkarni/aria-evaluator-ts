@@ -1,0 +1,72 @@
+# =============================================================================
+# aria-evaluator-ts — .dockerignore
+# Keeps the Docker build context lean and prevents secrets leaking into layers.
+# =============================================================================
+
+# ── Secrets / environment ─────────────────────────────────────────────────────
+# Never bake .env files into the image — pass secrets via ECS task env vars.
+.env
+.env.*
+!.env.example
+
+# ── Version control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+.github
+
+# ── Dependencies (rebuilt inside the image) ───────────────────────────────────
+node_modules
+
+# ── Build output (rebuilt inside the image) ───────────────────────────────────
+dist
+
+# ── Runtime-generated data (mounted via S3 sync at container start) ───────────
+reports
+transcripts
+.tmp
+data
+prisma/data
+scenarios
+
+# ── Infrastructure / deployment scripts (not needed at runtime) ───────────────
+infra/terraform
+infra/cloudformation
+scripts
+lambda
+
+# ── Kiro spec files ───────────────────────────────────────────────────────────
+.kiro
+
+# ── Python bytecode ───────────────────────────────────────────────────────────
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── macOS metadata ────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+*.swo
+
+# ── TypeScript build info ─────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Test / coverage output ────────────────────────────────────────────────────
+coverage
+.nyc_output
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+# README is fine to include but docs/ or wiki/ dirs are not needed
+docs
