@@ -34,6 +34,8 @@ export function ScenariosPage() {
   const [runError, setRunError] = useState<string | null>(null);
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [builder, setBuilder] = useState<{ mode: 'create' | 'edit'; scenario?: Scenario } | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [collapsedSubCategories, setCollapsedSubCategories] = useState<Set<string>>(new Set());
   const esRef = useRef<EventSource | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -220,35 +222,101 @@ export function ScenariosPage() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        {/* ── Scenario List ── */}
-        <div className="space-y-2">
+        {/* ── Scenario List (categorised) ── */}
+        <div className="space-y-3">
           {loading ? (
             <div className="text-slate-400 text-sm">Loading scenarios…</div>
           ) : filtered.length === 0 ? (
             <div className="text-slate-400 text-sm">No scenarios found.</div>
-          ) : (
-            filtered.map((s, i) => (
-              <div key={i}
-                onClick={() => setSelected(s)}
-                className={`card cursor-pointer transition-all ${
-                  selected === s ? 'ring-2 ring-[#0D2A66]' : 'hover:shadow-md'
-                }`}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold text-slate-900">{s.name}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{s.filePath?.split('#')[0]}</p>
-                  </div>
-                  <span className={
-                    s.channel === 'voice' ? 'badge-voice' :
-                    s.channel === 'both' ? 'badge-both' : 'badge-chat'
-                  }>
-                    {s.channel === 'both' ? '🔀 both' : s.channel}
-                  </span>
+          ) : (() => {
+            // Build two-level grouping: category → subCategory → scenarios
+            const grouped = new Map<string, Map<string, Scenario[]>>();
+            for (const s of filtered) {
+              const raw = (s.filePath ?? '').split('#')[0]!.replace(/\\/g, '/');
+              const parts = raw.split('/').filter(Boolean);
+              const cat = parts.length >= 2 ? (parts[0] ?? 'general') : 'general';
+              const sub = (parts.length >= 2 ? parts[1] : parts[0] ?? 'other')!.replace(/\.(ya?ml)$/i, '');
+              if (!grouped.has(cat)) grouped.set(cat, new Map());
+              const subMap = grouped.get(cat)!;
+              if (!subMap.has(sub)) subMap.set(sub, []);
+              subMap.get(sub)!.push(s);
+            }
+            const catMeta: Record<string, { icon: string; colour: string }> = {
+              adversarial: { icon: '⚔️', colour: 'bg-red-50 border-red-200 text-red-800' },
+              banking:     { icon: '🏦', colour: 'bg-blue-50 border-blue-200 text-blue-800' },
+              edge_cases:  { icon: '🔬', colour: 'bg-purple-50 border-purple-200 text-purple-800' },
+              escalation:  { icon: '📈', colour: 'bg-amber-50 border-amber-200 text-amber-800' },
+              general:     { icon: '📋', colour: 'bg-slate-50 border-slate-200 text-slate-700' },
+            };
+            const fmt = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const toggleCat = (cat: string) => setCollapsedCategories(prev => {
+              const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n;
+            });
+            const toggleSub = (key: string) => setCollapsedSubCategories(prev => {
+              const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
+            });
+
+            return Array.from(grouped.entries()).map(([cat, subMap]) => {
+              const meta = catMeta[cat] ?? catMeta.general!;
+              const catCollapsed = collapsedCategories.has(cat);
+              const totalInCat = Array.from(subMap.values()).reduce((a, v) => a + v.length, 0);
+              return (
+                <div key={cat} className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                  {/* Category header */}
+                  <button
+                    onClick={() => toggleCat(cat)}
+                    className={`w-full flex items-center justify-between px-4 py-3 font-semibold text-sm ${meta.colour} border-b border-inherit`}>
+                    <span className="flex items-center gap-2">
+                      <span>{meta.icon}</span>
+                      <span>{fmt(cat)}</span>
+                      <span className="ml-1 px-2 py-0.5 rounded-full bg-white/60 text-xs font-bold">{totalInCat}</span>
+                    </span>
+                    <span className="text-lg">{catCollapsed ? '▶' : '▼'}</span>
+                  </button>
+
+                  {!catCollapsed && (
+                    <div className="divide-y divide-slate-100">
+                      {Array.from(subMap.entries()).map(([sub, items]) => {
+                        const subKey = `${cat}/${sub}`;
+                        const subCollapsed = collapsedSubCategories.has(subKey);
+                        return (
+                          <div key={sub}>
+                            {/* Sub-category header */}
+                            <button
+                              onClick={() => toggleSub(subKey)}
+                              className="w-full flex items-center justify-between px-4 py-2 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-600 transition-colors">
+                              <span>{fmt(sub)} <span className="font-normal text-slate-400">({items.length})</span></span>
+                              <span>{subCollapsed ? '▶' : '▼'}</span>
+                            </button>
+
+                            {!subCollapsed && items.map((s, i) => (
+                              <div key={i}
+                                onClick={() => setSelected(s)}
+                                className={`px-4 py-3 cursor-pointer transition-all hover:bg-slate-50 ${
+                                  selected === s ? 'bg-blue-50 border-l-4 border-[#0D2A66]' : ''
+                                }`}>
+                                <div className="flex items-start justify-between">
+                                  <p className="font-medium text-slate-800 text-sm leading-snug pr-2">{s.name}</p>
+                                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                                    s.channel === 'voice' ? 'bg-purple-100 text-purple-700' :
+                                    s.channel === 'both'  ? 'bg-green-100 text-green-700' :
+                                                            'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {s.channel === 'both' ? '🔀' : s.channel === 'voice' ? '🎤' : '💬'} {s.channel}
+                                  </span>
+                                </div>
+                                {s.goal && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{s.goal}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                {s.goal && <p className="text-sm text-slate-500 mt-2 line-clamp-2">{s.goal}</p>}
-              </div>
-            ))
-          )}
+              );
+            });
+          })()}
         </div>
 
         {/* ── Scenario Detail + Run ── */}

@@ -334,6 +334,12 @@ function validateProviderEnv(provider: EvaluatorProvider, channel: 'chat' | 'voi
     return missing;
   }
 
+  if (provider === 'openapi') {
+    if (channel === 'voice') missing.push('openapi provider supports chat only');
+    if (!process.env['OPENAPI_ENDPOINT_URL']) missing.push('OPENAPI_ENDPOINT_URL');
+    return missing;
+  }
+
   return ['unsupported provider'];
 }
 

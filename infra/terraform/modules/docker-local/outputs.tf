@@ -19,11 +19,6 @@ output "network_name" {
 }
 
 output "bedrock_proxy_url" {
-  description = "URL for the optional local Bedrock proxy (null when bedrock_proxy_enabled = false)"
-  value       = var.bedrock_proxy_enabled ? "http://localhost:${var.bedrock_proxy_host_port}" : null
-}
-
-output "bedrock_proxy_container_name" {
-  description = "Docker container name for the optional local Bedrock proxy"
-  value       = var.bedrock_proxy_enabled ? docker_container.bedrock_proxy[0].name : null
+  description = "Bedrock proxy URL passed through from var.bedrock_proxy_url (empty string when not configured)"
+  value       = var.bedrock_proxy_url
 }

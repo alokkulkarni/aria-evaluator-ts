@@ -1,0 +1,89 @@
+# docker-compose.yml — local development
+#
+# Default usage (aria-evaluator only):
+#   docker compose up --build
+#
+# With local Bedrock proxy (calls AWS Bedrock using your ~/.aws credentials):
+#   docker compose --profile bedrock up --build
+#
+# Bind-mounts:
+#   ./scenarios          → /app/scenarios   (YAML scenarios, no rebuild needed)
+#   ./data               → /app/state       (SQLite DB + reports persist on host)
+#   ~/.aws               → /root/.aws       (for Bedrock access in both services)
+#
+# Bedrock proxy:
+#   Host port:      http://localhost:8765
+#   Internal URL:   http://bedrock-proxy:8000  (use this in aria-evaluator Settings)
+#   Set BEDROCK_MODEL_ID and BEDROCK_REGION below to control which model is used.
+
+services:
+  aria-evaluator:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    image: aria-evaluator:local
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      API_PORT: "3001"
+      SCENARIOS_DIR: /app/scenarios
+      # DB lives directly in ./data/aria-evaluator.db on host
+      DATABASE_URL: file:/app/state/aria-evaluator.db
+      EVAL_REPORT_OUTPUT_DIR: /app/state/reports
+      APP_STATE_DIR: /app/state
+      # AWS region for Bedrock (override if needed)
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-eu-west-2}
+      AWS_REGION: ${AWS_REGION:-eu-west-2}
+      # When running with --profile bedrock, point at the proxy container.
+      # Remove or override this if using a deployed AWS API Gateway instead.
+      BEDROCK_LAMBDA_ENDPOINT: ${BEDROCK_LAMBDA_ENDPOINT:-http://bedrock-proxy:8000}
+    volumes:
+      # Scenarios — bind-mount so YAML changes are live without rebuild
+      - ./scenarios:/app/scenarios:ro
+      # Persistent state — mount host ./data directly as STATE_DIR
+      - ./data:/app/state
+      # AWS credentials for Bedrock access
+      - ${HOME}/.aws:/root/.aws:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/scenarios', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Local Bedrock proxy ──────────────────────────────────────────────────────
+  # Wraps the Lambda handler as a plain HTTP server.
+  # Start with:  docker compose --profile bedrock up --build
+  #
+  # Configure via environment variables below or a .env file in this directory:
+  #   BEDROCK_MODEL_ID   — model ID or cross-region inference profile ARN
+  #   BEDROCK_REGION     — AWS region where the model is available
+  #   BEDROCK_SYSTEM_PROMPT — system prompt injected into every conversation
+  bedrock-proxy:
+    profiles: ["bedrock"]
+    build:
+      context: ./lambda/bedrock_proxy
+      dockerfile: Dockerfile.local
+    image: bedrock-proxy:local
+    ports:
+      - "${BEDROCK_PROXY_HOST_PORT:-8765}:8000"
+    environment:
+      PORT: "8000"
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-eu.anthropic.claude-sonnet-4-5-20250929-v1:0}
+      BEDROCK_REGION: ${BEDROCK_REGION:-eu-west-2}
+      SYSTEM_PROMPT: ${BEDROCK_SYSTEM_PROMPT:-You are a helpful AI assistant for customer service.}
+      MAX_TOKENS: ${BEDROCK_MAX_TOKENS:-2048}
+      ALLOWED_ORIGINS: "*"
+      LOG_LEVEL: INFO
+    volumes:
+      # Mount host AWS credentials so boto3 can authenticate
+      - ${HOME}/.aws:/root/.aws:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

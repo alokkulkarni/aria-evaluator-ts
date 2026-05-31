@@ -56,8 +56,6 @@ export class OpenApiHttpChatAdapter implements BaseAdapter {
     if (!this.sessionId) throw new AdapterError('sendMessage called before connect()');
     if (this.ended) throw new SessionEndedError('OpenAPI chat session ended');
 
-    this.history.push({ role: 'customer', content });
-
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     this.applyAuth(headers);
 
@@ -83,6 +81,7 @@ export class OpenApiHttpChatAdapter implements BaseAdapter {
       method: this.config.method,
       headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000), // 60 s hard limit — prevents indefinite hangs
     });
 
     if (!resp.ok) {
@@ -90,8 +89,9 @@ export class OpenApiHttpChatAdapter implements BaseAdapter {
     }
     const data = await resp.json() as Record<string, unknown>;
     const reply = extractStringField(data, this.config.responseField);
-    if (!reply) throw new AdapterError(`OpenAPI chat response missing "${this.config.responseField}"`);
+    if (reply === undefined) throw new AdapterError(`OpenAPI chat response missing "${this.config.responseField}"`);
 
+    this.history.push({ role: 'customer', content });
     this.history.push({ role: 'agent', content: reply });
     this.push({
       role: 'agent',
@@ -104,15 +104,17 @@ export class OpenApiHttpChatAdapter implements BaseAdapter {
   async receive(timeoutMs = 40_000): Promise<AdapterMessage | null> {
     if (this.queue.length > 0) return this.queue.shift()!;
     return new Promise<AdapterMessage | null>((resolve) => {
-      const timer = setTimeout(() => {
-        const idx = this.resolvers.indexOf(resolve);
+      let timerId: ReturnType<typeof setTimeout>;
+      const wrapper = (msg: AdapterMessage | null): void => {
+        clearTimeout(timerId);
+        resolve(msg);
+      };
+      timerId = setTimeout(() => {
+        const idx = this.resolvers.indexOf(wrapper); // search for wrapper, not resolve
         if (idx >= 0) this.resolvers.splice(idx, 1);
         resolve(null);
       }, timeoutMs);
-      this.resolvers.push((msg) => {
-        clearTimeout(timer);
-        resolve(msg);
-      });
+      this.resolvers.push(wrapper);
     });
   }
 
@@ -153,12 +155,13 @@ export class OpenApiHttpChatAdapter implements BaseAdapter {
   }
 }
 
-function extractStringField(obj: Record<string, unknown>, path: string): string {
+function extractStringField(obj: Record<string, unknown>, path: string): string | undefined {
   const value = path.split('.').reduce<unknown>((acc, key) => {
     if (acc && typeof acc === 'object' && key in (acc as Record<string, unknown>)) {
       return (acc as Record<string, unknown>)[key];
     }
     return undefined;
   }, obj);
-  return typeof value === 'string' ? value.trim() : '';
+  if (value === undefined) return undefined;
+  return typeof value === 'string' ? value.trim() : String(value).trim();
 }

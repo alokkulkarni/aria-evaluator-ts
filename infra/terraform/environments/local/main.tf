@@ -14,18 +14,20 @@ module "docker_local" {
 
   extra_environment_vars = var.extra_environment_vars
 
-  # ── Local Bedrock proxy ──────────────────────────────────────────────────────
-  # Option A (default): set bedrock_proxy_enabled = false and pass
-  #   BEDROCK_LAMBDA_ENDPOINT via extra_environment_vars pointing at an AWS URL.
+  # ── External Bedrock proxy ───────────────────────────────────────────────────
+  # The Bedrock proxy now runs as a completely standalone service deployed with:
+  #   cd infra/terraform/environments/bedrock-proxy-local && terraform apply
   #
-  # Option B: set bedrock_proxy_enabled = true to run the proxy locally.
-  #   Requires valid AWS credentials on the Docker host with bedrock:InvokeModel.
-  bedrock_proxy_enabled            = var.bedrock_proxy_enabled
-  bedrock_proxy_dockerfile_context = var.bedrock_proxy_dockerfile_context
-  bedrock_proxy_host_port          = var.bedrock_proxy_host_port
-  bedrock_proxy_image_name         = "aria-bedrock-proxy:local"
-  bedrock_model_id                 = var.bedrock_model_id
-  bedrock_region                   = var.bedrock_region
-  bedrock_system_prompt            = var.bedrock_system_prompt
-  bedrock_max_tokens               = var.bedrock_max_tokens
+  # After deploying the proxy, set bedrock_proxy_url here so the evaluator can
+  # reach it across Docker network boundaries via the host loopback.
+  # On macOS/Windows (Docker Desktop):  "http://host.docker.internal:8765"
+  # On Linux native Docker:             "http://host.docker.internal:8765"
+  #   (the proxy module sets extra_hosts so host.docker.internal resolves)
+  # Leave empty to omit BEDROCK_LAMBDA_ENDPOINT (set it manually via
+  # extra_environment_vars pointing at AWS API Gateway instead).
+  bedrock_proxy_url = var.bedrock_proxy_url
+
+  # ── Scenarios / DB bind-mounts ───────────────────────────────────────────────
+  local_scenarios_dir = var.local_scenarios_dir
+  local_db_path       = var.local_db_path
 }

@@ -88,3 +88,23 @@ bedrock_model_id                 = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0
 bedrock_region                   = "eu-west-2"
 bedrock_system_prompt            = "You are a helpful AI assistant for customer service."
 bedrock_max_tokens               = 2048
+
+# ── Pre-built scenario files ───────────────────────────────────────────────────
+# Set to the absolute path of the repo's scenarios/ directory.
+# This bind-mounts the directory into the container so pre-built YAML scenarios
+# are immediately available in the UI without any copy/upload step.
+# Terraform functions like abspath() cannot be used in .tfvars — use a literal path.
+#
+# Example (macOS / Linux):
+#   local_scenarios_dir = "/Users/<your-username>/repos/aria-evaluator-ts/scenarios"
+#
+# Windows (WSL):
+#   local_scenarios_dir = "/mnt/c/Users/<your-username>/repos/aria-evaluator-ts/scenarios"
+
+local_scenarios_dir = "/Users/alokkulkarni/Documents/Development/aria-evaluator-ts/scenarios"
+
+# ── Persistent SQLite DB across redeploys (optional) ──────────────────────────
+# Leave empty to let the container create a fresh DB in the named volume.
+#   local_db_path = "/Users/<your-username>/repos/aria-evaluator-ts/prisma/data/aria-evaluator.db"
+
+local_db_path = ""

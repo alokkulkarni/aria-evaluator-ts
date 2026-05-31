@@ -18,6 +18,7 @@ are passed straight through to handler.py via os.environ.
 import json
 import logging
 import os
+import socketserver
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from handler import lambda_handler
@@ -59,8 +60,23 @@ class Handler(BaseHTTPRequestHandler):
             "isBase64Encoded": False,
         }
 
+    def _send_response(self, status: int, body: dict):
+        encoded = json.dumps(body).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
     def _dispatch(self, method: str):
         path = self.path.split("?")[0]  # strip query string
+
+        # Health check short-circuit — Docker/load-balancer probe.
+        if method == "GET" and path == "/health":
+            logger.debug("GET /health → 200")
+            self._send_response(200, {"status": "ok"})
+            return
+
         body = self._read_body() if method in ("POST", "PUT", "PATCH") else ""
 
         logger.info("%s %s", method, path)
@@ -108,8 +124,14 @@ class Handler(BaseHTTPRequestHandler):
         self._dispatch("OPTIONS")
 
 
+class _ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+    """Handle each request in a separate thread so slow Bedrock calls don't block health checks or subsequent requests."""
+
+    daemon_threads = True  # threads exit when the main process exits
+
+
 def main():
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    server = _ThreadedHTTPServer(("0.0.0.0", PORT), Handler)
     logger.info("Bedrock proxy listening on 0.0.0.0:%d", PORT)
     try:
         server.serve_forever()

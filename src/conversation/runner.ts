@@ -238,7 +238,18 @@ export class ScenarioRunner {
               this.log('    ℹ  Session ended by agent — conversation complete');
               break;
             }
-            throw sendErr;
+            const errMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+            this.log(`    ⚠  Send error (turn ${turnIndex}): ${errMsg} — recording and continuing`);
+            const errorTurn: Turn = {
+              index: turnIndex,
+              role: 'agent',
+              content: `[ERROR: ${errMsg}]`,
+              timestampMs: Date.now(),
+            };
+            turns.push(errorTurn);
+            this.config.onProgress({ type: 'turn', turn: errorTurn });
+            turnIndex++;
+            continue;
           }
           turnIndex++;
 
@@ -347,6 +358,18 @@ export class ScenarioRunner {
 
           this.log(`    ⏳ customer is waiting for the agent to finish...`);
           consecutiveSilentWaits += 1;
+
+          // For voice adapters the agent may still be streaming speech — waiting
+          // for more content without sending first is intentional.
+          // For chat/HTTP adapters (e.g. OpenAPI proxy) there is nothing in the
+          // receive queue until we call sendMessage(). Calling receiveAndRecordAgentTurn()
+          // here would block for the full timeout (e.g. 90 s) with no result.
+          // Skip the receive and loop back so AgentDriver generates the next message.
+          if (runtimeChannel !== 'voice') {
+            if (turnDelayMs > 0) await sleep(turnDelayMs);
+            continue;
+          }
+
           const received = await receiveAndRecordAgentTurn(achieved);
           if (!received) break;
 

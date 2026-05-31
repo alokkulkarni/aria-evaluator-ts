@@ -1,0 +1,41 @@
+# ── Bedrock proxy — local deployment configuration ────────────────────────────
+# Copy this file to terraform.tfvars and adjust values for your environment.
+# terraform.tfvars is gitignored; this .example file is safe to commit.
+
+# Friendly name prefix applied to Docker resources created by this module
+app_name    = "aria-bedrock-proxy"
+environment = "local"
+
+# Docker image tag for the locally built proxy image
+image_name = "aria-bedrock-proxy:local"
+
+# ── Build context ─────────────────────────────────────────────────────────────
+# Absolute path to the directory containing Dockerfile.local.
+# Leave blank (or comment out) to let Terraform auto-detect it from the repo root.
+# Example override (only needed for non-standard layouts):
+# dockerfile_context = "/absolute/path/to/aria-evaluator-ts/lambda/bedrock_proxy"
+dockerfile_context = ""
+
+# ── Network / port ────────────────────────────────────────────────────────────
+# Port exposed on the Docker host.  The proxy container listens internally on
+# container_port (default 8000) and is mapped to host_port on your machine.
+# Use host_port 8765 unless it conflicts with another service.
+host_port      = 8765
+container_port = 8000
+
+# ── Bedrock model settings ────────────────────────────────────────────────────
+# model_id can be any of:
+#   - Plain model ID:                  "anthropic.claude-3-5-sonnet-20241022-v2:0"
+#   - Cross-region inference profile:  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+#   - Full model ARN:                  "arn:aws:bedrock:eu-west-2::foundation-model/..."
+#   - Inference profile ARN:           "arn:aws:bedrock:eu-west-2:123456789012:inference-profile/..."
+model_id = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+# AWS region where Bedrock API calls are sent
+region = "eu-west-2"
+
+# Default system prompt injected at the start of every conversation
+system_prompt = "You are a helpful AI assistant for customer service."
+
+# Maximum tokens allowed in each model response
+max_tokens = 2048

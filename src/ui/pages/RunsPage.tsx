@@ -575,6 +575,7 @@ function NewRunModal({
   const [providerSettings, setProviderSettings] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedModalCategories, setCollapsedModalCategories] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -632,6 +633,25 @@ function NewRunModal({
     );
   }
 
+  function toggleSelectCategory(refs: string[]): void {
+    const allSelected = refs.every(r => selectedScenarioRefs.includes(r));
+    if (allSelected) {
+      setSelectedScenarioRefs(prev => prev.filter(r => !refs.includes(r)));
+    } else {
+      setSelectedScenarioRefs(prev => [...new Set([...prev, ...refs])]);
+    }
+  }
+
+  function toggleModalCat(key: string): void {
+    setCollapsedModalCategories(prev => {
+      const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
+    });
+  }
+
+  function modalFmt(s: string): string {
+    return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
   async function startRun(): Promise<void> {
     if (selectedScenarioRefs.length === 0) return;
     setRunning(true);
@@ -671,39 +691,124 @@ function NewRunModal({
           </p>
         </div>
 
-        <div className="px-6 overflow-y-auto flex-1 py-2 space-y-1.5">
+        <div className="px-6 overflow-y-auto flex-1 py-2 space-y-2">
           {filtered.length === 0 ? (
             <p className="text-slate-400 text-sm py-4 text-center">No scenarios match.</p>
-          ) : (
-            filtered.map((o) => {
-              const checked = selectedScenarioRefs.includes(o.ref);
+          ) : (() => {
+            // Build two-level grouping: category → subCategory → ScenarioOptions
+            const grouped = new Map<string, Map<string, ScenarioOption[]>>();
+            for (const o of filtered) {
+              const raw = (o.filePath ?? '').replace(/\\/g, '/');
+              const parts = raw.split('/').filter(Boolean);
+              const cat = parts.length >= 2 ? (parts[0] ?? 'general') : 'general';
+              const sub = (parts.length >= 2 ? parts[1] : parts[0] ?? 'other')!.replace(/\.(ya?ml)$/i, '');
+              if (!grouped.has(cat)) grouped.set(cat, new Map());
+              const subMap = grouped.get(cat)!;
+              if (!subMap.has(sub)) subMap.set(sub, []);
+              subMap.get(sub)!.push(o);
+            }
+            const catMeta: Record<string, { icon: string; hdr: string }> = {
+              adversarial: { icon: '⚔️', hdr: 'bg-red-50 text-red-800 border-red-200' },
+              banking:     { icon: '🏦', hdr: 'bg-blue-50 text-blue-800 border-blue-200' },
+              edge_cases:  { icon: '🔬', hdr: 'bg-purple-50 text-purple-800 border-purple-200' },
+              escalation:  { icon: '📈', hdr: 'bg-amber-50 text-amber-800 border-amber-200' },
+              general:     { icon: '📋', hdr: 'bg-slate-50 text-slate-700 border-slate-200' },
+            };
+
+            return Array.from(grouped.entries()).map(([cat, subMap]) => {
+              const meta = catMeta[cat] ?? catMeta.general!;
+              const allRefs = Array.from(subMap.values()).flat().map(o => o.ref);
+              const selectedCount = allRefs.filter(r => selectedScenarioRefs.includes(r)).length;
+              const allChecked = allRefs.length > 0 && selectedCount === allRefs.length;
+              const someChecked = selectedCount > 0 && !allChecked;
+              const collapsed = collapsedModalCategories.has(cat);
+
               return (
-                <label
-                  key={o.ref}
-                  className={`rounded-lg px-3 py-2.5 cursor-pointer border transition-all text-sm flex items-start gap-3 ${
-                    checked
-                      ? 'border-[#0D2A66] bg-blue-50'
-                      : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleScenario(o.ref)}
-                    className="mt-0.5"
-                  />
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-800">{o.name}</p>
-                    <p className="text-xs text-slate-500 mt-0.5 break-all">{o.filePath}</p>
-                    {o.goal && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{o.goal}</p>}
+                <div key={cat} className={`rounded-xl border overflow-hidden ${meta.hdr}`}>
+                  {/* Category header with select-all tri-state checkbox */}
+                  <div className={`flex items-center gap-2 px-3 py-2.5 border-b ${meta.hdr}`}>
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      ref={el => { if (el) el.indeterminate = someChecked; }}
+                      onChange={() => toggleSelectCategory(allRefs)}
+                      className="rounded"
+                    />
+                    <button
+                      onClick={() => toggleModalCat(cat)}
+                      className="flex-1 flex items-center justify-between text-left font-semibold text-sm">
+                      <span className="flex items-center gap-2">
+                        <span>{meta.icon}</span>
+                        <span>{modalFmt(cat)}</span>
+                        <span className="text-xs font-normal opacity-70">
+                          {selectedCount > 0 ? `${selectedCount}/` : ''}{allRefs.length}
+                        </span>
+                      </span>
+                      <span className="text-xs">{collapsed ? '▶' : '▼'}</span>
+                    </button>
                   </div>
-                  <span className={o.channel === 'voice' ? 'badge-voice ml-auto' : 'badge-chat ml-auto'}>
-                    {o.channel}
-                  </span>
-                </label>
+
+                  {!collapsed && (
+                    <div className="bg-white divide-y divide-slate-50">
+                      {Array.from(subMap.entries()).map(([sub, items]) => {
+                        const subRefs = items.map(o => o.ref);
+                        const subSelected = subRefs.filter(r => selectedScenarioRefs.includes(r)).length;
+                        const subAllChecked = subRefs.length > 0 && subSelected === subRefs.length;
+                        const subSomeChecked = subSelected > 0 && !subAllChecked;
+                        return (
+                          <div key={sub}>
+                            {/* Sub-category row */}
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50">
+                              <input
+                                type="checkbox"
+                                checked={subAllChecked}
+                                ref={el => { if (el) el.indeterminate = subSomeChecked; }}
+                                onChange={() => toggleSelectCategory(subRefs)}
+                                className="rounded"
+                              />
+                              <span className="text-xs font-semibold text-slate-500">
+                                {modalFmt(sub)}
+                                <span className="font-normal ml-1 opacity-60">
+                                  ({subSelected > 0 ? `${subSelected}/` : ''}{items.length})
+                                </span>
+                              </span>
+                            </div>
+                            {items.map((o) => {
+                              const checked = selectedScenarioRefs.includes(o.ref);
+                              return (
+                                <label
+                                  key={o.ref}
+                                  className={`flex items-start gap-3 px-4 py-2 cursor-pointer transition-colors text-sm ${
+                                    checked ? 'bg-blue-50' : 'hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleScenario(o.ref)}
+                                    className="mt-0.5 rounded"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-slate-800">{o.name}</p>
+                                    {o.goal && <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{o.goal}</p>}
+                                  </div>
+                                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                                    o.channel === 'voice' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {o.channel === 'voice' ? '🎤' : '💬'} {o.channel}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
 
         <div className="px-6 py-4 border-t border-slate-100 space-y-3">

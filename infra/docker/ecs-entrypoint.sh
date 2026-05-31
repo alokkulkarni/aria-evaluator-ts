@@ -42,7 +42,7 @@ wire_paths() {
 restore_state
 wire_paths
 
-export DATABASE_URL="${DATABASE_URL:-file:${STATE_DIR}/data/aria-evaluator.db}"
+export DATABASE_URL="${DATABASE_URL:-file:${STATE_DIR}/aria-evaluator.db}"
 export EVAL_REPORT_OUTPUT_DIR="${EVAL_REPORT_OUTPUT_DIR:-${STATE_DIR}/reports}"
 export SCENARIOS_DIR="${SCENARIOS_DIR:-${STATE_DIR}/scenarios}"
 export API_PORT="${API_PORT:-3001}"

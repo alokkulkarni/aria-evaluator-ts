@@ -1,0 +1,8 @@
+{
+  "EVAL_PROVIDER_DEFAULT": "openapi",
+  "AWS_REGION": "eu-west-2",
+  "CUSTOM_CHAT_ENDPOINT": "http://host.docker.internal:8765",
+  "OPENAPI_ENDPOINT_URL": "http://host.docker.internal:8765/chat",
+  "OPENAPI_METHOD": "POST",
+  "OPENAPI_AUTH_TYPE": "none"
+}

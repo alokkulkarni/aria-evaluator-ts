@@ -40,10 +40,15 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
 _BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "")
 _BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "eu-west-2")
 _SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", "")
-_MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "2048"))
+_MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "512"))
 _TEMPERATURE = float(os.environ.get("TEMPERATURE", "0.7"))
 _TOP_P = float(os.environ.get("TOP_P", "0.9"))
 _ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
+
+# Tune via env vars — lower values make timeouts visible sooner in local use.
+# For AWS Lambda deployment, increase these (e.g. BEDROCK_READ_TIMEOUT=120, BEDROCK_MAX_RETRIES=3).
+_BEDROCK_READ_TIMEOUT = int(os.environ.get("BEDROCK_READ_TIMEOUT", "45"))
+_BEDROCK_MAX_RETRIES = int(os.environ.get("BEDROCK_MAX_RETRIES", "1"))
 
 # Boto3 client cache — keyed by region to support cross-region requests.
 _clients: dict[str, object] = {}
@@ -51,9 +56,9 @@ _clients: dict[str, object] = {}
 _BOTO_CONFIG = Config(
     tcp_keepalive=True,
     max_pool_connections=5,
-    retries={"mode": "adaptive", "max_attempts": 3},
+    retries={"mode": "standard", "max_attempts": _BEDROCK_MAX_RETRIES},
     connect_timeout=10,
-    read_timeout=120,
+    read_timeout=_BEDROCK_READ_TIMEOUT,
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,7 +125,8 @@ def _handle_chat(body: dict, origin: str | None) -> dict:
             "code": "MISSING_CONFIG",
         }, origin)
 
-    # Build the messages list — accept single-turn ("message") or multi-turn ("messages").
+    # Build the messages list — accept single-turn ("message"), multi-turn ("messages"),
+    # or evaluator history format ("history" + "message").
     if "messages" in body:
         messages = body["messages"]
         if not isinstance(messages, list) or not messages:
@@ -128,6 +134,31 @@ def _handle_chat(body: dict, origin: str | None) -> dict:
                 "error": "'messages' must be a non-empty list",
                 "code": "INVALID_REQUEST",
             }, origin)
+    elif "history" in body:
+        # Evaluator sends: { history: [{role: "customer"|"agent", content}, ...], message: "..." }
+        # Convert roles: customer → user, agent → assistant
+        role_map = {"customer": "user", "agent": "assistant", "user": "user", "assistant": "assistant"}
+        history = body["history"]
+        if not isinstance(history, list):
+            return _response(400, {
+                "error": "'history' must be a list",
+                "code": "INVALID_REQUEST",
+            }, origin)
+        messages = []
+        for entry in history:
+            if not isinstance(entry, dict):
+                continue
+            role = role_map.get(entry.get("role", ""), "user")
+            content = entry.get("content", "")
+            messages.append({"role": role, "content": content})
+        # Append the current turn's message
+        current_message = body.get("message", "")
+        if not isinstance(current_message, str) or not current_message.strip():
+            return _response(400, {
+                "error": "'message' must be a non-empty string",
+                "code": "INVALID_REQUEST",
+            }, origin)
+        messages.append({"role": "user", "content": current_message})
     elif "message" in body:
         if not isinstance(body["message"], str) or not body["message"].strip():
             return _response(400, {
@@ -137,7 +168,7 @@ def _handle_chat(body: dict, origin: str | None) -> dict:
         messages = [{"role": "user", "content": body["message"]}]
     else:
         return _response(400, {
-            "error": "Request body must include 'message' (string) or 'messages' (list)",
+            "error": "Request body must include 'message' (string), 'messages' (list), or 'history' (list) + 'message'",
             "code": "INVALID_REQUEST",
         }, origin)
 
@@ -164,7 +195,10 @@ def _handle_chat(body: dict, origin: str | None) -> dict:
     try:
         max_tokens = int(body.get("max_tokens", _MAX_TOKENS))
         temperature = float(body.get("temperature", _TEMPERATURE))
-        top_p = float(body.get("top_p", _TOP_P))
+        # top_p is optional; only include if the caller explicitly sets it
+        # (sending both temperature and top_p causes ValidationException on some models)
+        top_p_raw = body.get("top_p", None)
+        top_p = float(top_p_raw) if top_p_raw is not None else None
     except (TypeError, ValueError) as exc:
         return _response(400, {
             "error": f"Invalid inference parameter: {exc}",
@@ -195,7 +229,7 @@ def _handle_chat(body: dict, origin: str | None) -> dict:
         "inferenceConfig": {
             "maxTokens": max_tokens,
             "temperature": temperature,
-            "topP": top_p,
+            **({"topP": top_p} if top_p is not None else {}),
         },
     }
     if system_prompt:

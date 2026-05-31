@@ -145,7 +145,7 @@ const FIELDS: SectionDef[] = [
     defaultOpen: false,
     fields: [
       { key: 'OPENAPI_SPEC_URL', label: 'OpenAPI Spec URL', placeholder: 'https://api.example.com/openapi.yaml' },
-      { key: 'OPENAPI_ENDPOINT_URL', label: 'Chat Endpoint URL (override auto-detected)', placeholder: 'https://api.example.com/chat' },
+      { key: 'OPENAPI_ENDPOINT_URL', label: 'Chat Endpoint URL', placeholder: 'http://host.docker.internal:8765/chat' },
       { key: 'OPENAPI_METHOD', label: 'HTTP Method (POST|PUT)', placeholder: 'POST' },
       { key: 'OPENAPI_AUTH_TYPE', label: 'Auth Type (none|bearer|apikey|basic)', placeholder: 'none' },
       { key: 'OPENAPI_AUTH_VALUE', label: 'Auth Value (token / user:password)', placeholder: '' },

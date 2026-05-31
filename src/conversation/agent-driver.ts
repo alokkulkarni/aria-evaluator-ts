@@ -12,6 +12,7 @@ import {
   type Message,
   type ContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import type { Scenario } from '../types/index.js';
 import type { Turn } from '../types/transcript.js';
 
@@ -32,6 +33,10 @@ export class AgentDriver {
       'eu.anthropic.claude-sonnet-4-6';
     this.client = new BedrockRuntimeClient({
       region: config.region ?? process.env['BEDROCK_REGION'] ?? 'eu-west-2',
+      // Prevent a hung Bedrock call from blocking agent-mode turns indefinitely.
+      requestHandler: new NodeHttpHandler({
+        requestTimeout: parseInt(process.env['AGENT_DRIVER_TIMEOUT_MS'] ?? '30000'),
+      }),
     });
   }
 

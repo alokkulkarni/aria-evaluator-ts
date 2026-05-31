@@ -26,6 +26,11 @@ const PUBLIC_DIR = join(__dirname, '../../public');
 
 export const app = express();
 
+// Serialize BigInt as number (Prisma uses BigInt for timestampMs)
+app.set('json replacer', (_key: string, value: unknown) =>
+  typeof value === 'bigint' ? Number(value) : value,
+);
+
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '2mb' }));
 

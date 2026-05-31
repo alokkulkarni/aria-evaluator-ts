@@ -25,6 +25,15 @@ locals {
     fileexists(pathexpand("~/.aws/config"))
   )
 
+  # ── Scenarios bind-mount detection ────────────────────────────────────────
+  # True when the caller has specified an absolute path to a host directory
+  # containing scenario YAML files.  The directory is mounted read-only so
+  # the container can read pre-built scenarios at startup.
+  scenarios_dir_available = var.local_scenarios_dir != ""
+
+  # ── Local DB bind-mount detection ─────────────────────────────────────────
+  local_db_available = var.local_db_path != ""
+
   # ── Base environment variables ─────────────────────────────────────────────
   # Mirrors the ECS base_environment pattern (modules/ecs/main.tf).
   # AWS_S3_STATE_BUCKET is deliberately left empty — the entrypoint script
@@ -38,7 +47,16 @@ locals {
     { name = "SCENARIOS_DIR",          value = "/app/state/scenarios" },
   ]
 
-  all_environment = concat(local.base_environment, var.extra_environment_vars)
+  # When the caller passes a bedrock_proxy_url (the separately-deployed proxy's
+  # host-accessible URL), inject it as BEDROCK_LAMBDA_ENDPOINT so aria-evaluator
+  # can reach the proxy across Docker network boundaries.
+  # Use http://host.docker.internal:<port> when the proxy runs in a separate
+  # Docker network on the same machine.
+  proxy_environment = var.bedrock_proxy_url != "" ? [
+    { name = "BEDROCK_LAMBDA_ENDPOINT", value = var.bedrock_proxy_url }
+  ] : []
+
+  all_environment = concat(local.base_environment, local.proxy_environment, var.extra_environment_vars)
 
   # docker_container.env expects "NAME=VALUE" strings
   env_list = [for e in local.all_environment : "${e.name}=${e.value}"]
@@ -91,7 +109,7 @@ resource "docker_image" "app" {
 
   build {
     context    = local.effective_build_context
-    dockerfile = "Dockerfile"
+    dockerfile = var.app_dockerfile
     # Tag the built image so it is addressable by name:tag locally.
     tag = [var.app_image_name]
   }
@@ -101,7 +119,7 @@ resource "docker_image" "app" {
   #   a) change app_image_name to a new tag, or
   #   b) run: terraform taint module.docker_local.docker_image.app && terraform apply
   triggers = {
-    dockerfile_sha = filesha1("${local.effective_build_context}/Dockerfile")
+    dockerfile_sha = filesha1("${local.effective_build_context}/${var.app_dockerfile}")
   }
 }
 
@@ -144,6 +162,29 @@ resource "docker_container" "app" {
     }
   }
 
+  # Bind-mount host scenarios directory so pre-built YAML scenario files are
+  # visible inside the container without needing to copy them into the volume.
+  # Read-only — write new scenarios via the UI which stores them in the state volume.
+  dynamic "volumes" {
+    for_each = local.scenarios_dir_available ? [1] : []
+    content {
+      host_path      = var.local_scenarios_dir
+      container_path = "/app/state/scenarios"
+      read_only      = false
+    }
+  }
+
+  # Optional: bind-mount a host SQLite DB file to preserve run history across
+  # terraform destroy / apply cycles.
+  dynamic "volumes" {
+    for_each = local.local_db_available ? [1] : []
+    content {
+      host_path      = var.local_db_path
+      container_path = "/app/state/data/aria-evaluator.db"
+      read_only      = false
+    }
+  }
+
   env = local.env_list
 
   healthcheck {
@@ -168,88 +209,11 @@ resource "docker_container" "app" {
   }
 }
 
-# ── Local Bedrock proxy (optional) ────────────────────────────────────────────
-# Wraps lambda/bedrock_proxy/handler.py as a plain HTTP server so the local
-# evaluator can call Bedrock without deploying to AWS.
-# The proxy uses the Docker host's AWS credentials (IAM role, env vars, or
-# ~/.aws/credentials) — no API key is needed when IAM permissions are correct.
-
-resource "docker_image" "bedrock_proxy" {
-  count        = var.bedrock_proxy_enabled ? 1 : 0
-  name         = var.bedrock_proxy_image_name
-  keep_locally = true
-
-  # Build context: use the explicit path if provided, otherwise derive it from
-  # the repo root (same auto-detection as the main app image).
-  build {
-    context = (
-      var.bedrock_proxy_dockerfile_context != ""
-      ? var.bedrock_proxy_dockerfile_context
-      : "${local.repo_root}/lambda/bedrock_proxy"
-    )
-    dockerfile = "Dockerfile.local"
-    tag        = [var.bedrock_proxy_image_name]
-  }
-
-  triggers = var.bedrock_proxy_enabled ? {
-    handler_sha    = filesha1("${local.repo_root}/lambda/bedrock_proxy/handler.py")
-    server_sha     = filesha1("${local.repo_root}/lambda/bedrock_proxy/server.py")
-    dockerfile_sha = filesha1("${local.repo_root}/lambda/bedrock_proxy/Dockerfile.local")
-  } : {}
-}
-
-resource "docker_container" "bedrock_proxy" {
-  count  = var.bedrock_proxy_enabled ? 1 : 0
-  name   = "${local.name_prefix}-bedrock-proxy"
-  image  = docker_image.bedrock_proxy[0].image_id
-
-  restart = "unless-stopped"
-
-  networks_advanced {
-    name = docker_network.app.name
-  }
-
-  ports {
-    internal = 8000
-    external = var.bedrock_proxy_host_port
-    protocol = "tcp"
-  }
-
-  env = [
-    "BEDROCK_MODEL_ID=${var.bedrock_model_id}",
-    "BEDROCK_REGION=${var.bedrock_region}",
-    "SYSTEM_PROMPT=${var.bedrock_system_prompt}",
-    "MAX_TOKENS=${tostring(var.bedrock_max_tokens)}",
-    "ALLOWED_ORIGINS=*",
-    "LOG_LEVEL=INFO",
-    "PORT=8000",
-  ]
-
-  # Mount Docker host AWS credentials (read-only) so boto3 can authenticate.
-  # Uses the same aws_dir_available check as the main app container — covers
-  # both key-based (~/.aws/credentials) and SSO-based (~/.aws/config) setups.
-  dynamic "volumes" {
-    for_each = local.aws_dir_available ? [1] : []
-    content {
-      host_path      = pathexpand("~/.aws")
-      container_path = "/root/.aws"
-      read_only      = true
-    }
-  }
-
-  healthcheck {
-    test = [
-      "CMD", "python3", "-c",
-      "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
-    ]
-    interval     = "20s"
-    timeout      = "5s"
-    start_period = "15s"
-    retries      = 3
-  }
-
-  labels {
-    label = "managed-by"
-    value = "terraform"
-  }
-}
+# The Bedrock proxy is now a completely standalone service with its own Docker
+# network and Terraform state.  See:
+#   infra/terraform/modules/docker-bedrock-proxy/
+#   infra/terraform/environments/bedrock-proxy-local/
+#
+# To connect the evaluator to a locally-running proxy, pass:
+#   bedrock_proxy_url = "http://host.docker.internal:8765"
+# in your terraform.tfvars (or as a -var flag).
