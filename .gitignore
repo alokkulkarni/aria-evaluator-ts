@@ -26,7 +26,6 @@ transcripts/
 .tmp/
 
 # Scenarios directory — populated at runtime from S3 or local upload
-scenarios/
 
 # ── Database ──────────────────────────────────────────────────────────────────
 # SQLite files in both data/ and prisma/data/
