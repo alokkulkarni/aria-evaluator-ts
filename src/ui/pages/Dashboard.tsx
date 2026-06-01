@@ -13,9 +13,10 @@ interface Run {
 
 interface Props {
   onNavigate: (page: 'scenarios' | 'runs' | 'transcripts' | 'reports') => void;
+  onNewRun?: () => void;
 }
 
-export function Dashboard({ onNavigate }: Props) {
+export function Dashboard({ onNavigate, onNewRun }: Props) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,7 +70,7 @@ export function Dashboard({ onNavigate }: Props) {
         ) : recent.length === 0 ? (
           <div className="text-slate-400 text-sm py-8 text-center">
             No runs yet.{' '}
-            <button onClick={() => onNavigate('scenarios')} className="text-blue-600 hover:underline">
+            <button onClick={() => onNewRun ? onNewRun() : onNavigate('runs')} className="text-blue-600 hover:underline">
               Start one →
             </button>
           </div>
@@ -119,12 +120,12 @@ export function Dashboard({ onNavigate }: Props) {
       {/* ── Quick Actions ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: '📋 Browse Scenarios', page: 'scenarios' as const },
-          { label: '▶️ Start a Run', page: 'scenarios' as const },
-          { label: '💬 View Transcripts', page: 'transcripts' as const },
-          { label: '📊 View Reports', page: 'reports' as const },
+          { label: '📋 Browse Scenarios', page: 'scenarios' as const, newRun: false },
+          { label: '▶️ New Run',           page: 'runs'      as const, newRun: true  },
+          { label: '💬 View Transcripts',  page: 'transcripts' as const, newRun: false },
+          { label: '📊 View Reports',      page: 'reports'   as const, newRun: false },
         ].map((a) => (
-          <button key={a.page} onClick={() => onNavigate(a.page)}
+          <button key={a.label} onClick={() => a.newRun && onNewRun ? onNewRun() : onNavigate(a.page)}
             className="card text-center text-sm font-medium text-slate-700 hover:bg-slate-50 hover:shadow transition-shadow cursor-pointer">
             {a.label}
           </button>

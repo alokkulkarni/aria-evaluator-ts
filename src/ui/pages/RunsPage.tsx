@@ -1058,7 +1058,7 @@ function NewRunModal({
   );
 }
 
-export function RunsPage() {
+export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?: boolean; onModalAutoOpened?: () => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [selected, setSelected] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1075,6 +1075,13 @@ export function RunsPage() {
       if (esRef.current) esRef.current.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (autoOpenModal) {
+      setShowModal(true);
+      onModalAutoOpened?.();
+    }
+  }, [autoOpenModal]);
 
   function loadRuns(): void {
     apiFetch('/api/runs')

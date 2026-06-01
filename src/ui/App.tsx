@@ -49,9 +49,15 @@ function getInitialPage(): Page {
 
 export default function App() {
   const [page, setPage] = useState<Page>(getInitialPage);
+  const [openRunModal, setOpenRunModal] = useState(false);
   const initialTranscriptFile = typeof window !== 'undefined'
     ? (new URLSearchParams(window.location.search).get('file') ?? undefined)
     : undefined;
+
+  function handleNewRun(): void {
+    setPage('runs');
+    setOpenRunModal(true);
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -86,9 +92,9 @@ export default function App() {
 
       {/* ── Content ────────────────────────────────────────────────────────── */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        {page === 'dashboard'   && <Dashboard   onNavigate={setPage} />}
+        {page === 'dashboard'   && <Dashboard   onNavigate={setPage} onNewRun={handleNewRun} />}
         {page === 'scenarios'   && <ScenariosPage />}
-        {page === 'runs'        && <RunsPage />}
+        {page === 'runs'        && <RunsPage autoOpenModal={openRunModal} onModalAutoOpened={() => setOpenRunModal(false)} />}
         {page === 'transcripts' && <TranscriptsPage initialFilename={initialTranscriptFile} />}
         {page === 'reports'     && <ReportsPage />}
         {page === 'settings'    && <SettingsPage />}
