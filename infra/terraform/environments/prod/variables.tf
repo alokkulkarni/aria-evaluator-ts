@@ -129,3 +129,47 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ── Bedrock Lambda ────────────────────────────────────────────────────────────
+
+variable "bedrock_lambda_enabled" {
+  description = "Set to true to deploy the Bedrock proxy Lambda and HTTP API"
+  type        = bool
+  default     = false
+}
+
+variable "bedrock_model_id" {
+  description = "Bedrock model ID, cross-region inference prefix, or full ARN"
+  type        = string
+  default     = "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
+}
+
+variable "bedrock_region" {
+  description = "AWS region for Bedrock API calls (may differ from deployment region)"
+  type        = string
+  default     = "eu-west-2"
+}
+
+variable "bedrock_system_prompt" {
+  description = "Default system prompt injected into every Bedrock conversation"
+  type        = string
+  default     = ""
+}
+
+variable "bedrock_allowed_origins" {
+  description = "Comma-separated CORS origins for the Bedrock HTTP API"
+  type        = string
+  default     = "*"
+}
+
+variable "bedrock_lambda_memory_size" {
+  description = "Memory allocation in MiB for the Bedrock proxy Lambda"
+  type        = number
+  default     = 512
+}
+
+variable "bedrock_lambda_timeout" {
+  description = "Timeout in seconds for the Bedrock proxy Lambda"
+  type        = number
+  default     = 120
+}

@@ -110,6 +110,27 @@ module "ecs" {
   tags                   = var.tags
 }
 
+# ── Bedrock Lambda ────────────────────────────────────────────────────────────
+
+module "bedrock_lambda" {
+  source = "../../modules/bedrock-lambda"
+
+  enabled     = var.bedrock_lambda_enabled
+  app_name    = var.app_name
+  environment = var.environment
+
+  bedrock_model_id = var.bedrock_model_id
+  bedrock_region   = var.bedrock_region
+  system_prompt    = var.bedrock_system_prompt
+  allowed_origins  = var.bedrock_allowed_origins
+
+  lambda_memory_size = var.bedrock_lambda_memory_size
+  lambda_timeout     = var.bedrock_lambda_timeout
+  log_retention_days = var.log_retention_days
+
+  tags = var.tags
+}
+
 # ── CloudFront ────────────────────────────────────────────────────────────────
 
 module "cloudfront" {

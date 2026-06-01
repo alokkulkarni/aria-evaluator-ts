@@ -34,6 +34,8 @@ interface ScenarioOption {
 
 type Provider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi';
 
+const ALL_PROVIDERS: ReadonlySet<string> = new Set<Provider>(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi']);
+
 /** Providers that are chat-only bots and can never handle voice. */
 const CHAT_ONLY_PROVIDERS: ReadonlySet<Provider> = new Set(['lex', 'azure', 'strands', 'copilot', 'openapi']);
 
@@ -125,10 +127,170 @@ interface LiveScenarioBlock {
   turnCount: number | null;
 }
 
+// ── Parallel execution helpers ────────────────────────────────────────────────
+
+interface ParallelScenarioState {
+  index: number;   // 1-based position in the parallel batch (from log line)
+  total: number;
+  status: 'running' | 'done' | 'failed';
+  score: number | null;  // null = no judge / failed
+  passed: boolean | null;
+}
+
+/** Returns true if the log stream represents a parallel run (>10 scenarios). */
+function isParallelRun(logs: string[]): boolean {
+  return logs.some((l) => /ℹ\s+Running \d+ scenarios in parallel/.test(l.replace(/\x1b\[[0-9;]*m/g, '')));
+}
+
+/** Parses parallel log lines into a map of scenarioName → state. */
+function buildParallelProgress(logs: string[]): Map<string, ParallelScenarioState> {
+  const map = new Map<string, ParallelScenarioState>();
+
+  for (const raw of logs) {
+    const line = raw.replace(/\x1b\[[0-9;]*m/g, '').trim();
+
+    // ▶ [parallel N/total] starting: Name
+    const startMatch = line.match(/^▶\s+\[parallel\s+(\d+)\/(\d+)\]\s+starting:\s+(.+)$/);
+    if (startMatch) {
+      const index = Number(startMatch[1]);
+      const total = Number(startMatch[2]);
+      const name  = startMatch[3].trim();
+      map.set(name, { index, total, status: 'running', score: null, passed: null });
+      continue;
+    }
+
+    // ✅ [parallel N/total] done: Name (score X/10)
+    // ❌ [parallel N/total] done: Name (score X/10)
+    // ✅ [parallel N/total] done: Name   (no judge)
+    const doneMatch = line.match(/^[✅❌]\s+\[parallel\s+(\d+)\/(\d+)\]\s+done:\s+(.+?)(?:\s+\(score\s+(\d+)\/10\))?$/);
+    if (doneMatch) {
+      const index = Number(doneMatch[1]);
+      const total = Number(doneMatch[2]);
+      const name  = doneMatch[3].trim();
+      const score = doneMatch[4] !== undefined ? Number(doneMatch[4]) : null;
+      const passed = line.startsWith('✅');
+      map.set(name, { index, total, status: 'done', score, passed });
+      continue;
+    }
+
+    // ✗ [parallel N/total] failed: Name: Error
+    const failMatch = line.match(/^✗\s+\[parallel\s+(\d+)\/(\d+)\]\s+failed:\s+(.+?)(?::\s+.+)?$/);
+    if (failMatch) {
+      const index = Number(failMatch[1]);
+      const total = Number(failMatch[2]);
+      const name  = failMatch[3].trim();
+      const existing = map.get(name);
+      map.set(name, { index, total, status: 'failed', score: null, passed: false, ...(existing ?? {}) });
+    }
+  }
+
+  return map;
+}
+
+/** Returns a Tailwind text-colour class for a terminal log line. */
+function getTerminalLineClass(raw: string): string {
+  const line = raw.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  if (/^ℹ\s+Running \d+ scenarios in parallel/.test(line)) return 'text-yellow-300';
+  if (/^▶\s+\[parallel/.test(line)) return 'text-cyan-300';
+  if (/^✅\s+\[parallel/.test(line)) return 'text-green-400';
+  if (/^❌\s+\[parallel/.test(line)) return 'text-red-400';
+  if (/^✗\s+\[parallel/.test(line)) return 'text-red-400';
+  if (/^✅\s+/.test(line)) return 'text-green-400';
+  if (/^❌\s+/.test(line)) return 'text-red-400';
+  if (/^▶\s+/.test(line)) return 'text-cyan-300';
+  if (/^✓\s+/.test(line)) return 'text-green-400';
+  if (/^✗\s+/.test(line) && !/\[parallel/.test(line)) return 'text-red-400';
+  if (/^🏁/.test(line) || /^🎉/.test(line)) return 'text-yellow-300';
+  if (/error|exception|failed/i.test(line)) return 'text-red-300';
+  return 'text-slate-100';
+}
+
+// ── ParallelProgressBoard ────────────────────────────────────────────────────
+
+function ParallelProgressBoard({ logs, isLive }: { logs: string[]; isLive: boolean }) {
+  const progress = buildParallelProgress(logs);
+  if (progress.size === 0) return null;
+
+  const entries = Array.from(progress.entries()).sort(([, a], [, b]) => a.index - b.index);
+  const total     = entries[0]?.[1].total ?? entries.length;
+  const doneCount = entries.filter(([, s]) => s.status !== 'running').length;
+  const runningCount = entries.filter(([, s]) => s.status === 'running').length;
+  const passedCount = entries.filter(([, s]) => s.status === 'done' && s.passed).length;
+  const failedCount = entries.filter(([, s]) => s.status !== 'running' && !s.passed).length;
+  const pct = Math.round((doneCount / total) * 100);
+
+  return (
+    <div className="rounded-xl border border-slate-700 bg-slate-800 p-3 space-y-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+          ⚡ Parallel Execution
+        </span>
+        <div className="flex items-center gap-2 text-xs">
+          {isLive && runningCount > 0 && (
+            <span className="flex items-center gap-1 text-cyan-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              {runningCount} running
+            </span>
+          )}
+          <span className="text-green-400">{passedCount} ✓</span>
+          {failedCount > 0 && <span className="text-red-400">{failedCount} ✗</span>}
+          <span className="text-slate-400">{doneCount}/{total}</span>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {/* Scenario grid */}
+      <div className="grid grid-cols-1 gap-1 max-h-56 overflow-y-auto pr-1">
+        {entries.map(([name, state]) => {
+          const icon =
+            state.status === 'running'  ? '⏳' :
+            state.status === 'failed'   ? '✗' :
+            state.passed                ? '✅' : '❌';
+          const rowColour =
+            state.status === 'running'  ? 'text-cyan-300' :
+            state.status === 'failed'   ? 'text-red-400' :
+            state.passed                ? 'text-green-400' : 'text-red-400';
+
+          return (
+            <div key={name} className="flex items-center gap-2 text-xs">
+              <span className={`w-4 flex-shrink-0 ${state.status === 'running' ? 'animate-pulse' : ''}`}>
+                {icon}
+              </span>
+              <span className={`flex-1 truncate ${rowColour}`} title={name}>{name}</span>
+              {state.score !== null && (
+                <span className={`flex-shrink-0 font-mono font-semibold ${state.passed ? 'text-green-400' : 'text-red-400'}`}>
+                  {state.score}/10
+                </span>
+              )}
+              {state.status === 'running' && (
+                <span className="flex-shrink-0 text-slate-500 font-mono">…</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {!isLive && doneCount === total && (
+        <p className="text-xs text-slate-400 text-center pt-1">
+          🏁 All {total} scenarios complete · {passedCount} passed · {failedCount} failed
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Parses raw terminal log lines into per-scenario conversation blocks.
  * Extracts:
- *  - Scenario headers:    "▶  <name>"
+ *  - Scenario headers:    "▶  <name>"  or  "▶ [parallel N/T] starting: <name>"
  *  - Opening greeting:    "🤖 agent (greeting): <text>"
  *  - Agent turns:         "🤖 agent: <text>"
  *  - Customer (script):   "🧑 customer: <text>"
@@ -142,11 +304,20 @@ function parseLiveTranscript(logs: string[]): LiveScenarioBlock[] {
   for (const raw of logs) {
     const line = raw.replace(/\x1b\[[0-9;]*m/g, '').trim(); // strip ANSI
 
-    // Scenario start
-    const scenarioStart = line.match(/^▶\s+(.+)$/);
+    // Scenario start — handles both sequential and parallel format
+    // sequential: "▶  Scenario Name"
+    // parallel:   "▶ [parallel 1/63] starting: Scenario Name"
+    const scenarioStart = line.match(/^▶\s+(?:\[parallel\s+\d+\/\d+\]\s+starting:\s+)?(.+)$/);
     if (scenarioStart) {
-      current = { name: scenarioStart[1].trim(), turns: [], outcome: null, turnCount: null };
-      blocks.push(current);
+      const name = scenarioStart[1].trim();
+      // For parallel runs, don't create duplicate blocks for the same scenario name
+      const existing = blocks.find((b) => b.name === name);
+      if (existing) {
+        current = existing;
+      } else {
+        current = { name, turns: [], outcome: null, turnCount: null };
+        blocks.push(current);
+      }
       continue;
     }
 
@@ -605,7 +776,7 @@ function NewRunModal({
         setOptions(list);
         setProviderSettings(settingsMap);
         const defaultProvider = (settingsMap['EVAL_PROVIDER_DEFAULT'] ?? 'connect').toLowerCase();
-        if (defaultProvider === 'connect' || defaultProvider === 'lex' || defaultProvider === 'azure' || defaultProvider === 'strands' || defaultProvider === 'copilot' || defaultProvider === 'custom') {
+        if (ALL_PROVIDERS.has(defaultProvider)) {
           setProvider(defaultProvider);
         }
       })
@@ -1141,8 +1312,10 @@ export function RunsPage() {
                 {liveEvents.length > 0 && (
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Terminal Output</p>
-                    <div className="bg-slate-900 text-slate-100 rounded-lg p-3 text-xs font-mono max-h-64 overflow-y-auto space-y-1 whitespace-pre-wrap">
-                      {liveEvents.map((e, i) => <div key={i}>{e}</div>)}
+                    <div className="bg-slate-900 rounded-lg p-3 text-xs font-mono max-h-96 overflow-y-auto space-y-0.5 whitespace-pre-wrap">
+                      {liveEvents.map((e, i) => (
+                        <div key={i} className={getTerminalLineClass(e)}>{e}</div>
+                      ))}
                       {(selected.status === 'running' || selected.status === 'evaluating') && (
                         <div className="animate-pulse text-slate-400">…</div>
                       )}
@@ -1150,7 +1323,14 @@ export function RunsPage() {
                   </div>
                 )}
 
-                {liveEvents.length > 0 && (
+                {liveEvents.length > 0 && isParallelRun(liveEvents) && (
+                  <ParallelProgressBoard
+                    logs={liveEvents}
+                    isLive={selected.status === 'running' || selected.status === 'evaluating'}
+                  />
+                )}
+
+                {liveEvents.length > 0 && !isParallelRun(liveEvents) && (
                   <LiveTranscriptPanel
                     logs={liveEvents}
                     isLive={selected.status === 'running' || selected.status === 'evaluating'}

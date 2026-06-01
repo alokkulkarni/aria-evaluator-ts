@@ -34,6 +34,29 @@ cloudfront_price_class = "PriceClass_100"
 acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 cloudfront_aliases  = ["aria.example.com"]
 
+# ── Bedrock Lambda proxy ──────────────────────────────────────────────────────
+# Deploy independently from the evaluator — set bedrock_lambda_enabled = true
+# to create the Lambda + API Gateway. The evaluator and proxy share the same
+# Terraform state but can be targeted individually:
+#
+#   Deploy proxy only:
+#     terraform apply -var="bedrock_lambda_enabled=true" \
+#       -target=module.bedrock_lambda
+#
+#   Deploy evaluator only (skip proxy):
+#     terraform apply -var="bedrock_lambda_enabled=false"
+#
+# Or use the deploy script:
+#   ./infra/terraform/scripts/deploy.sh -e prod -c bedrock
+#   ./infra/terraform/scripts/deploy.sh -e prod -c evaluator
+bedrock_lambda_enabled     = false
+bedrock_model_id           = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+bedrock_region             = "eu-west-2"
+bedrock_system_prompt      = "You are a helpful AI assistant for customer service evaluation."
+bedrock_allowed_origins    = "https://aria.example.com"
+bedrock_lambda_memory_size = 512
+bedrock_lambda_timeout     = 120
+
 # ── App-specific environment variables ────────────────────────────────────────
 extra_environment_vars = [
   { name = "CONNECT_INSTANCE_ID",           value = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },

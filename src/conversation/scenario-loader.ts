@@ -40,17 +40,11 @@ export function loadScenariosFromFile(filePath: string, baseDir?: string): Scena
 export function filterScenarios(
   scenarios: Scenario[],
   filter?: string,
-  channel?: 'chat' | 'voice',
 ): Scenario[] {
   let result = scenarios;
   if (filter) {
     const norm = filter.replace(/\\/g, '/').replace(/\.ya?ml$/i, '');
     result = result.filter((s) => s.filePath?.startsWith(norm));
-  }
-  if (channel) {
-    // When running on voice, accept both voice-tagged and chat-tagged scenarios
-    // (voice is a superset — any chat scenario can be run over voice).
-    result = result.filter((s) => s.channel === channel || (channel === 'voice' && s.channel === 'chat'));
   }
   return result;
 }

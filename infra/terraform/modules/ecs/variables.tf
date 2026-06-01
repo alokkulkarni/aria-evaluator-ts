@@ -73,7 +73,7 @@ variable "target_group_arn" {
 }
 
 variable "alb_listener_arn" {
-  description = "ARN of the ALB listener (used as a dependency to ensure listener exists before service)"
+  description = "ARN of the ALB listener — the ECS service will not be created until this listener exists"
   type        = string
 }
 

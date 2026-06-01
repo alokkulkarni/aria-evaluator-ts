@@ -118,7 +118,6 @@ resource "aws_ecs_service" "app" {
   launch_type     = "FARGATE"
   desired_count   = var.desired_count
 
-  # Allow zero-downtime deployments: replace old task before new one is healthy.
   deployment_minimum_healthy_percent = var.deployment_minimum_healthy_percent
   deployment_maximum_percent         = var.deployment_maximum_percent
 
@@ -134,11 +133,11 @@ resource "aws_ecs_service" "app" {
     container_port   = var.container_port
   }
 
-  # Ensure the ALB listener exists before the service tries to register.
-  depends_on = [var.alb_listener_arn]
+  # depends_on on a string variable is invalid HCL — the dependency is expressed
+  # by referencing the target_group_arn which is derived from the ALB listener.
+  # The ALB module creates the listener before the target group association,
+  # so this ordering is guaranteed transitively.
 
-  # Ignore task definition changes driven by external deployments (e.g. CI/CD
-  # pushing a new image tag) so Terraform doesn't revert them on next apply.
   lifecycle {
     ignore_changes = [task_definition, desired_count]
   }

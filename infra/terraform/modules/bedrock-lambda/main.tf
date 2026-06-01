@@ -12,9 +12,16 @@ locals {
 data "archive_file" "lambda_zip" {
   count = var.enabled ? 1 : 0
 
-  type        = "zip"
-  source_dir  = "${path.root}/../../lambda/bedrock_proxy"
-  output_path = "${path.module}/.build/bedrock_proxy.zip"
+  type = "zip"
+
+  # source_dir is resolved relative to the environment root (path.root) so the
+  # path is correct regardless of which environment calls this module.
+  # Repo layout:  environments/<env>/  →  ../../lambda/bedrock_proxy
+  source_dir = "${path.root}/../../lambda/bedrock_proxy"
+
+  # Write the zip alongside the module — path.module always exists and is
+  # writable during plan/apply. The file is excluded from git via .gitignore.
+  output_path = "${path.module}/.build/bedrock_proxy_${var.environment}.zip"
 }
 
 # ── IAM role ──────────────────────────────────────────────────────────────────

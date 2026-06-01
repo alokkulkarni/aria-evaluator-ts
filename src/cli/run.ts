@@ -30,6 +30,11 @@ import type { EvalResult } from '../types/evaluation.js';
 type EvaluatorProvider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi';
 const SUPPORTED_PROVIDERS: EvaluatorProvider[] = ['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi'];
 
+// Parallel execution: triggered when scenario count exceeds this threshold
+const PARALLEL_THRESHOLD = 10;
+// Max concurrent scenario workers (bounded to avoid provider rate limits)
+const MAX_CONCURRENCY = 5;
+
 console.log(`
 🚀 ARIA Evaluator TS  starting at ${new Date().toISOString()}
 
@@ -119,9 +124,9 @@ for (const file of scenarioFiles) {
     continue;
   }
 
-  const filtered = filterScenarios(scenarios, undefined, channel as 'chat' | 'voice');
+  const filtered = filterScenarios(scenarios, undefined);
   if (filtered.length === 0) {
-    console.log(`  ℹ  No ${channel} scenarios in this file`);
+    console.log(`  ℹ  No scenarios in this file`);
     continue;
   }
 
@@ -146,13 +151,18 @@ for (const file of scenarioFiles) {
     continue;
   }
 
-  for (const scenario of filtered) {
-    const adapter = createChatAdapter(provider);
-    const transcript = await runner.run(scenario, adapter);
-    allTranscripts.push(transcript);
-    if (judge) {
-      const result = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
-      allResults.push(result);
+  if (filtered.length > PARALLEL_THRESHOLD) {
+    console.log(`  ℹ  Running ${filtered.length} scenarios in parallel (max ${MAX_CONCURRENCY} concurrent)`);
+    await runParallelChatBatch(filtered, provider, judge, allTranscripts, allResults);
+  } else {
+    for (const scenario of filtered) {
+      const adapter = createChatAdapter(provider);
+      const transcript = await runner.run(scenario, adapter);
+      allTranscripts.push(transcript);
+      if (judge) {
+        const result = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
+        allResults.push(result);
+      }
     }
   }
 }
@@ -182,6 +192,67 @@ if (allResults.length > 0) {
     console.log(`\n✅ Done. ${allTranscripts.length} transcript(s) saved. No evaluation results produced.`);
   } else {
     console.log(`\n✅ Done. ${allTranscripts.length} transcript(s) saved.`);
+  }
+}
+
+async function runParallelChatBatch(
+  scenarios: Scenario[],
+  provider: EvaluatorProvider,
+  judge: LLMJudge | null,
+  transcripts: Transcript[],
+  results: EvalResult[],
+): Promise<void> {
+  // Pre-allocate slots to preserve scenario ordering in final output
+  const tSlots: (Transcript | null)[] = new Array(scenarios.length).fill(null);
+  const rSlots: (EvalResult | null)[] = new Array(scenarios.length).fill(null);
+
+  // nextIdx is read+incremented atomically (no await between read and write)
+  // This is safe in single-threaded JS — no mutex needed.
+  let nextIdx = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      // Claim the next scenario index atomically
+      const idx = nextIdx++;
+      if (idx >= scenarios.length) return;
+
+      const scenario = scenarios[idx]!;
+      // Each parallel scenario gets its own runner (avoids shared conversationHistory in AgentDriver)
+      const parallelRunner = new ScenarioRunner();
+      const adapter = createChatAdapter(provider);
+
+      const label = scenario.name ?? `scenario[${idx}]`;
+      console.log(`  ▶ [parallel ${idx + 1}/${scenarios.length}] starting: ${label}`);
+
+      try {
+        const transcript = await parallelRunner.run(scenario, adapter);
+        tSlots[idx] = transcript;
+
+        if (judge) {
+          const evalResult = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
+          rSlots[idx] = evalResult;
+          const status = evalResult.passed ? '✅' : '❌';
+          console.log(`  ${status} [parallel ${idx + 1}/${scenarios.length}] done: ${label} (score ${evalResult.overallScore}/10)`);
+        } else {
+          console.log(`  ✅ [parallel ${idx + 1}/${scenarios.length}] done: ${label}`);
+        }
+      } catch (err) {
+        console.error(`  ✗ [parallel ${idx + 1}/${scenarios.length}] failed: ${label}: ${(err as Error).message}`);
+        // Leave the slot null — gap in results is intentional (mirrors sequential error handling)
+      }
+    }
+  }
+
+  // Spawn up to MAX_CONCURRENCY workers and wait for all to finish
+  const workerCount = Math.min(MAX_CONCURRENCY, scenarios.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  // Collect results in order, skipping any null slots (failed scenarios)
+  for (const t of tSlots) {
+    if (t !== null) transcripts.push(t);
+  }
+  for (const r of rSlots) {
+    if (r !== null) results.push(r);
   }
 }
 

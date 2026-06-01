@@ -115,8 +115,7 @@ module "bedrock_lambda" {
   bedrock_model_id = var.bedrock_model_id
   bedrock_region   = var.bedrock_region
   system_prompt    = var.bedrock_system_prompt
-
-  allowed_origins = var.bedrock_allowed_origins
+  allowed_origins  = var.bedrock_allowed_origins
 
   lambda_memory_size = var.bedrock_lambda_memory_size
   lambda_timeout     = var.bedrock_lambda_timeout

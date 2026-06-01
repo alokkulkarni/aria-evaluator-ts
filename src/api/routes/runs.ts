@@ -107,9 +107,6 @@ function readRunLogLines(runId: string): string[] {
   return lines;
 }
 
-function scenarioCompatibleWithChannel(s: Scenario, channel: 'chat' | 'voice'): boolean {
-  return s.channel === channel || (channel === 'voice' && s.channel === 'chat');
-}
 
 function makeRunLabel(scenarios: Scenario[], files: string[]): string {
   if (scenarios.length === 1) return scenarios[0]!.name;
@@ -337,9 +334,7 @@ runsRouter.post('/', async (req, res) => {
       const docs = docsByFile.get(relFile ?? '');
       const picked = docs?.[idx];
       if (!picked) return res.status(400).json({ error: `Scenario ref out of range: ${ref}` });
-      if (scenarioCompatibleWithChannel(picked, channel)) {
-        selectedScenarios.push({ ...picked, channel });
-      }
+      selectedScenarios.push(picked);
     }
   } else {
     selectedFiles = normalizedFiles.length > 0
@@ -365,22 +360,18 @@ runsRouter.post('/', async (req, res) => {
       if (selectedFiles.length === 1 && scenarioIndex != null) {
         const picked = docs[scenarioIndex];
         if (!picked) return res.status(400).json({ error: 'Scenario index out of range' });
-        if (scenarioCompatibleWithChannel(picked, channel)) {
-          selectedScenarios.push({ ...picked, channel });
-        }
+        selectedScenarios.push(picked);
         continue;
       }
 
       for (const s of docs) {
-        if (scenarioCompatibleWithChannel(s, channel)) {
-          selectedScenarios.push({ ...s, channel });
-        }
+        selectedScenarios.push(s);
       }
     }
   }
 
   if (selectedScenarios.length === 0) {
-    return res.status(400).json({ error: `No scenarios match channel "${channel}" in selected file(s)` });
+    return res.status(400).json({ error: 'No scenarios found in selected file(s)' });
   }
 
   const runId = randomUUID();
