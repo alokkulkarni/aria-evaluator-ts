@@ -2,9 +2,10 @@ import type { Response } from 'express';
 
 const sseClients = new Map<string, Response[]>();
 
-export function emitSseEvent(runId: string, event: string, data: unknown): void {
+export function emitSseEvent(runId: string, event: string, data: unknown, id?: number): void {
   const clients = sseClients.get(runId) ?? [];
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const idLine = id !== undefined ? `id: ${id}\n` : '';
+  const payload = `${idLine}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   const remaining: Response[] = [];
   for (const res of clients) {
     try {

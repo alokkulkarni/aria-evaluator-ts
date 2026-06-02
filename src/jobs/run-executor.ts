@@ -118,9 +118,9 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     };
     const hardTimeout = setTimeout(() => {
       if (child.exitCode == null && !child.killed) {
-        emitSseEvent(runId, 'log', {
-          message: `⚠ Run exceeded ${Math.round(RUN_HARD_TIMEOUT_MS / 1000)}s. Stopping process.`,
-        });
+        const message = `⚠ Run exceeded ${Math.round(RUN_HARD_TIMEOUT_MS / 1000)}s. Stopping process.`;
+        const idx = appendRunLogLine(runId, message);
+        emitSseEvent(runId, 'log', { message }, idx);
         stopChild('SIGTERM');
         scheduleForceStop();
       }
@@ -131,17 +131,17 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     const onLogLine = (line: string): void => {
       const trimmed = line.trimEnd();
       if (!trimmed) return;
-      appendRunLogLine(runId, trimmed);
-      emitSseEvent(runId, 'log', { message: trimmed });
+      const idx = appendRunLogLine(runId, trimmed);
+      emitSseEvent(runId, 'log', { message: trimmed }, idx);
 
       if (trimmed.includes('Done.')) {
         sawDoneBanner = true;
         if (doneGraceTimer) clearTimeout(doneGraceTimer);
         doneGraceTimer = setTimeout(() => {
           if (child.exitCode == null && !child.killed) {
-            emitSseEvent(runId, 'log', {
-              message: 'ℹ Run completed output detected. Closing lingering process handles…',
-            });
+            const message = 'ℹ Run completed output detected. Closing lingering process handles…';
+            const graceIdx = appendRunLogLine(runId, message);
+            emitSseEvent(runId, 'log', { message }, graceIdx);
             stopChild('SIGTERM');
           }
           scheduleForceStop();
@@ -158,9 +158,9 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     const onErrLine = (line: string): void => {
       const trimmed = line.trimEnd();
       if (!trimmed) return;
-      appendRunLogLine(runId, trimmed);
+      const idx = appendRunLogLine(runId, trimmed);
       stderrTail = `${stderrTail}\n${trimmed}`.slice(-8_000);
-      emitSseEvent(runId, 'log', { message: trimmed });
+      emitSseEvent(runId, 'log', { message: trimmed }, idx);
     };
 
     child.stdout.on('data', (chunk: Buffer) => flushBufferedLines(chunk, outCarry, onLogLine));
@@ -344,7 +344,9 @@ async function ingestRunArtifacts(
         },
       });
     } catch (err) {
-      emitSseEvent(runId, 'log', { message: `⚠ Unable to parse report JSON: ${(err as Error).message}` });
+      const message = `⚠ Unable to parse report JSON: ${(err as Error).message}`;
+      const idx = appendRunLogLine(runId, message);
+      emitSseEvent(runId, 'log', { message }, idx);
     }
   }
 
