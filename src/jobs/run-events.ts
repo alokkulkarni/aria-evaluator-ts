@@ -14,8 +14,17 @@ const runEventQueues = new Map<string, Promise<void>>();
 function enqueueRunEvent<T>(runId: string, task: () => Promise<T>): Promise<T> {
   const previous = runEventQueues.get(runId) ?? Promise.resolve();
   const next = previous.then(task, task);
-  runEventQueues.set(runId, next.then(() => undefined, () => undefined));
+
+  const queuePromise = next.then(() => undefined, () => undefined);
+  runEventQueues.set(runId, queuePromise);
+
+  void queuePromise.finally(() => {
+    // Auto-clean once the queue drains (unless a newer task replaced it).
+    if (runEventQueues.get(runId) === queuePromise) runEventQueues.delete(runId);
+  });
+
   return next;
+}
 }
 
 export function publishRunEvent(
