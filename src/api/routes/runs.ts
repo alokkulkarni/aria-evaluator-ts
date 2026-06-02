@@ -12,7 +12,7 @@ import { hasRunEvents, listRunEvents, publishRunEventSafe } from '../../jobs/run
 import { createQueuedRun } from '../../jobs/run-jobs.js';
 import type { RunProvider } from '../../jobs/run-job-payload.js';
 import { appendRunLogLine, readRunLogLines } from '../../jobs/run-logs.js';
-import { normalizeArtifactRef } from '../../runtime/paths.js';
+import { normalizeArtifactRef, sanitizeArtifactPathInLogLine } from '../../runtime/paths.js';
 import type { Scenario } from '../../types/scenario.js';
 import { registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings } from '../runtime-settings.js';
@@ -79,41 +79,13 @@ function normalizeReportRef(rawPath: string | null | undefined): string | null {
   return normalizeArtifactRef('reports', rawPath);
 }
 
-function sanitizeLogMessage(message: string): string {
-  const transcriptMatch = message.match(/transcript saved\s*→\s*(.+\.json)\s*$/i);
-  if (transcriptMatch?.[1]) {
-    const ref = normalizeArtifactRef('transcripts', transcriptMatch[1]);
-    return message.replace(transcriptMatch[1], ref ?? '[artifact-path]');
-  }
-
-  const jsonMatch = message.match(/^\s*JSON:\s*(.+\.json)\s*$/i);
-  if (jsonMatch?.[1]) {
-    const ref = normalizeArtifactRef('reports', jsonMatch[1]);
-    return message.replace(jsonMatch[1], ref ?? '[artifact-path]');
-  }
-
-  const htmlMatch = message.match(/^\s*HTML:\s*(.+\.html)\s*$/i);
-  if (htmlMatch?.[1]) {
-    const ref = normalizeArtifactRef('reports', htmlMatch[1]);
-    return message.replace(htmlMatch[1], ref ?? '[artifact-path]');
-  }
-
-  const audioMatch = message.match(/audio saved\s*→\s*(.+\.wav)\s*$/i);
-  if (audioMatch?.[1]) {
-    const ref = normalizeArtifactRef('audio', audioMatch[1]);
-    return message.replace(audioMatch[1], ref ?? '[artifact-path]');
-  }
-
-  return message;
-}
-
 function sanitizeEventPayload(
   eventType: 'queued' | 'start' | 'log' | 'complete' | 'failed',
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
   if (eventType === 'log') {
     const message = typeof payload['message'] === 'string'
-      ? sanitizeLogMessage(payload['message'])
+      ? sanitizeArtifactPathInLogLine(payload['message'])
       : payload['message'];
     return { ...payload, message };
   }
@@ -179,7 +151,7 @@ runsRouter.get('/:id/logs', async (req, res) => {
       select: { id: true },
     });
     if (!run) return res.status(404).json({ error: 'Not found' });
-    res.json({ logs: readRunLogLines(run.id).map(sanitizeLogMessage) });
+    res.json({ logs: readRunLogLines(run.id).map(sanitizeArtifactPathInLogLine) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -297,7 +269,7 @@ runsRouter.get('/:id/events', async (req, res) => {
 
   const logLines = readRunLogLines(runId);
   for (let i = startFrom; i < logLines.length; i++) {
-    sendEvent('log', { message: sanitizeLogMessage(logLines[i]!) }, i);
+    sendEvent('log', { message: sanitizeArtifactPathInLogLine(logLines[i]!) }, i);
   }
 
   if (run && run.status !== 'running' && run.status !== 'pending') {

@@ -105,6 +105,34 @@ export function normalizeArtifactRef(kind: ArtifactKind, rawPath: string): strin
   return null;
 }
 
+export function sanitizeArtifactPathInLogLine(line: string): string {
+  const transcriptMatch = line.match(/transcript saved\s*→\s*(.+\.json)\s*$/i);
+  if (transcriptMatch?.[1]) {
+    const ref = normalizeArtifactRef('transcripts', transcriptMatch[1]);
+    return line.replace(transcriptMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const jsonMatch = line.match(/^\s*JSON:\s*(.+\.json)\s*$/i);
+  if (jsonMatch?.[1]) {
+    const ref = normalizeArtifactRef('reports', jsonMatch[1]);
+    return line.replace(jsonMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const htmlMatch = line.match(/^\s*HTML:\s*(.+\.html)\s*$/i);
+  if (htmlMatch?.[1]) {
+    const ref = normalizeArtifactRef('reports', htmlMatch[1]);
+    return line.replace(htmlMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const audioMatch = line.match(/audio saved\s*→\s*(.+\.wav)\s*$/i);
+  if (audioMatch?.[1]) {
+    const ref = normalizeArtifactRef('audio', audioMatch[1]);
+    return line.replace(audioMatch[1], ref ?? '[artifact-path]');
+  }
+
+  return line;
+}
+
 export function resolveArtifactRef(ref: string): string | null {
   const normalized = normalizePathSeparators(ref).replace(/^\/+/, '');
   const [kind, ...tailParts] = normalized.split('/');
