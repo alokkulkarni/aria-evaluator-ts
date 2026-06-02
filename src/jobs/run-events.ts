@@ -22,9 +22,7 @@ function enqueueRunEvent<T>(runId: string, task: () => Promise<T>): Promise<T> {
     // Auto-clean once the queue drains (unless a newer task replaced it).
     if (runEventQueues.get(runId) === queuePromise) runEventQueues.delete(runId);
   });
-
   return next;
-}
 }
 
 export function publishRunEvent(
@@ -50,6 +48,18 @@ export function publishRunEvent(
       throw err;
     }
   });
+}
+
+export async function publishRunEventSafe(
+  runId: string,
+  eventType: RunEventType,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await publishRunEvent(runId, eventType, payload);
+  } catch (err) {
+    console.error(`Failed to persist ${eventType} event for run ${runId}: ${(err as Error).message}`);
+  }
 }
 
 export async function waitForRunEventQueue(runId: string): Promise<void> {

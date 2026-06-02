@@ -8,7 +8,7 @@ import yaml from 'js-yaml';
 
 import { prisma } from '../../db/client.js';
 import { loadScenariosFromFile } from '../../conversation/scenario-loader.js';
-import { hasRunEvents, listRunEvents, publishRunEvent } from '../../jobs/run-events.js';
+import { hasRunEvents, listRunEvents, publishRunEventSafe } from '../../jobs/run-events.js';
 import { createQueuedRun } from '../../jobs/run-jobs.js';
 import type { RunProvider } from '../../jobs/run-job-payload.js';
 import { appendRunLogLine, readRunLogLines } from '../../jobs/run-logs.js';
@@ -218,9 +218,6 @@ runsRouter.get('/:id/events', async (req, res) => {
       res.end();
       return;
     }
-      res.end();
-      return;
-    }
 
     registerSseClient(runId, res);
     req.on('close', () => {
@@ -365,15 +362,3 @@ runsRouter.post('/', async (req, res) => {
     res.status(500).json({ error: (err as Error).message });
   }
 });
-
-async function publishRunEventSafe(
-  runId: string,
-  eventType: 'queued' | 'start' | 'log' | 'complete' | 'failed',
-  payload: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await publishRunEvent(runId, eventType, payload);
-  } catch (err) {
-    console.error(`Failed to persist ${eventType} event for run ${runId}: ${(err as Error).message}`);
-  }
-}

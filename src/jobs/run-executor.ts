@@ -16,7 +16,12 @@ import { appPaths, resolveLoggedArtifactPath } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore } from '../types/evaluation.js';
 import { parseRunJobPayload } from './run-job-payload.js';
-import { clearRunEventQueue, publishRunEvent, waitForRunEventQueue } from './run-events.js';
+import {
+  clearRunEventQueue,
+  publishRunEvent,
+  publishRunEventSafe,
+  waitForRunEventQueue,
+} from './run-events.js';
 import { appendRunLogLine, resetRunLog } from './run-logs.js';
 
 type ClaimedRunJob = Prisma.JobGetPayload<{ include: { run: true } }>;
@@ -432,18 +437,6 @@ async function finalizeJob(
     reportHtmlPath,
     message,
   });
-}
-
-async function publishRunEventSafe(
-  runId: string,
-  eventType: 'queued' | 'start' | 'log' | 'complete' | 'failed',
-  payload: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await publishRunEvent(runId, eventType, payload);
-  } catch (err) {
-    console.error(`Failed to persist ${eventType} event for run ${runId}: ${(err as Error).message}`);
-  }
 }
 
 function findRecentFiles(dir: string, extensions: string[], startMs: number): string[] {

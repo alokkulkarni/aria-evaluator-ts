@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { prisma } from '../db/client.js';
-import { publishRunEvent } from './run-events.js';
+import { publishRunEventSafe } from './run-events.js';
 import type { RunJobPayload } from './run-job-payload.js';
 import { serializeRunJobPayload } from './run-job-payload.js';
 import { appendRunLogLine } from './run-logs.js';
@@ -321,16 +321,4 @@ async function failClaimedRunJob(job: ClaimedRunJob, errorMessage: string): Prom
     runId: job.runId,
     error: errorMessage,
   });
-}
-
-async function publishRunEventSafe(
-  runId: string,
-  eventType: 'queued' | 'start' | 'log' | 'complete' | 'failed',
-  payload: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await publishRunEvent(runId, eventType, payload);
-  } catch (err) {
-    console.error(`Failed to persist ${eventType} event for run ${runId}: ${(err as Error).message}`);
-  }
 }
