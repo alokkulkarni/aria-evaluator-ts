@@ -32,8 +32,10 @@ const PROJECT_ROOT = appPaths.projectRoot;
 const TMP_RUN_DIR = appPaths.portalRunsDir;
 const TRANSCRIPTS_DIR = appPaths.transcriptsDir;
 const REPORTS_DIR = appPaths.reportsDir;
-const RUN_HARD_TIMEOUT_MS = Number.parseInt(process.env['RUN_HARD_TIMEOUT_MS'] ?? '3600000', 10);
-const RUN_DONE_GRACE_MS = Number.parseInt(process.env['RUN_DONE_GRACE_MS'] ?? '12000', 10);
+const parsedHardTimeoutMs = Number.parseInt(process.env['RUN_HARD_TIMEOUT_MS'] ?? '3600000', 10);
+const RUN_HARD_TIMEOUT_MS = Number.isNaN(parsedHardTimeoutMs) ? 3_600_000 : parsedHardTimeoutMs;
+const parsedDoneGraceMs = Number.parseInt(process.env['RUN_DONE_GRACE_MS'] ?? '12000', 10);
+const RUN_DONE_GRACE_MS = Number.isNaN(parsedDoneGraceMs) ? 12_000 : parsedDoneGraceMs;
 
 export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
   const payload = parseRunJobPayload(job.payloadJson);
