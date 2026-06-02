@@ -11,12 +11,12 @@ import {
 } from 'node:fs';
 
 import { prisma } from '../db/client.js';
-import { emitSseEvent } from '../api/sse-bus.js';
 import { getRuntimeSettingsEnv } from '../api/runtime-settings.js';
 import { appPaths, resolveLoggedArtifactPath } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore } from '../types/evaluation.js';
 import { parseRunJobPayload } from './run-job-payload.js';
+import { clearRunEventQueue, publishRunEvent, waitForRunEventQueue } from './run-events.js';
 import { appendRunLogLine, resetRunLog } from './run-logs.js';
 
 type ClaimedRunJob = Prisma.JobGetPayload<{ include: { run: true } }>;
@@ -61,18 +61,30 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     for (const line of lines) onLine(line);
   };
 
+  const publishLogEvent = (message: string): void => {
+    appendRunLogLine(runId, message);
+    void publishRunEvent(runId, 'log', { message }).catch((err) => {
+      console.error(`Failed to persist log event for run ${runId}: ${(err as Error).message}`);
+    });
+  };
+
+  clearRunEventQueue(runId);
   await clearPreviousRunState(runId);
   writeFileSync(tmpScenarioPath, `${payload.yamlContent.trimEnd()}\n`, 'utf-8');
+  const startMessage =
+    `▶ Run started [provider=${payload.provider} channel=${payload.channel} scenarios=${payload.scenarioCount}]`;
   resetRunLog(
     runId,
     `=== Run ${runId} started at ${startedAt.toISOString()} [provider=${payload.provider} channel=${payload.channel}] ===`,
   );
-  emitSseEvent(runId, 'start', {
+  await publishRunEventSafe(runId, 'start', {
     runId,
     provider: payload.provider,
     channel: payload.channel,
     scenarioFiles: payload.scenarioFiles,
     scenarioCount: payload.scenarioCount,
+    startedAt: startedAt.toISOString(),
+    message: startMessage,
   });
 
   try {
@@ -119,8 +131,7 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     const hardTimeout = setTimeout(() => {
       if (child.exitCode == null && !child.killed) {
         const message = `⚠ Run exceeded ${Math.round(RUN_HARD_TIMEOUT_MS / 1000)}s. Stopping process.`;
-        const idx = appendRunLogLine(runId, message);
-        emitSseEvent(runId, 'log', { message }, idx);
+        publishLogEvent(message);
         stopChild('SIGTERM');
         scheduleForceStop();
       }
@@ -131,8 +142,7 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     const onLogLine = (line: string): void => {
       const trimmed = line.trimEnd();
       if (!trimmed) return;
-      const idx = appendRunLogLine(runId, trimmed);
-      emitSseEvent(runId, 'log', { message: trimmed }, idx);
+      publishLogEvent(trimmed);
 
       if (trimmed.includes('Done.')) {
         sawDoneBanner = true;
@@ -140,8 +150,7 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
         doneGraceTimer = setTimeout(() => {
           if (child.exitCode == null && !child.killed) {
             const message = 'ℹ Run completed output detected. Closing lingering process handles…';
-            const graceIdx = appendRunLogLine(runId, message);
-            emitSseEvent(runId, 'log', { message }, graceIdx);
+            publishLogEvent(message);
             stopChild('SIGTERM');
           }
           scheduleForceStop();
@@ -158,9 +167,8 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     const onErrLine = (line: string): void => {
       const trimmed = line.trimEnd();
       if (!trimmed) return;
-      const idx = appendRunLogLine(runId, trimmed);
+      publishLogEvent(trimmed);
       stderrTail = `${stderrTail}\n${trimmed}`.slice(-8_000);
-      emitSseEvent(runId, 'log', { message: trimmed }, idx);
     };
 
     child.stdout.on('data', (chunk: Buffer) => flushBufferedLines(chunk, outCarry, onLogLine));
@@ -223,12 +231,15 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     }
   }
 
+  await waitForRunEventQueue(runId);
   await finalizeJob(job, finalStatus, finalError, reportJsonPath, reportHtmlPath);
+  clearRunEventQueue(runId);
 }
 
 async function clearPreviousRunState(runId: string): Promise<void> {
   await prisma.$transaction([
     prisma.turn.deleteMany({ where: { runId } }),
+    prisma.runEvent.deleteMany({ where: { runId } }),
     prisma.evalResult.deleteMany({ where: { runId } }),
     prisma.report.deleteMany({ where: { runId } }),
     prisma.run.updateMany({
@@ -345,8 +356,10 @@ async function ingestRunArtifacts(
       });
     } catch (err) {
       const message = `⚠ Unable to parse report JSON: ${(err as Error).message}`;
-      const idx = appendRunLogLine(runId, message);
-      emitSseEvent(runId, 'log', { message }, idx);
+      appendRunLogLine(runId, message);
+      void publishRunEvent(runId, 'log', { message }).catch((publishErr) => {
+        console.error(`Failed to persist log event for run ${runId}: ${(publishErr as Error).message}`);
+      });
     }
   }
 
@@ -396,21 +409,41 @@ async function finalizeJob(
   });
 
   if (effectiveStatus === 'failed') {
-    appendRunLogLine(job.runId, `=== Run failed: ${effectiveError ?? 'Run failed'} ===`);
-    emitSseEvent(job.runId, 'failed', { error: effectiveError ?? 'Run failed' });
+    const message = `=== Run failed: ${effectiveError ?? 'Run failed'} ===`;
+    appendRunLogLine(job.runId, message);
+    await publishRunEventSafe(job.runId, 'failed', {
+      runId: job.runId,
+      error: effectiveError ?? 'Run failed',
+      message,
+    });
     return;
   }
 
   const evalResult = await prisma.evalResult.findUnique({ where: { runId: job.runId } });
-  appendRunLogLine(job.runId, `=== Run completed: ${evalResult?.summary ?? 'Run completed'} ===`);
-  emitSseEvent(job.runId, 'complete', {
+  const summary = evalResult?.summary ?? 'Run completed';
+  const message = `=== Run completed: ${summary} ===`;
+  appendRunLogLine(job.runId, message);
+  await publishRunEventSafe(job.runId, 'complete', {
     runId: job.runId,
     overallScore: evalResult?.overallScore ?? null,
     passed: evalResult?.passed ?? null,
-    summary: evalResult?.summary ?? 'Run completed',
+    summary,
     reportJsonPath,
     reportHtmlPath,
+    message,
   });
+}
+
+async function publishRunEventSafe(
+  runId: string,
+  eventType: 'queued' | 'start' | 'log' | 'complete' | 'failed',
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await publishRunEvent(runId, eventType, payload);
+  } catch (err) {
+    console.error(`Failed to persist ${eventType} event for run ${runId}: ${(err as Error).message}`);
+  }
 }
 
 function findRecentFiles(dir: string, extensions: string[], startMs: number): string[] {

@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { prisma } from '../db/client.js';
-import { emitSseEvent } from '../api/sse-bus.js';
+import { publishRunEvent } from './run-events.js';
 import type { RunJobPayload } from './run-job-payload.js';
 import { serializeRunJobPayload } from './run-job-payload.js';
 import { appendRunLogLine } from './run-logs.js';
@@ -47,7 +47,16 @@ export async function createQueuedRun(params: {
     });
   });
 
-  appendRunLogLine(params.runId, `=== Run queued at ${new Date().toISOString()} ===`);
+  const queuedAt = new Date().toISOString();
+  const message = `=== Run queued at ${queuedAt} ===`;
+  appendRunLogLine(params.runId, message);
+  await publishRunEventSafe(params.runId, 'queued', {
+    runId: params.runId,
+    scenarioName: params.scenarioName,
+    channel: params.channel,
+    queuedAt,
+    message,
+  });
 }
 
 export async function startRunJobWorker(): Promise<void> {
@@ -100,7 +109,13 @@ async function recoverStaleRunJobs(): Promise<{ requeued: number; failed: number
           errorMessage: 'Run was deleted before recovery completed',
         },
       });
-      appendRunLogLine(job.runId, '=== Run deleted before recovery. Marking queued job as failed. ===');
+      const message = '=== Run deleted before recovery. Marking queued job as failed. ===';
+      appendRunLogLine(job.runId, message);
+      await publishRunEventSafe(job.runId, 'failed', {
+        runId: job.runId,
+        error: 'Run was deleted before recovery completed',
+        message,
+      });
       failed += 1;
       continue;
     }
@@ -125,7 +140,13 @@ async function recoverStaleRunJobs(): Promise<{ requeued: number; failed: number
           },
         });
       });
-      appendRunLogLine(job.runId, `=== Run failed: ${errorMessage} ===`);
+      const message = `=== Run failed: ${errorMessage} ===`;
+      appendRunLogLine(job.runId, message);
+      await publishRunEventSafe(job.runId, 'failed', {
+        runId: job.runId,
+        error: errorMessage,
+        message,
+      });
       failed += 1;
       continue;
     }
@@ -156,7 +177,14 @@ async function recoverStaleRunJobs(): Promise<{ requeued: number; failed: number
         },
       });
     });
-    appendRunLogLine(job.runId, '=== Run recovered after worker interruption. Re-queued for execution. ===');
+    const message = '=== Run recovered after worker interruption. Re-queued for execution. ===';
+    appendRunLogLine(job.runId, message);
+    await publishRunEventSafe(job.runId, 'queued', {
+      runId: job.runId,
+      queuedAt: now.toISOString(),
+      message,
+      recovered: true,
+    });
     requeued += 1;
   }
 
@@ -289,5 +317,20 @@ async function failClaimedRunJob(job: ClaimedRunJob, errorMessage: string): Prom
   });
 
   appendRunLogLine(job.runId, `=== Run failed: ${errorMessage} ===`);
-  emitSseEvent(job.runId, 'failed', { error: errorMessage });
+  await publishRunEventSafe(job.runId, 'failed', {
+    runId: job.runId,
+    error: errorMessage,
+  });
+}
+
+async function publishRunEventSafe(
+  runId: string,
+  eventType: 'queued' | 'start' | 'log' | 'complete' | 'failed',
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await publishRunEvent(runId, eventType, payload);
+  } catch (err) {
+    console.error(`Failed to persist ${eventType} event for run ${runId}: ${(err as Error).message}`);
+  }
 }
