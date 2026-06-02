@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
+import { appPaths } from '../runtime/paths.js';
 
-const SETTINGS_FILE = resolve(process.cwd(), 'data', 'runtime-settings.json');
+const SETTINGS_FILE = appPaths.runtimeSettingsFile;
+export const REDACTED_SECRET_VALUE = '***';
 
 export const EDITABLE_SETTING_KEYS = [
   'EVAL_PROVIDER_DEFAULT',
@@ -94,6 +96,17 @@ export const EDITABLE_SETTING_KEYS = [
 type EditableSettingKey = typeof EDITABLE_SETTING_KEYS[number];
 type SettingsMap = Partial<Record<EditableSettingKey, string>>;
 
+export const SECRET_SETTING_KEYS = new Set<EditableSettingKey>([
+  'AZURE_DIRECT_LINE_SECRET',
+  'STRANDS_AUTH_BEARER',
+  'COPILOT_DIRECT_LINE_SECRET',
+  'CUSTOM_CHAT_AUTH_BEARER',
+  'DEEPGRAM_API_KEY',
+  'CUSTOM_VOICE_WS_AUTH_HEADER_VALUE',
+  'OPENAPI_AUTH_VALUE',
+  'WS_CHAT_AUTH_HEADER_VALUE',
+]);
+
 function readOverrides(): SettingsMap {
   if (!existsSync(SETTINGS_FILE)) return {};
   try {
@@ -123,6 +136,16 @@ export function getEffectiveSettings(): Record<EditableSettingKey, string> {
   return effective;
 }
 
+export function getVisibleSettings(): Record<EditableSettingKey, string> {
+  const effective = getEffectiveSettings();
+  const visible = {} as Record<EditableSettingKey, string>;
+  for (const key of EDITABLE_SETTING_KEYS) {
+    const value = effective[key];
+    visible[key] = SECRET_SETTING_KEYS.has(key) && value ? REDACTED_SECRET_VALUE : value;
+  }
+  return visible;
+}
+
 export function getRuntimeSettingsEnv(): Record<string, string> {
   const effective = getEffectiveSettings();
   const out: Record<string, string> = {};
@@ -139,6 +162,7 @@ export function saveSettings(partial: Record<string, unknown>): Record<EditableS
     if (!(key in partial)) continue;
     const raw = partial[key];
     const value = typeof raw === 'string' ? raw.trim() : '';
+    if (SECRET_SETTING_KEYS.has(key) && value === REDACTED_SECRET_VALUE) continue;
     if (!value) delete next[key];
     else next[key] = value;
   }

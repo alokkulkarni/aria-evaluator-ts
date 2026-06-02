@@ -1,13 +1,11 @@
 // src/api/routes/runs.ts
 // Runs the CLI in a child process and streams live terminal output via SSE.
 import { Router } from 'express';
-import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
   appendFileSync,
   existsSync,
-  mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
@@ -19,30 +17,28 @@ import yaml from 'js-yaml';
 
 import { prisma } from '../../db/client.js';
 import { loadScenariosFromFile } from '../../conversation/scenario-loader.js';
+import { appPaths, ensureManagedStateDirs, resolveLoggedArtifactPath, runLogsDir } from '../../runtime/paths.js';
 import type { Scenario } from '../../types/scenario.js';
 import type { Transcript } from '../../types/transcript.js';
 import type { EvalResult, DimensionScore } from '../../types/evaluation.js';
+import { emitSseEvent, registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings, getRuntimeSettingsEnv } from '../runtime-settings.js';
 
 export const runsRouter = Router();
 
-const PROJECT_ROOT = resolve(process.cwd());
+const PROJECT_ROOT = appPaths.projectRoot;
 const SCENARIOS_DIR = resolve(
   process.env['SCENARIOS_DIR'] ?? join('..', 'aria-evaluator-v2', 'scenarios'),
 );
-const TMP_RUN_DIR = resolve(join(PROJECT_ROOT, '.tmp', 'portal-runs'));
-const TRANSCRIPTS_DIR = resolve(join(PROJECT_ROOT, 'transcripts'));
-const REPORTS_DIR = resolve(process.env['EVAL_REPORT_OUTPUT_DIR'] ?? join(PROJECT_ROOT, 'reports'));
-const RUN_LOGS_DIR = resolve(join(REPORTS_DIR, 'run-logs'));
+const TMP_RUN_DIR = appPaths.portalRunsDir;
+const TRANSCRIPTS_DIR = appPaths.transcriptsDir;
+const REPORTS_DIR = appPaths.reportsDir;
+const RUN_LOGS_DIR = runLogsDir;
 const RUN_HARD_TIMEOUT_MS = Number.parseInt(process.env['RUN_HARD_TIMEOUT_MS'] ?? '3600000', 10);
 const RUN_DONE_GRACE_MS = Number.parseInt(process.env['RUN_DONE_GRACE_MS'] ?? '12000', 10);
 const MAX_PERSISTED_LOG_LINES = Number.parseInt(process.env['MAX_PERSISTED_LOG_LINES'] ?? '3000', 10);
 
-mkdirSync(TMP_RUN_DIR, { recursive: true });
-mkdirSync(RUN_LOGS_DIR, { recursive: true });
-
-// SSE clients: runId → list of Response objects
-const sseClients = new Map<string, Response[]>();
+ensureManagedStateDirs();
 
 interface RunRequestBody {
   scenarioFile?: string;
@@ -58,14 +54,6 @@ interface AggregatedReportJson {
   generatedAt: string;
   transcripts: Transcript[];
   results: EvalResult[];
-}
-
-function sseEmit(runId: string, event: string, data: unknown): void {
-  const clients = sseClients.get(runId) ?? [];
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of clients) {
-    try { res.write(payload); } catch { /* disconnected */ }
-  }
 }
 
 function sanitizeRelativePath(input: string): string | null {
@@ -134,13 +122,13 @@ function findRecentFiles(dir: string, extensions: string[], startMs: number): st
 
 function parsePathFromLog(line: string, kind: 'transcript' | 'reportJson' | 'reportHtml'): string | null {
   const transcriptMatch = line.match(/transcript saved\s*→\s*(.+\.json)\s*$/i);
-  if (kind === 'transcript' && transcriptMatch?.[1]) return resolve(join(PROJECT_ROOT, transcriptMatch[1].trim()));
+  if (kind === 'transcript' && transcriptMatch?.[1]) return resolveLoggedArtifactPath(transcriptMatch[1]);
 
   const jsonMatch = line.match(/^\s*JSON:\s*(.+\.json)\s*$/);
-  if (kind === 'reportJson' && jsonMatch?.[1]) return resolve(join(PROJECT_ROOT, jsonMatch[1].trim()));
+  if (kind === 'reportJson' && jsonMatch?.[1]) return resolveLoggedArtifactPath(jsonMatch[1]);
 
   const htmlMatch = line.match(/^\s*HTML:\s*(.+\.html)\s*$/);
-  if (kind === 'reportHtml' && htmlMatch?.[1]) return resolve(join(PROJECT_ROOT, htmlMatch[1].trim()));
+  if (kind === 'reportHtml' && htmlMatch?.[1]) return resolveLoggedArtifactPath(htmlMatch[1]);
 
   return null;
 }
@@ -280,14 +268,10 @@ runsRouter.get('/:id/events', async (req, res) => {
     return;
   }
 
-  const clients = sseClients.get(runId) ?? [];
-  clients.push(res);
-  sseClients.set(runId, clients);
+  registerSseClient(runId, res);
 
   req.on('close', () => {
-    const remaining = (sseClients.get(runId) ?? []).filter((c) => c !== res);
-    if (remaining.length > 0) sseClients.set(runId, remaining);
-    else sseClients.delete(runId);
+    unregisterSseClient(runId, res);
   });
 });
 
@@ -427,7 +411,7 @@ runsRouter.post('/', async (req, res) => {
         where: { id: runId, NOT: { status: 'deleted' } },
         data: { status: 'running', startedAt },
       });
-      sseEmit(runId, 'start', {
+      emitSseEvent(runId, 'start', {
         runId,
         provider,
         channel,
@@ -472,7 +456,7 @@ runsRouter.post('/', async (req, res) => {
       let doneGraceTimer: ReturnType<typeof setTimeout> | null = null;
       const hardTimeout = setTimeout(() => {
         if (child.exitCode == null && !child.killed) {
-          sseEmit(runId, 'log', {
+          emitSseEvent(runId, 'log', {
             message: `⚠ Run exceeded ${Math.round(RUN_HARD_TIMEOUT_MS / 1000)}s. Stopping process.`,
           });
           killProcessGroup('SIGTERM');
@@ -487,13 +471,13 @@ runsRouter.post('/', async (req, res) => {
         const trimmed = line.trimEnd();
         if (!trimmed) return;
         appendRunLogLine(runId, trimmed);
-        sseEmit(runId, 'log', { message: trimmed });
+        emitSseEvent(runId, 'log', { message: trimmed });
         if (trimmed.includes('Done.')) {
           sawDoneBanner = true;
           if (doneGraceTimer) clearTimeout(doneGraceTimer);
           doneGraceTimer = setTimeout(() => {
             if (child.exitCode == null && !child.killed) {
-              sseEmit(runId, 'log', {
+              emitSseEvent(runId, 'log', {
                 message: 'ℹ Run completed output detected. Closing lingering process handles…',
               });
               killProcessGroup('SIGTERM');
@@ -515,7 +499,7 @@ runsRouter.post('/', async (req, res) => {
         if (!trimmed) return;
         appendRunLogLine(runId, trimmed);
         stderrTail = `${stderrTail}\n${trimmed}`.slice(-8_000);
-        sseEmit(runId, 'log', { message: trimmed });
+        emitSseEvent(runId, 'log', { message: trimmed });
       };
 
       child.stdout.on('data', (chunk: Buffer) => flushBufferedLines(chunk, outCarry, onLogLine));
@@ -655,7 +639,7 @@ runsRouter.post('/', async (req, res) => {
             },
           });
         } catch (err) {
-          sseEmit(runId, 'log', { message: `⚠ Unable to parse report JSON: ${(err as Error).message}` });
+          emitSseEvent(runId, 'log', { message: `⚠ Unable to parse report JSON: ${(err as Error).message}` });
         }
       }
 
@@ -680,11 +664,11 @@ runsRouter.post('/', async (req, res) => {
 
       if (finalStatus === 'failed') {
         appendRunLogLine(runId, `=== Run failed: ${finalError ?? 'Run failed'} ===`);
-        sseEmit(runId, 'failed', { error: finalError ?? 'Run failed' });
+        emitSseEvent(runId, 'failed', { error: finalError ?? 'Run failed' });
       } else {
         const evalResult = await prisma.evalResult.findUnique({ where: { runId } });
         appendRunLogLine(runId, `=== Run completed: ${evalResult?.summary ?? 'Run completed'} ===`);
-        sseEmit(runId, 'complete', {
+        emitSseEvent(runId, 'complete', {
           runId,
           overallScore: evalResult?.overallScore ?? null,
           passed: evalResult?.passed ?? null,
@@ -700,7 +684,7 @@ runsRouter.post('/', async (req, res) => {
         where: { id: runId, NOT: { status: 'deleted' } },
         data: { status: 'failed', completedAt: new Date(), errorMessage: msg },
       }).catch(() => {});
-      sseEmit(runId, 'failed', { error: msg });
+      emitSseEvent(runId, 'failed', { error: msg });
     } finally {
       try { unlinkSync(tmpScenarioPath); } catch { /* ignore */ }
     }

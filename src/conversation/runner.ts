@@ -10,6 +10,7 @@ import { SessionEndedError } from '../adapters/base.js';
 import { ConnectVoiceAdapter } from '../adapters/connect-voice.js';
 import { ConnectWebRTCAdapter } from '../adapters/connect-webrtc.js';
 import { ConnectChatAdapter } from '../adapters/connect-chat.js';
+import { appPaths } from '../runtime/paths.js';
 import type { Scenario, ScriptTurn, TemplateVars } from '../types/index.js';
 import type { Transcript, Turn, EscalationEvent } from '../types/transcript.js';
 import { AgentDriver } from './agent-driver.js';
@@ -39,7 +40,7 @@ export class ScenarioRunner {
 
   constructor(config: RunnerConfig = {}) {
     this.config = {
-      transcriptsDir: config.transcriptsDir ?? './transcripts',
+      transcriptsDir: config.transcriptsDir ?? appPaths.transcriptsDir,
       templateVars: config.templateVars ?? {
         customer_name: process.env['EVAL_CUSTOMER_NAME'] ?? 'James Wilson',
         customer_first_name: (process.env['EVAL_CUSTOMER_NAME'] ?? 'James Wilson').split(' ')[0]!,
@@ -459,9 +460,10 @@ export class ScenarioRunner {
         const ts = startedAt.replace(/[:.]/g, '-').slice(0, 19);
         const audioDir = resolve(this.config.transcriptsDir, 'audio');
         const wavFilename = `${safeName}_${ts}.wav`;
-        adapter.saveAudio(join(audioDir, wavFilename));
+        const audioFilePath = join(audioDir, wavFilename);
+        adapter.saveAudio(audioFilePath);
         audioPath = wavFilename;
-        this.log(`    🎙  audio saved → transcripts/audio/${wavFilename}`);
+        this.log(`    🎙  audio saved → ${audioFilePath}`);
       } catch (audioErr) {
         this.log(`    ⚠  audio save failed: ${(audioErr as Error).message}`);
       }

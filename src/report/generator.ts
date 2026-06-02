@@ -3,6 +3,7 @@
 
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { appPaths } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult } from '../types/evaluation.js';
 import { ALL_DIMENSIONS_BY_ID } from '../judge/dimensions.js';
@@ -15,7 +16,7 @@ export interface ReportData {
 }
 
 export class ReportGenerator {
-  constructor(private readonly reportsDir: string = './reports') {}
+  constructor(private readonly reportsDir: string = appPaths.reportsDir) {}
 
   generate(data: ReportData): { htmlPath: string; jsonPath: string } {
     mkdirSync(this.reportsDir, { recursive: true });

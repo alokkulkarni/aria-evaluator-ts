@@ -1,11 +1,12 @@
 // src/api/routes/transcripts.ts
 import { Router } from 'express';
 import { readdirSync, statSync, readFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { appPaths } from '../../runtime/paths.js';
 
 export const transcriptsRouter = Router();
 
-const TRANSCRIPTS_DIR = resolve('./transcripts');
+const TRANSCRIPTS_DIR = appPaths.transcriptsDir;
 
 transcriptsRouter.get('/', (_req, res) => {
   try {
