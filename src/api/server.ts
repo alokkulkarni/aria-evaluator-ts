@@ -9,6 +9,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 
+import { initDb } from '../db/client.js';
+import { appPaths, ensureManagedStateDirs, getStateLayoutWarnings } from '../runtime/paths.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { runsRouter } from './routes/runs.js';
 import { transcriptsRouter } from './routes/transcripts.js';
@@ -19,9 +21,6 @@ import { openapiRouter } from './routes/openapi.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env['API_PORT'] ?? '3001', 10);
 const DIST_DIR = join(__dirname, '../../dist/ui');
-const REPORTS_DIR = process.env['EVAL_REPORT_OUTPUT_DIR'] ?? './reports';
-const TRANSCRIPTS_DIR = './transcripts';
-const AUDIO_DIR = './transcripts/audio';
 const PUBLIC_DIR = join(__dirname, '../../public');
 
 export const app = express();
@@ -43,9 +42,9 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/openapi', openapiRouter);
 
 // ── Static file serving ────────────────────────────────────────────────────────
-app.use('/reports',     express.static(REPORTS_DIR));
-app.use('/transcripts', express.static(TRANSCRIPTS_DIR));
-app.use('/audio',       express.static(AUDIO_DIR));
+app.use('/reports',     express.static(appPaths.reportsDir));
+app.use('/transcripts', express.static(appPaths.transcriptsDir));
+app.use('/audio',       express.static(appPaths.audioDir));
 app.use(express.static(PUBLIC_DIR));
 if (existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
@@ -61,11 +60,22 @@ app.get('/health', (_req, res) => {
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 if (process.env['NODE_ENV'] !== 'test') {
-  const server = createServer(app);
-  server.listen(PORT, () => {
-    console.log(`\n🚀 ARIA Evaluator API running at http://localhost:${PORT}`);
-    console.log(`   Health: http://localhost:${PORT}/health`);
-    console.log(`   UI:     http://localhost:${PORT}`);
-    console.log(`   CCP:    http://localhost:${PORT}/evaluator-ccp.html\n`);
+  void (async () => {
+    ensureManagedStateDirs();
+    for (const warning of getStateLayoutWarnings()) {
+      console.warn(`⚠ ${warning}`);
+    }
+    await initDb();
+
+    const server = createServer(app);
+    server.listen(PORT, () => {
+      console.log(`\n🚀 ARIA Evaluator API running at http://localhost:${PORT}`);
+      console.log(`   Health: http://localhost:${PORT}/health`);
+      console.log(`   UI:     http://localhost:${PORT}`);
+      console.log(`   CCP:    http://localhost:${PORT}/evaluator-ccp.html\n`);
+    });
+  })().catch((err: unknown) => {
+    console.error(`Failed to start API: ${(err as Error).message}`);
+    process.exit(1);
   });
 }

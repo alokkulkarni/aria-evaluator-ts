@@ -1,11 +1,12 @@
 // src/api/routes/reports.ts
 import { Router } from 'express';
 import { readdirSync, statSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { appPaths } from '../../runtime/paths.js';
 
 export const reportsRouter = Router();
 
-const REPORTS_DIR = resolve(process.env['EVAL_REPORT_OUTPUT_DIR'] ?? './reports');
+const REPORTS_DIR = appPaths.reportsDir;
 
 reportsRouter.get('/', (_req, res) => {
   try {
