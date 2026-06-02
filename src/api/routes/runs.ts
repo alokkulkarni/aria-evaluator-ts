@@ -185,9 +185,20 @@ runsRouter.get('/:id/events', async (req, res) => {
     for (const event of events) {
       sendEvent(event.eventType, event.payload, event.id);
     }
-    const hasTerminalEvent = events.some(
+    let hasTerminalEvent = events.some(
       (event) => event.eventType === 'complete' || event.eventType === 'failed',
     );
+
+    // If the client reconnected after the terminal event, `events` may be empty even though
+    // the terminal event was already delivered earlier. Avoid emitting a duplicate fallback.
+    if (!hasTerminalEvent && !Number.isNaN(parsedLastId)) {
+      const terminalEvent = await prisma.runEvent.findFirst({
+        where: { runId, eventType: { in: ['complete', 'failed'] } },
+        orderBy: { id: 'desc' },
+        select: { id: true },
+      });
+      if (terminalEvent && parsedLastId >= terminalEvent.id) hasTerminalEvent = true;
+    }
 
     if (run && run.status !== 'running' && run.status !== 'pending') {
       if (!hasTerminalEvent) {
@@ -204,6 +215,9 @@ runsRouter.get('/:id/events', async (req, res) => {
           sendEvent('failed', { error: run.errorMessage ?? 'Run failed' });
         }
       }
+      res.end();
+      return;
+    }
       res.end();
       return;
     }
