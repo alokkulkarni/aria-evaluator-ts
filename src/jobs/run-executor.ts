@@ -112,7 +112,7 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     const scheduleForceStop = (): void => {
       if (forceStopTimer) clearTimeout(forceStopTimer);
       forceStopTimer = setTimeout(() => {
-        if (child.exitCode == null && !child.killed) child.kill('SIGKILL');
+        stopChild('SIGKILL');
         forceResolveExit?.({ code: null, signal: 'SIGKILL' });
       }, 5_000);
     };
