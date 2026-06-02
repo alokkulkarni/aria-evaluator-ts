@@ -36,10 +36,29 @@ model Run {
   completedAt  DateTime?
   errorMessage String?
   audioPath    String?   // WAV filename under transcripts/audio/ (voice runs)
+  job          Job?
   turns        Turn[]
   evalResult   EvalResult?
   report       Report?
   createdAt    DateTime  @default(now())
+}
+
+model Job {
+  id           String   @id @default(cuid())
+  runId        String   @unique
+  run          Run      @relation(fields: [runId], references: [id])
+  status       String   @default("queued") // queued|running|completed|failed
+  payloadJson  String
+  attemptCount Int      @default(0)
+  workerId     String?
+  claimedAt    DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, createdAt])
 }
 
 // ─── Turn ─────────────────────────────────────────────────────────────────────
