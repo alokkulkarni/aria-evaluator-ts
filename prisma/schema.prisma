@@ -108,7 +108,7 @@ model Report {
   id        String   @id @default(cuid())
   runId     String   @unique
   run       Run      @relation(fields: [runId], references: [id])
-  htmlPath  String
-  jsonPath  String
+  htmlPath  String   // canonical artifact ref, e.g. reports/report_2026-06-02T21-30-00.html
+  jsonPath  String   // canonical artifact ref, e.g. reports/report_2026-06-02T21-30-00.json
   createdAt DateTime @default(now())
 }
