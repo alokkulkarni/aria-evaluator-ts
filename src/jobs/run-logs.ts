@@ -2,7 +2,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 import { join, resolve } from 'node:path';
 import { runLogsDir } from '../runtime/paths.js';
 
-const MAX_PERSISTED_LOG_LINES = Number.parseInt(process.env['MAX_PERSISTED_LOG_LINES'] ?? '3000', 10);
+const parsedMaxPersistedLogLines = Number.parseInt(process.env['MAX_PERSISTED_LOG_LINES'] ?? '3000', 10);
+const MAX_PERSISTED_LOG_LINES = Math.max(0, Number.isNaN(parsedMaxPersistedLogLines) ? 3000 : parsedMaxPersistedLogLines);
 
 export function runLogPath(runId: string): string {
   return resolve(join(runLogsDir, `run-${runId}.log`));
