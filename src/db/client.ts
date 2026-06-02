@@ -1,10 +1,8 @@
 // src/db/client.ts
 import { PrismaClient } from '@prisma/client';
 
-const busyTimeoutMs = Math.max(
-  0,
-  Number.parseInt(process.env['SQLITE_BUSY_TIMEOUT_MS'] ?? '5000', 10) || 5000,
-);
+const parsedBusyTimeoutMs = Number.parseInt(process.env['SQLITE_BUSY_TIMEOUT_MS'] ?? '5000', 10);
+const busyTimeoutMs = Math.max(0, Number.isNaN(parsedBusyTimeoutMs) ? 5000 : parsedBusyTimeoutMs);
 
 export const prisma = new PrismaClient({
   log: process.env['NODE_ENV'] === 'development' ? ['warn', 'error'] : ['error'],
