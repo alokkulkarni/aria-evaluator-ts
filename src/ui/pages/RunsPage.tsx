@@ -1141,6 +1141,20 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
       setLiveEvents([]);
       const es = new EventSource(`/api/runs/${target.id}/events`);
       esRef.current = es;
+      es.addEventListener('queued', (e) => {
+        const d = JSON.parse(e.data) as { message?: string };
+        setLiveEvents((prev) => [...prev, d.message ?? '🕒 Run queued']);
+      });
+      es.addEventListener('start', (e) => {
+        const d = JSON.parse(e.data) as {
+          message?: string;
+          provider?: string;
+          channel?: string;
+          scenarioCount?: number;
+        };
+        const fallback = `▶ Run started (${d.provider ?? 'unknown'} · ${d.channel ?? 'chat'} · ${d.scenarioCount ?? 0} scenario(s))`;
+        setLiveEvents((prev) => [...prev, d.message ?? fallback]);
+      });
       es.addEventListener('log', (e) => {
         const d = JSON.parse(e.data);
         setLiveEvents((prev) => [...prev, d.message]);

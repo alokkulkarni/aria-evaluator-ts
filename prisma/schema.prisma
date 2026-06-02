@@ -38,6 +38,7 @@ model Run {
   audioPath    String?   // WAV filename under transcripts/audio/ (voice runs)
   job          Job?
   turns        Turn[]
+  runEvents    RunEvent[]
   evalResult   EvalResult?
   report       Report?
   createdAt    DateTime  @default(now())
@@ -59,6 +60,17 @@ model Job {
   updatedAt    DateTime @updatedAt
 
   @@index([status, createdAt])
+}
+
+model RunEvent {
+  id         Int      @id @default(autoincrement())
+  runId      String
+  run        Run      @relation(fields: [runId], references: [id])
+  eventType  String   // queued|start|log|complete|failed
+  payloadJson String
+  createdAt  DateTime @default(now())
+
+  @@index([runId, id])
 }
 
 // ─── Turn ─────────────────────────────────────────────────────────────────────

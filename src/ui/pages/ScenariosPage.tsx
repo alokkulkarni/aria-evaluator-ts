@@ -122,6 +122,20 @@ export function ScenariosPage() {
         es.addEventListener('log', (e) => {
           appendEvent((JSON.parse(e.data) as { message: string }).message);
         });
+        es.addEventListener('queued', (e) => {
+          const d = JSON.parse(e.data) as { message?: string };
+          appendEvent(d.message ?? '🕒 Run queued');
+        });
+        es.addEventListener('start', (e) => {
+          const d = JSON.parse(e.data) as {
+            message?: string;
+            provider?: string;
+            channel?: string;
+            scenarioCount?: number;
+          };
+          const fallback = `▶ Run started (${d.provider ?? 'unknown'} · ${d.channel ?? 'chat'} · ${d.scenarioCount ?? 0} scenario(s))`;
+          appendEvent(d.message ?? fallback);
+        });
         es.addEventListener('complete', (e) => {
           const d = JSON.parse(e.data) as { overallScore?: number };
           const score = typeof d.overallScore === 'number' ? ` — Score: ${d.overallScore}/10` : '';

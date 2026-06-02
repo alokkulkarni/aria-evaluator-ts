@@ -8,6 +8,7 @@ import yaml from 'js-yaml';
 
 import { prisma } from '../../db/client.js';
 import { loadScenariosFromFile } from '../../conversation/scenario-loader.js';
+import { hasRunEvents, listRunEvents, publishRunEventSafe } from '../../jobs/run-events.js';
 import { createQueuedRun } from '../../jobs/run-jobs.js';
 import type { RunProvider } from '../../jobs/run-job-payload.js';
 import { appendRunLogLine, readRunLogLines } from '../../jobs/run-logs.js';
@@ -141,7 +142,13 @@ runsRouter.delete('/:id', async (req, res) => {
 
     if (result.updatedRunCount === 0) return res.status(404).json({ error: 'Not found' });
     if (result.queuedJobCount > 0) {
-      appendRunLogLine(runId, '=== Run deleted before execution. Removing queued job. ===');
+      const message = '=== Run deleted before execution. Removing queued job. ===';
+      appendRunLogLine(runId, message);
+      await publishRunEventSafe(runId, 'failed', {
+        runId,
+        error: 'Run deleted before execution',
+        message,
+      });
     }
     res.json({ ok: true });
   } catch (err) {
@@ -165,17 +172,65 @@ runsRouter.get('/:id/events', async (req, res) => {
 
   const lastIdHeader = req.headers['last-event-id'];
   const lastIdStr = Array.isArray(lastIdHeader) ? lastIdHeader[0] : lastIdHeader;
-  const startFrom = lastIdStr ? Number.parseInt(lastIdStr, 10) + 1 : 0;
+  const parsedLastId = lastIdStr ? Number.parseInt(lastIdStr, 10) : Number.NaN;
+  const startFrom = Number.isNaN(parsedLastId) ? 0 : parsedLastId + 1;
+
+  const run = await prisma.run.findUnique({
+    where: { id: runId },
+    include: { evalResult: true, report: true },
+  });
+  const replayStructuredEvents = await hasRunEvents(runId);
+  if (replayStructuredEvents) {
+    const events = await listRunEvents(runId, startFrom);
+    for (const event of events) {
+      sendEvent(event.eventType, event.payload, event.id);
+    }
+    let hasTerminalEvent = events.some(
+      (event) => event.eventType === 'complete' || event.eventType === 'failed',
+    );
+
+    // If the client reconnected after the terminal event, `events` may be empty even though
+    // the terminal event was already delivered earlier. Avoid emitting a duplicate fallback.
+    if (!hasTerminalEvent && !Number.isNaN(parsedLastId)) {
+      const terminalEvent = await prisma.runEvent.findFirst({
+        where: { runId, eventType: { in: ['complete', 'failed'] } },
+        orderBy: { id: 'desc' },
+        select: { id: true },
+      });
+      if (terminalEvent && parsedLastId >= terminalEvent.id) hasTerminalEvent = true;
+    }
+
+    if (run && run.status !== 'running' && run.status !== 'pending') {
+      if (!hasTerminalEvent) {
+        if (run.status === 'completed') {
+          sendEvent('complete', {
+            runId,
+            overallScore: run.evalResult?.overallScore ?? null,
+            passed: run.evalResult?.passed ?? null,
+            summary: run.evalResult?.summary ?? 'Run completed',
+            reportJsonPath: run.report?.jsonPath ?? null,
+            reportHtmlPath: run.report?.htmlPath ?? null,
+          });
+        } else if (run.status === 'failed') {
+          sendEvent('failed', { error: run.errorMessage ?? 'Run failed' });
+        }
+      }
+      res.end();
+      return;
+    }
+
+    registerSseClient(runId, res);
+    req.on('close', () => {
+      unregisterSseClient(runId, res);
+    });
+    return;
+  }
 
   const logLines = readRunLogLines(runId);
   for (let i = startFrom; i < logLines.length; i++) {
     sendEvent('log', { message: logLines[i] }, i);
   }
 
-  const run = await prisma.run.findUnique({
-    where: { id: runId },
-    include: { evalResult: true, report: true },
-  });
   if (run && run.status !== 'running' && run.status !== 'pending') {
     if (run.status === 'completed') {
       sendEvent('complete', {
