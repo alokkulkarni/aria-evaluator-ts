@@ -88,15 +88,21 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
       payload.channel,
     ];
 
+    // detached=true makes npm the leader of a new process group so we can
+    // kill the entire group (npm + spawned children) in one shot.
     const child = spawn('npm', args, {
       cwd: PROJECT_ROOT,
       env: { ...process.env, ...getRuntimeSettingsEnv() },
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
+      detached: true,
     });
 
     const stopChild = (signal: NodeJS.Signals): void => {
-      if (child.exitCode == null && !child.killed) child.kill(signal);
+      try {
+        if (child.pid != null) process.kill(-child.pid, signal);
+      } catch {
+        if (child.exitCode == null && !child.killed) child.kill(signal);
+      }
     };
 
     let forceResolveExit: ((value: { code: number | null; signal: NodeJS.Signals | null }) => void) | null = null;
