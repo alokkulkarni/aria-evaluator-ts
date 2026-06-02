@@ -12,6 +12,7 @@ import { hasRunEvents, listRunEvents, publishRunEventSafe } from '../../jobs/run
 import { createQueuedRun } from '../../jobs/run-jobs.js';
 import type { RunProvider } from '../../jobs/run-job-payload.js';
 import { appendRunLogLine, readRunLogLines } from '../../jobs/run-logs.js';
+import { normalizeArtifactRef } from '../../runtime/paths.js';
 import type { Scenario } from '../../types/scenario.js';
 import { registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings } from '../runtime-settings.js';
@@ -73,6 +74,63 @@ function normalizeProvider(raw?: string): RunProvider {
   return 'connect';
 }
 
+function normalizeReportRef(rawPath: string | null | undefined): string | null {
+  if (!rawPath) return null;
+  return normalizeArtifactRef('reports', rawPath);
+}
+
+function sanitizeLogMessage(message: string): string {
+  const transcriptMatch = message.match(/transcript saved\s*→\s*(.+\.json)\s*$/i);
+  if (transcriptMatch?.[1]) {
+    const ref = normalizeArtifactRef('transcripts', transcriptMatch[1]);
+    return message.replace(transcriptMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const jsonMatch = message.match(/^\s*JSON:\s*(.+\.json)\s*$/i);
+  if (jsonMatch?.[1]) {
+    const ref = normalizeArtifactRef('reports', jsonMatch[1]);
+    return message.replace(jsonMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const htmlMatch = message.match(/^\s*HTML:\s*(.+\.html)\s*$/i);
+  if (htmlMatch?.[1]) {
+    const ref = normalizeArtifactRef('reports', htmlMatch[1]);
+    return message.replace(htmlMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const audioMatch = message.match(/audio saved\s*→\s*(.+\.wav)\s*$/i);
+  if (audioMatch?.[1]) {
+    const ref = normalizeArtifactRef('audio', audioMatch[1]);
+    return message.replace(audioMatch[1], ref ?? '[artifact-path]');
+  }
+
+  return message;
+}
+
+function sanitizeEventPayload(
+  eventType: 'queued' | 'start' | 'log' | 'complete' | 'failed',
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (eventType === 'log') {
+    const message = typeof payload['message'] === 'string'
+      ? sanitizeLogMessage(payload['message'])
+      : payload['message'];
+    return { ...payload, message };
+  }
+
+  if (eventType === 'complete') {
+    const reportJsonPath = typeof payload['reportJsonPath'] === 'string'
+      ? normalizeReportRef(payload['reportJsonPath'])
+      : null;
+    const reportHtmlPath = typeof payload['reportHtmlPath'] === 'string'
+      ? normalizeReportRef(payload['reportHtmlPath'])
+      : null;
+    return { ...payload, reportJsonPath, reportHtmlPath };
+  }
+
+  return payload;
+}
+
 // GET /api/runs
 runsRouter.get('/', async (_req, res) => {
   try {
@@ -96,7 +154,18 @@ runsRouter.get('/:id', async (req, res) => {
       include: { turns: { orderBy: { index: 'asc' } }, evalResult: true, report: true },
     });
     if (!run) return res.status(404).json({ error: 'Not found' });
-    res.json({ run });
+    res.json({
+      run: {
+        ...run,
+        report: run.report
+          ? {
+              ...run.report,
+              jsonPath: normalizeReportRef(run.report.jsonPath),
+              htmlPath: normalizeReportRef(run.report.htmlPath),
+            }
+          : null,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -110,7 +179,7 @@ runsRouter.get('/:id/logs', async (req, res) => {
       select: { id: true },
     });
     if (!run) return res.status(404).json({ error: 'Not found' });
-    res.json({ logs: readRunLogLines(run.id) });
+    res.json({ logs: readRunLogLines(run.id).map(sanitizeLogMessage) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -183,7 +252,7 @@ runsRouter.get('/:id/events', async (req, res) => {
   if (replayStructuredEvents) {
     const events = await listRunEvents(runId, startFrom);
     for (const event of events) {
-      sendEvent(event.eventType, event.payload, event.id);
+      sendEvent(event.eventType, sanitizeEventPayload(event.eventType, event.payload), event.id);
     }
     let hasTerminalEvent = events.some(
       (event) => event.eventType === 'complete' || event.eventType === 'failed',
@@ -208,8 +277,8 @@ runsRouter.get('/:id/events', async (req, res) => {
             overallScore: run.evalResult?.overallScore ?? null,
             passed: run.evalResult?.passed ?? null,
             summary: run.evalResult?.summary ?? 'Run completed',
-            reportJsonPath: run.report?.jsonPath ?? null,
-            reportHtmlPath: run.report?.htmlPath ?? null,
+            reportJsonPath: normalizeReportRef(run.report?.jsonPath),
+            reportHtmlPath: normalizeReportRef(run.report?.htmlPath),
           });
         } else if (run.status === 'failed') {
           sendEvent('failed', { error: run.errorMessage ?? 'Run failed' });
@@ -228,7 +297,7 @@ runsRouter.get('/:id/events', async (req, res) => {
 
   const logLines = readRunLogLines(runId);
   for (let i = startFrom; i < logLines.length; i++) {
-    sendEvent('log', { message: logLines[i] }, i);
+    sendEvent('log', { message: sanitizeLogMessage(logLines[i]!) }, i);
   }
 
   if (run && run.status !== 'running' && run.status !== 'pending') {
@@ -238,8 +307,8 @@ runsRouter.get('/:id/events', async (req, res) => {
         overallScore: run.evalResult?.overallScore ?? null,
         passed: run.evalResult?.passed ?? null,
         summary: run.evalResult?.summary ?? 'Run completed',
-        reportJsonPath: run.report?.jsonPath ?? null,
-        reportHtmlPath: run.report?.htmlPath ?? null,
+        reportJsonPath: normalizeReportRef(run.report?.jsonPath),
+        reportHtmlPath: normalizeReportRef(run.report?.htmlPath),
       });
     } else if (run.status === 'failed') {
       sendEvent('failed', { error: run.errorMessage ?? 'Run failed' });

@@ -12,7 +12,7 @@ import {
 
 import { prisma } from '../db/client.js';
 import { getRuntimeSettingsEnv } from '../api/runtime-settings.js';
-import { appPaths, resolveLoggedArtifactPath } from '../runtime/paths.js';
+import { appPaths, normalizeArtifactRef, resolveLoggedArtifactPath } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore } from '../types/evaluation.js';
 import { parseRunJobPayload } from './run-job-payload.js';
@@ -51,6 +51,8 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
   const transcriptPaths = new Set<string>();
   let reportJsonPath: string | null = null;
   let reportHtmlPath: string | null = null;
+  let reportJsonRef: string | null = null;
+  let reportHtmlRef: string | null = null;
   let stderrTail = '';
   let finalStatus: 'completed' | 'failed' = 'completed';
   let finalError: string | null = null;
@@ -67,8 +69,9 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
   };
 
   const publishLogEvent = (message: string): void => {
-    appendRunLogLine(runId, message);
-    void publishRunEvent(runId, 'log', { message }).catch((err) => {
+    const sanitizedMessage = sanitizeArtifactPathInLogLine(message);
+    appendRunLogLine(runId, sanitizedMessage);
+    void publishRunEvent(runId, 'log', { message: sanitizedMessage }).catch((err) => {
       console.error(`Failed to persist log event for run ${runId}: ${(err as Error).message}`);
     });
   };
@@ -220,7 +223,15 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     }
 
     if (!(await isRunDeleted(runId))) {
-      await ingestRunArtifacts(runId, transcriptPaths, reportJsonPath, reportHtmlPath, finalStatus);
+      const persistedRefs = await ingestRunArtifacts(
+        runId,
+        transcriptPaths,
+        reportJsonPath,
+        reportHtmlPath,
+        finalStatus,
+      );
+      reportJsonRef = persistedRefs.reportJsonRef;
+      reportHtmlRef = persistedRefs.reportHtmlRef;
     } else {
       finalStatus = 'failed';
       finalError = 'Run deleted while execution was in progress';
@@ -237,7 +248,7 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
   }
 
   await waitForRunEventQueue(runId);
-  await finalizeJob(job, finalStatus, finalError, reportJsonPath, reportHtmlPath);
+  await finalizeJob(job, finalStatus, finalError, reportJsonRef, reportHtmlRef);
   clearRunEventQueue(runId);
 }
 
@@ -264,7 +275,9 @@ async function ingestRunArtifacts(
   reportJsonPath: string | null,
   reportHtmlPath: string | null,
   finalStatus: 'completed' | 'failed',
-): Promise<void> {
+): Promise<{ reportJsonRef: string | null; reportHtmlRef: string | null }> {
+  let reportJsonRef: string | null = null;
+  let reportHtmlRef: string | null = null;
   const transcripts: Transcript[] = [];
   for (const path of transcriptPaths) {
     try {
@@ -369,20 +382,27 @@ async function ingestRunArtifacts(
   }
 
   if (reportJsonPath && reportHtmlPath && existsSync(reportJsonPath) && existsSync(reportHtmlPath)) {
+    reportJsonRef = normalizeArtifactRef('reports', reportJsonPath);
+    reportHtmlRef = normalizeArtifactRef('reports', reportHtmlPath);
+  }
+
+  if (reportJsonRef && reportHtmlRef) {
     await prisma.report.upsert({
       where: { runId },
-      update: { jsonPath: reportJsonPath, htmlPath: reportHtmlPath },
-      create: { runId, jsonPath: reportJsonPath, htmlPath: reportHtmlPath },
+      update: { jsonPath: reportJsonRef, htmlPath: reportHtmlRef },
+      create: { runId, jsonPath: reportJsonRef, htmlPath: reportHtmlRef },
     });
   }
+
+  return { reportJsonRef, reportHtmlRef };
 }
 
 async function finalizeJob(
   job: ClaimedRunJob,
   finalStatus: 'completed' | 'failed',
   finalError: string | null,
-  reportJsonPath: string | null,
-  reportHtmlPath: string | null,
+  reportJsonRef: string | null,
+  reportHtmlRef: string | null,
 ): Promise<void> {
   const completedAt = new Date();
   const runDeleted = await isRunDeleted(job.runId);
@@ -433,10 +453,38 @@ async function finalizeJob(
     overallScore: evalResult?.overallScore ?? null,
     passed: evalResult?.passed ?? null,
     summary,
-    reportJsonPath,
-    reportHtmlPath,
+    reportJsonPath: reportJsonRef,
+    reportHtmlPath: reportHtmlRef,
     message,
   });
+}
+
+function sanitizeArtifactPathInLogLine(line: string): string {
+  const transcriptMatch = line.match(/transcript saved\s*→\s*(.+\.json)\s*$/i);
+  if (transcriptMatch?.[1]) {
+    const ref = normalizeArtifactRef('transcripts', transcriptMatch[1]);
+    return line.replace(transcriptMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const jsonMatch = line.match(/^\s*JSON:\s*(.+\.json)\s*$/i);
+  if (jsonMatch?.[1]) {
+    const ref = normalizeArtifactRef('reports', jsonMatch[1]);
+    return line.replace(jsonMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const htmlMatch = line.match(/^\s*HTML:\s*(.+\.html)\s*$/i);
+  if (htmlMatch?.[1]) {
+    const ref = normalizeArtifactRef('reports', htmlMatch[1]);
+    return line.replace(htmlMatch[1], ref ?? '[artifact-path]');
+  }
+
+  const audioMatch = line.match(/audio saved\s*→\s*(.+\.wav)\s*$/i);
+  if (audioMatch?.[1]) {
+    const ref = normalizeArtifactRef('audio', audioMatch[1]);
+    return line.replace(audioMatch[1], ref ?? '[artifact-path]');
+  }
+
+  return line;
 }
 
 function findRecentFiles(dir: string, extensions: string[], startMs: number): string[] {
