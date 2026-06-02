@@ -15,7 +15,7 @@ interface RunDetail {
   evalResult?: { overallScore: number } | null;
 }
 
-type Provider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom';
+type Provider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
 
 function supportedChannels(provider: Provider): Array<'chat' | 'voice'> {
   if (provider === 'connect' || provider === 'custom') return ['chat', 'voice'];
@@ -51,7 +51,7 @@ export function ScenariosPage() {
         const unique = [...new Set((d.scenarios ?? []).map((sc: Scenario) => sc.filePath?.split('#')[0] ?? ''))];
         setFiles(unique.filter(Boolean));
         const defaultProvider = (s.settings?.['EVAL_PROVIDER_DEFAULT'] ?? 'connect').toLowerCase();
-        if (defaultProvider === 'connect' || defaultProvider === 'lex' || defaultProvider === 'azure' || defaultProvider === 'strands' || defaultProvider === 'copilot' || defaultProvider === 'custom') {
+        if (defaultProvider === 'connect' || defaultProvider === 'lex' || defaultProvider === 'azure' || defaultProvider === 'strands' || defaultProvider === 'copilot' || defaultProvider === 'custom' || defaultProvider === 'openapi' || defaultProvider === 'websocket') {
           setProvider(defaultProvider);
         }
       })
@@ -197,7 +197,7 @@ export function ScenariosPage() {
             ✨ New Scenario
           </button>
           <div className="flex gap-1">
-            {(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom'] as const).map((p) => (
+            {(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi', 'websocket'] as const).map((p) => (
               <button key={p} onClick={() => setProvider(p)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                   provider === p

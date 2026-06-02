@@ -32,12 +32,12 @@ interface ScenarioOption {
   filePath: string;
 }
 
-type Provider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi';
+type Provider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
 
-const ALL_PROVIDERS: ReadonlySet<string> = new Set<Provider>(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi']);
+const ALL_PROVIDERS: ReadonlySet<string> = new Set<Provider>(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi', 'websocket']);
 
 /** Providers that are chat-only bots and can never handle voice. */
-const CHAT_ONLY_PROVIDERS: ReadonlySet<Provider> = new Set(['lex', 'azure', 'strands', 'copilot', 'openapi']);
+const CHAT_ONLY_PROVIDERS: ReadonlySet<Provider> = new Set(['lex', 'azure', 'strands', 'copilot', 'openapi', 'websocket']);
 
 function isChatOnlyBot(provider: Provider): boolean {
   return CHAT_ONLY_PROVIDERS.has(provider);
@@ -986,7 +986,7 @@ function NewRunModal({
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-xs text-slate-500 font-medium">Provider:</span>
-              {(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi'] as const).map((p) => (
+              {(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi', 'websocket'] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => setProvider(p)}
@@ -1028,7 +1028,7 @@ function NewRunModal({
               ))}
               {isChatOnlyBot(provider) && (
                 <span className="text-xs text-slate-400 italic">
-                  Voice is not available for bot providers (lex, azure, strands, copilot)
+                  Voice is not available for bot providers (lex, azure, strands, copilot, openapi, websocket)
                 </span>
               )}
               {provider === 'custom' && !supportedChannels('custom', providerSettings).includes('voice') && (

@@ -16,6 +16,7 @@ import { CustomHttpChatAdapter } from '../adapters/custom-http-chat.js';
 import { OpenApiHttpChatAdapter } from '../adapters/openapi-http-chat.js';
 import { CustomWebSocketVoiceAdapter } from '../adapters/custom-websocket-voice.js';
 import { StrandsChatAdapter } from '../adapters/strands-chat.js';
+import { WebSocketChatAdapter } from '../adapters/websocket-chat.js';
 import type { BaseAdapter } from '../adapters/base.js';
 import { LLMJudge } from '../judge/llm-judge.js';
 import { ReportGenerator } from '../report/generator.js';
@@ -27,8 +28,8 @@ import type { Scenario } from '../types/scenario.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult } from '../types/evaluation.js';
 
-type EvaluatorProvider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi';
-const SUPPORTED_PROVIDERS: EvaluatorProvider[] = ['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi'];
+type EvaluatorProvider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
+const SUPPORTED_PROVIDERS: EvaluatorProvider[] = ['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi', 'websocket'];
 
 // Parallel execution: triggered when scenario count exceeds this threshold
 const PARALLEL_THRESHOLD = 10;
@@ -411,6 +412,12 @@ function validateProviderEnv(provider: EvaluatorProvider, channel: 'chat' | 'voi
     return missing;
   }
 
+  if (provider === 'websocket') {
+    if (channel === 'voice') missing.push('websocket provider supports chat only');
+    if (!process.env['WS_CHAT_URL']) missing.push('WS_CHAT_URL');
+    return missing;
+  }
+
   return ['unsupported provider'];
 }
 
@@ -474,6 +481,19 @@ function createChatAdapter(provider: EvaluatorProvider): BaseAdapter {
       extraHeadersJson: process.env['OPENAPI_HEADERS_JSON'],
       messageField: process.env['OPENAPI_MESSAGE_FIELD'],
       responseField: process.env['OPENAPI_RESPONSE_FIELD'],
+    });
+  }
+
+  if (provider === 'websocket') {
+    return new WebSocketChatAdapter({
+      url: process.env['WS_CHAT_URL']!,
+      authHeaderName: process.env['WS_CHAT_AUTH_HEADER_NAME'],
+      authHeaderValue: process.env['WS_CHAT_AUTH_HEADER_VALUE'],
+      subprotocol: process.env['WS_CHAT_SUBPROTOCOL'],
+      initJson: process.env['WS_CHAT_INIT_JSON'],
+      sendTemplate: process.env['WS_CHAT_SEND_TEMPLATE'],
+      agentEventTypes: process.env['WS_CHAT_AGENT_EVENT_TYPES'],
+      messagePath: process.env['WS_CHAT_MESSAGE_PATH'],
     });
   }
 

@@ -50,7 +50,7 @@ interface RunRequestBody {
   scenarioFiles?: string[];
   scenarioRefs?: string[];
   channel?: 'chat' | 'voice';
-  provider?: 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi';
+  provider?: 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
 }
 
 interface AggregatedReportJson {
@@ -114,9 +114,9 @@ function makeRunLabel(scenarios: Scenario[], files: string[]): string {
   return `${scenarios.length} scenarios (${files.length} files)`;
 }
 
-function normalizeProvider(raw?: string): 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' {
+function normalizeProvider(raw?: string): 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket' {
   const candidate = (raw ?? '').toLowerCase();
-  if (candidate === 'connect' || candidate === 'lex' || candidate === 'azure' || candidate === 'strands' || candidate === 'copilot' || candidate === 'custom' || candidate === 'openapi') {
+  if (candidate === 'connect' || candidate === 'lex' || candidate === 'azure' || candidate === 'strands' || candidate === 'copilot' || candidate === 'custom' || candidate === 'openapi' || candidate === 'websocket') {
     return candidate;
   }
   return 'connect';
