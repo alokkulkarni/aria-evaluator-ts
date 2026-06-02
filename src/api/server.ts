@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 
 import { initDb } from '../db/client.js';
+import { startRunJobWorker } from '../jobs/run-jobs.js';
 import { appPaths, ensureManagedStateDirs, getStateLayoutWarnings } from '../runtime/paths.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { runsRouter } from './routes/runs.js';
@@ -66,6 +67,7 @@ if (process.env['NODE_ENV'] !== 'test') {
       console.warn(`⚠ ${warning}`);
     }
     await initDb();
+    await startRunJobWorker();
 
     const server = createServer(app);
     server.listen(PORT, () => {
