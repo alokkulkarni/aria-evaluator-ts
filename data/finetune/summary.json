@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-02T13:12:10.684742Z",
+  "reports_processed": 10,
+  "transcripts_evaluated": 195,
+  "total_examples": 213,
+  "valid_examples": 213,
+  "invalid_examples": 0,
+  "train_examples": 170,
+  "val_examples": 43,
+  "by_type": {
+    "session": 195,
+    "trace": 13,
+    "escalation": 5
+  },
+  "files": {
+    "training": "data/finetune/training.jsonl",
+    "validation": "data/finetune/validation.jsonl"
+  },
+  "bedrock_finetune_ready": true,
+  "recommended_minimum": 32,
+  "ideal_target": 500
+}
