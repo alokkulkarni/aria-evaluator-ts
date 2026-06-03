@@ -195,14 +195,22 @@ function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
 }
 
 export async function ensureDefaultAdminAccount(): Promise<void> {
+  const stateBucket = process.env['AWS_S3_STATE_BUCKET']?.trim() ?? '';
+  const localModeDefault = stateBucket.length === 0;
   const enabled = parseBooleanEnv(
     process.env['AUTH_DEFAULT_ADMIN_ENABLED'],
-    process.env['NODE_ENV'] !== 'production',
+    localModeDefault,
   );
-  if (!enabled) return;
+  if (!enabled) {
+    console.log('ℹ Default admin auto-bootstrap disabled (AUTH_DEFAULT_ADMIN_ENABLED=false).');
+    return;
+  }
 
   const existingUsers = await prisma.user.count();
-  if (existingUsers > 0) return;
+  if (existingUsers > 0) {
+    console.log(`ℹ Default admin auto-bootstrap skipped (${existingUsers} existing user(s)).`);
+    return;
+  }
 
   const requestedUsername = process.env['AUTH_DEFAULT_ADMIN_USERNAME']?.trim() ?? 'admin';
   const username = normalizeUsername(requestedUsername);
@@ -237,7 +245,10 @@ export async function ensureDefaultAdminAccount(): Promise<void> {
     });
   });
 
-  if (!createdUser) return;
+  if (!createdUser) {
+    console.log('ℹ Default admin auto-bootstrap skipped (user created concurrently).');
+    return;
+  }
 
   console.warn('\n⚠ Auto-created default admin account');
   console.warn(`   Username: ${createdUser.username}`);

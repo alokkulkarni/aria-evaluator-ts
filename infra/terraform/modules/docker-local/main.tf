@@ -42,6 +42,7 @@ locals {
     { name = "NODE_ENV",               value = "production" },
     { name = "API_PORT",               value = tostring(var.container_port) },
     { name = "AWS_S3_STATE_BUCKET",    value = "" },
+    { name = "AUTH_DEFAULT_ADMIN_ENABLED", value = "true" },
     { name = "DATABASE_URL",           value = "file:/app/state/data/aria-evaluator.db" },
     { name = "EVAL_REPORT_OUTPUT_DIR", value = "/app/state/reports" },
     { name = "SCENARIOS_DIR",          value = "/app/state/scenarios" },
