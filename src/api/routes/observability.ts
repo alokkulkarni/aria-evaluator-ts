@@ -96,6 +96,7 @@ observabilityRouter.get('/metrics', async (req, res) => {
       tokenOutputEstimate: true,
       tokenTotalEstimate: true,
       failureClass: true,
+      attackCategory: true,
     },
   });
 
@@ -125,6 +126,11 @@ observabilityRouter.get('/metrics', async (req, res) => {
     tokenTotal: number;
   }>();
   const failureBuckets = new Map<string, number>();
+  const attackBuckets = new Map<string, {
+    count: number;
+    avgConfidence: number;
+    severityBuckets: Map<string, number>;
+  }>();
 
   for (const row of telemetry) {
     const provider = row.provider || 'unknown';
@@ -150,6 +156,17 @@ observabilityRouter.get('/metrics', async (req, res) => {
       const failureClass = row.failureClass ?? 'unknown';
       failureBuckets.set(failureClass, (failureBuckets.get(failureClass) ?? 0) + 1);
     }
+
+    // Aggregate security attacks by category
+    if (row.attackCategory) {
+      const existing = attackBuckets.get(row.attackCategory) ?? {
+        count: 0,
+        avgConfidence: 0,
+        severityBuckets: new Map<string, number>(),
+      };
+      existing.count += 1;
+      attackBuckets.set(row.attackCategory, existing);
+    }
   }
 
   const providers = Array.from(providerBuckets.entries())
@@ -167,6 +184,14 @@ observabilityRouter.get('/metrics', async (req, res) => {
 
   const failures = Array.from(failureBuckets.entries())
     .map(([failureClass, count]) => ({ failureClass, count }))
+    .sort((a, b) => b.count - a.count);
+
+  const attacks = Array.from(attackBuckets.entries())
+    .map(([category, bucket]) => ({
+      category,
+      count: bucket.count,
+      percentOfRuns: totalRuns > 0 ? round((bucket.count / totalRuns) * 100) : 0,
+    }))
     .sort((a, b) => b.count - a.count);
 
   return res.json({
@@ -189,6 +214,7 @@ observabilityRouter.get('/metrics', async (req, res) => {
     },
     providers,
     failures,
+    attacks,
     tokenEstimator: {
       version: TOKEN_ESTIMATOR_VERSION,
       method: 'chars_div_4_estimate',

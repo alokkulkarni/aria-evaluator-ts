@@ -28,6 +28,7 @@ import {
   waitForRunEventQueue,
 } from './run-events.js';
 import { appendRunLogLine, resetRunLog } from './run-logs.js';
+import { inferAttackFromEvalResult, parseAttackFromYaml } from '../lib/security.js';
 import {
   TOKEN_ESTIMATOR_VERSION,
   classifyFailure,
@@ -445,8 +446,9 @@ async function finalizeJob(
 
   try {
     await persistRunTelemetry(job, completedAt, effectiveStatus, effectiveError);
+    await persistSecurityAttack(job);
   } catch (err) {
-    const message = `⚠ Unable to persist telemetry: ${(err as Error).message}`;
+    const message = `⚠ Unable to persist telemetry/security: ${(err as Error).message}`;
     appendRunLogLine(job.runId, message);
     await publishRunEventSafe(job.runId, 'log', { message });
     console.error(`Failed to persist run telemetry for ${job.runId}: ${(err as Error).message}`);
@@ -528,6 +530,83 @@ async function persistRunTelemetry(
       estimatorVersion: TOKEN_ESTIMATOR_VERSION,
       completedAt,
     },
+  });
+}
+
+async function persistSecurityAttack(job: ClaimedRunJob): Promise<void> {
+  // Fetch run with necessary relations for security attack inference
+  const run = await prisma.run.findUnique({
+    where: { id: job.runId },
+    include: {
+      evalResult: true,
+      scenario: { select: { yamlContent: true } },
+    },
+  });
+
+  if (!run || run.status === 'deleted') {
+    return;
+  }
+
+  // Only process security scenarios
+  if (run.evalResult?.scenarioType !== 'security') {
+    return;
+  }
+
+  // Try to parse explicit attack metadata from YAML first
+  let attack = run.scenario?.yamlContent ? parseAttackFromYaml(run.scenario.yamlContent) : null;
+
+  // Fall back to heuristic inference from eval result
+  if (!attack && run.evalResult) {
+    const telemetry = await prisma.runTelemetry.findUnique({
+      where: { runId: job.runId },
+      select: { failureClass: true },
+    });
+    attack = inferAttackFromEvalResult(
+      {
+        overallScore: run.evalResult.overallScore,
+        passed: run.evalResult.passed,
+        summary: run.evalResult.summary,
+        scenarioType: run.evalResult.scenarioType,
+        dimensionScores: run.evalResult.dimensionScores
+          ? JSON.parse(run.evalResult.dimensionScores)
+          : undefined,
+      },
+      telemetry?.failureClass,
+    );
+  }
+
+  if (!attack) {
+    return; // No security attack inferred
+  }
+
+  // Persist the attack and update telemetry with category
+  await prisma.$transaction(async (tx) => {
+    await tx.securityAttack.upsert({
+      where: { runId: job.runId },
+      update: {
+        category: attack!.category,
+        severity: attack!.severity,
+        confidence: attack!.confidence,
+        inferred: attack!.inferred,
+        target: attack!.target,
+        notes: attack!.notes,
+      },
+      create: {
+        runId: job.runId,
+        category: attack!.category,
+        severity: attack!.severity,
+        confidence: attack!.confidence,
+        inferred: attack!.inferred,
+        target: attack!.target,
+        notes: attack!.notes,
+      },
+    });
+
+    // Update telemetry denormalization for fast filtering
+    await tx.runTelemetry.update({
+      where: { runId: job.runId },
+      data: { attackCategory: attack!.category },
+    });
   });
 }
 
