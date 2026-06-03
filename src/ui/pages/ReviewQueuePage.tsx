@@ -776,18 +776,24 @@ export function ReviewQueuePage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setSelectedReviewId(r.id)}
-                        className="px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                          r.status === 'approved' || r.status === 'overridden' || r.status === 'rejected'
+                            ? 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                            : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                        }`}
                       >
-                        Review
+                        {r.status === 'approved' || r.status === 'overridden' || r.status === 'rejected' ? 'View' : 'Review'}
                       </button>
-                      <button
-                        onClick={() => { void handleDelete(r.id); }}
-                        disabled={deletingId === r.id}
-                        className="px-2 py-1 rounded-md text-xs font-medium text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
-                        title="Remove from queue"
-                      >
-                        ✕
-                      </button>
+                      {r.status !== 'approved' && r.status !== 'overridden' && r.status !== 'rejected' && (
+                        <button
+                          onClick={() => { void handleDelete(r.id); }}
+                          disabled={deletingId === r.id}
+                          className="px-2 py-1 rounded-md text-xs font-medium text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+                          title="Remove from queue"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
