@@ -38,8 +38,10 @@ regressionRouter.post(
           });
       }
 
-      if (typeof judgeVersion !== 'number' || judgeVersion < 0) {
-        return res.status(400).json({ error: 'judgeVersion must be a non-negative integer' });
+      if (!Number.isInteger(judgeVersion) || judgeVersion < 0) {
+        return res
+          .status(400)
+          .json({ error: 'judgeVersion must be a non-negative integer' });
       }
 
       // Validate thresholdOverridesJson if provided
