@@ -217,24 +217,58 @@ export async function ensureDefaultAdminAccount(): Promise<void> {
     return;
   }
 
+  const requestedUsername = process.env['AUTH_DEFAULT_ADMIN_USERNAME']?.trim() ?? 'admin';
+  const username = normalizeUsername(requestedUsername);
+  if (!username) {
+    throw new Error('AUTH_DEFAULT_ADMIN_USERNAME is invalid (allowed: 3-64 chars, letters/numbers/_.-)');
+  }
+
+  const legacyRecoveryEnabled = parseBooleanEnv(
+    process.env['AUTH_DEFAULT_ADMIN_RECOVER_LEGACY'],
+    localModeDefault,
+  );
+  const forceResetExisting = parseBooleanEnv(
+    process.env['AUTH_DEFAULT_ADMIN_FORCE_RESET_EXISTING'],
+    false,
+  );
   const providedPassword = process.env['AUTH_DEFAULT_ADMIN_PASSWORD']?.trim() ?? '';
   const existingUsers = await prisma.user.findMany({
     select: { id: true, username: true, role: true, passwordHash: true },
   });
   if (existingUsers.length > 0) {
-    const temporaryAdmin = existingUsers.find((user) => user.role === 'admin' && isTemporaryPasswordHash(user.passwordHash));
-    if (temporaryAdmin) {
+    const defaultAdmin = existingUsers.find((user) => user.role === 'admin' && user.username === username);
+    let hasPasswordChangeAudit = false;
+    if (defaultAdmin) {
+      const passwordChangeAudit = await prisma.auditLog.findFirst({
+        where: {
+          userId: defaultAdmin.id,
+          action: 'auth.password_changed',
+        },
+        select: { id: true },
+      });
+      hasPasswordChangeAudit = !!passwordChangeAudit;
+    }
+    const shouldRotateExisting =
+      !!defaultAdmin && (
+        isTemporaryPasswordHash(defaultAdmin.passwordHash)
+        || (legacyRecoveryEnabled && !hasPasswordChangeAudit)
+        || (forceResetExisting && existingUsers.length === 1)
+      );
+    if (defaultAdmin && shouldRotateExisting) {
       const rotatedPassword = normalizePassword(providedPassword || randomBytes(18).toString('base64url'));
       if (!rotatedPassword) {
         throw new Error(`AUTH_DEFAULT_ADMIN_PASSWORD must be at least ${PASSWORD_MIN_LENGTH} characters`);
       }
       await prisma.user.update({
-        where: { id: temporaryAdmin.id },
-        data: { passwordHash: hashPassword(rotatedPassword, undefined, { temporary: true }) },
+        where: { id: defaultAdmin.id },
+        data: {
+          passwordHash: hashPassword(rotatedPassword, undefined, { temporary: true }),
+          lastLoginAt: null,
+        },
       });
 
       console.warn('\n⚠ Temporary admin password rotated');
-      console.warn(`   Username: ${temporaryAdmin.username}`);
+      console.warn(`   Username: ${defaultAdmin.username}`);
       console.warn(`   Password: ${rotatedPassword}`);
       console.warn('   Sign in once and set a permanent password.');
       console.warn('   Override with AUTH_DEFAULT_ADMIN_USERNAME / AUTH_DEFAULT_ADMIN_PASSWORD');
@@ -244,12 +278,6 @@ export async function ensureDefaultAdminAccount(): Promise<void> {
 
     console.log(`ℹ Default admin auto-bootstrap skipped (${existingUsers.length} existing user(s)).`);
     return;
-  }
-
-  const requestedUsername = process.env['AUTH_DEFAULT_ADMIN_USERNAME']?.trim() ?? 'admin';
-  const username = normalizeUsername(requestedUsername);
-  if (!username) {
-    throw new Error('AUTH_DEFAULT_ADMIN_USERNAME is invalid (allowed: 3-64 chars, letters/numbers/_.-)');
   }
 
   const password = normalizePassword(providedPassword || randomBytes(18).toString('base64url'));
