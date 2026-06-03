@@ -116,6 +116,7 @@ model Run {
   evalResult   EvalResult?
   report       Report?
   experimentRuns ExperimentRun[] @relation("experimentRuns")
+  telemetry    RunTelemetry?
   createdAt    DateTime  @default(now())
 }
 
@@ -284,6 +285,30 @@ model ExperimentRun {
 
   @@index([experimentId])
   @@index([legId])
+}
+
+// ─── Observability ────────────────────────────────────────────────────────────
+model RunTelemetry {
+  id                 String   @id @default(cuid())
+  runId              String   @unique
+  run                Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  provider           String
+  channel            String
+  status             String   // completed|failed
+  latencyMs          Int?
+  tokenInputEstimate Int?
+  tokenOutputEstimate Int?
+  tokenTotalEstimate Int?
+  failureClass       String?
+  estimatorVersion   Int      @default(1)
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([provider, createdAt])
+  @@index([failureClass, createdAt])
+  @@index([status, createdAt])
 }
 
 // ─── Report ───────────────────────────────────────────────────────────────────

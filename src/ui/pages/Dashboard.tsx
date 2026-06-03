@@ -11,6 +11,29 @@ interface Run {
   evalResult?: { overallScore: number; passed: boolean; scenarioType?: string } | null;
 }
 
+interface ObservabilityMetrics {
+  totals: {
+    totalRuns: number;
+    completedRuns: number;
+    failedRuns: number;
+    failureRatePercent: number | null;
+    avgLatencyMs: number | null;
+    p95LatencyMs: number | null;
+    tokenTotalEstimate: number;
+    avgTokensPerRunEstimate: number | null;
+  };
+  providers: Array<{
+    provider: string;
+    runCount: number;
+    failedRuns: number;
+    avgLatencyMs: number | null;
+  }>;
+  failures: Array<{
+    failureClass: string;
+    count: number;
+  }>;
+}
+
 interface Props {
   onNavigate: (page: 'scenarios' | 'runs' | 'transcripts' | 'reports') => void;
   onNewRun?: () => void;
@@ -19,12 +42,21 @@ interface Props {
 export function Dashboard({ onNavigate, onNewRun }: Props) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<ObservabilityMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(true);
 
   useEffect(() => {
     apiFetch('/api/runs')
       .then((d: { runs: Run[] }) => setRuns(d.runs ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    apiFetch('/api/metrics?hours=24')
+      .then((d: ObservabilityMetrics) => setMetrics(d))
+      .catch(() => {})
+      .finally(() => setMetricsLoading(false));
   }, []);
 
   const total = runs.length;
@@ -54,6 +86,96 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
         <StatCard label="Total Runs" value={String(total)} color="slate" />
         <StatCard label="Passed" value={String(passed)} color="green" />
         <StatCard label="Failed" value={String(failed)} color="red" />
+      </div>
+
+      {/* ── Observability (24h) ── */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-slate-900">Observability (last 24h)</h3>
+        </div>
+
+        {metricsLoading ? (
+          <div className="text-slate-400 text-sm py-8 text-center">Loading telemetry…</div>
+        ) : !metrics ? (
+          <div className="text-slate-400 text-sm py-8 text-center">Telemetry unavailable.</div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-md border border-slate-200 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Failure rate</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {metrics.totals.failureRatePercent?.toFixed(1) ?? '—'}%
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Avg latency</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {metrics.totals.avgLatencyMs != null ? `${Math.round(metrics.totals.avgLatencyMs)} ms` : '—'}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">P95 latency</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {metrics.totals.p95LatencyMs != null ? `${Math.round(metrics.totals.p95LatencyMs)} ms` : '—'}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Estimated tokens</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {metrics.totals.tokenTotalEstimate.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">Provider breakdown</h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                      <th className="pb-2 font-medium">Provider</th>
+                      <th className="pb-2 font-medium">Runs</th>
+                      <th className="pb-2 font-medium">Failed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.providers.slice(0, 5).map((provider) => (
+                      <tr key={provider.provider} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2.5 font-medium text-slate-800">{provider.provider}</td>
+                        <td className="py-2.5">{provider.runCount}</td>
+                        <td className="py-2.5">{provider.failedRuns}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">Failure classes</h4>
+                {metrics.failures.length === 0 ? (
+                  <div className="text-slate-400 text-sm py-4">No failures in this window.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                        <th className="pb-2 font-medium">Class</th>
+                        <th className="pb-2 font-medium">Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metrics.failures.slice(0, 5).map((failure) => (
+                        <tr key={failure.failureClass} className="border-b border-slate-50 last:border-0">
+                          <td className="py-2.5 font-medium text-slate-800">{failure.failureClass}</td>
+                          <td className="py-2.5">{failure.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Recent Runs ── */}

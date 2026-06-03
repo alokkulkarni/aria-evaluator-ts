@@ -23,6 +23,7 @@ import { settingsRouter } from './routes/settings.js';
 import { openapiRouter } from './routes/openapi.js';
 import { regressionRouter } from './routes/regression.js';
 import { experimentsRouter } from './routes/experiments.js';
+import { observabilityRouter } from './routes/observability.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env['API_PORT'] ?? '3001', 10);
@@ -116,6 +117,7 @@ app.use('/api', requireAuth);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/runs', runsRouter);
 app.use('/api/reviews', reviewsRouter);
+app.use('/api', observabilityRouter);
 app.use('/api', regressionRouter);
 app.use('/api/experiments', experimentsRouter);
 app.use('/api/transcripts', transcriptsRouter);
