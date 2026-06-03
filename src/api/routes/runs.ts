@@ -156,11 +156,25 @@ runsRouter.get('/', async (req, res) => {
     return res.status(400).json({ error: 'invalid scenarioId format' });
   }
 
-  const limitRaw = Number.parseInt(parseSingleQueryString(req.query['limit']) ?? '100', 10);
-  const limit = Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 500 ? limitRaw : 100;
+  const limitRaw = parseSingleQueryString(req.query['limit']);
+  let limit = 100;
+  if (limitRaw !== undefined) {
+    const parsed = Number.parseInt(limitRaw, 10);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 500) {
+      return res.status(400).json({ error: 'limit must be an integer between 1 and 500' });
+    }
+    limit = parsed;
+  }
 
-  const offsetRaw = Number.parseInt(parseSingleQueryString(req.query['offset']) ?? '0', 10);
-  const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+  const offsetRaw = parseSingleQueryString(req.query['offset']);
+  let offset = 0;
+  if (offsetRaw !== undefined) {
+    const parsed = Number.parseInt(offsetRaw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return res.status(400).json({ error: 'offset must be a non-negative integer' });
+    }
+    offset = parsed;
+  }
 
   try {
     const where = {
@@ -176,7 +190,7 @@ runsRouter.get('/', async (req, res) => {
           }
         : {}),
       ...(scenarioId !== undefined ? { scenarioId } : {}),
-      ...(provider !== undefined ? { telemetry: { provider } } : {}),
+      ...(provider !== undefined ? { telemetry: { is: { provider } } } : {}),
     };
 
     const [runs, total] = await Promise.all([
@@ -199,7 +213,7 @@ runsRouter.get('/', async (req, res) => {
 });
 
 // GET /api/runs/compare — MUST be before /:id to avoid route shadowing
-// Query param: ids (comma-separated, 2–10 run IDs)
+// Query param: ids (comma-separated, 2–10 run IDs; no duplicates)
 runsRouter.get('/compare', async (req, res) => {
   const idsRaw = parseSingleQueryString(req.query['ids']) ?? '';
   const ids = idsRaw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -212,6 +226,12 @@ runsRouter.get('/compare', async (req, res) => {
   }
   if (!ids.every((id) => CUID_RE.test(id))) {
     return res.status(400).json({ error: 'One or more run IDs have an invalid format' });
+  }
+
+  // Reject duplicate IDs upfront to avoid confusing "not found" 404s
+  const uniqueIds = new Set(ids);
+  if (uniqueIds.size !== ids.length) {
+    return res.status(400).json({ error: 'Duplicate run IDs are not allowed' });
   }
 
   try {
