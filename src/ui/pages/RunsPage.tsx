@@ -1443,7 +1443,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                 {selected.audioPath && (
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase mb-2">🎙 Voice Recording</p>
-                    <audio controls className="w-full rounded-lg" src={toApiUrl(`/audio/${encodeURIComponent(selected.audioPath)}`)}>
+                    <audio controls className="w-full rounded-lg" crossOrigin="use-credentials" src={toApiUrl(`/audio/${encodeURIComponent(selected.audioPath)}`)}>
                       Your browser does not support the audio element.
                     </audio>
                     <p className="text-xs text-slate-400 mt-1 font-mono">{selected.audioPath}</p>
