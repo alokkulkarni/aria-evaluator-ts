@@ -67,6 +67,7 @@ extra_environment_vars = [
   { name = "JUDGE_MODEL_ID",                value = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0" },
   { name = "EVAL_CUSTOMER_ID",              value = "CUST-001" },
   { name = "EVAL_CUSTOMER_NAME",            value = "James Wilson" },
+  # Valid providers: connect | lex | azure | strands | copilot | custom | openapi | websocket
   { name = "EVAL_PROVIDER_DEFAULT",         value = "connect" },
   { name = "POLLY_VOICE_ID",                value = "Amy" },
   { name = "EVAL_RESPONSE_TIMEOUT_SECONDS", value = "120" },

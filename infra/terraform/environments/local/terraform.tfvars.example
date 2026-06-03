@@ -55,7 +55,7 @@ extra_environment_vars = [
   # ── Evaluation defaults ───────────────────────────────────────────────────
   { name = "EVAL_CUSTOMER_ID",          value = "CUST-001" },
   { name = "EVAL_CUSTOMER_NAME",        value = "James Wilson" },
-  { name = "EVAL_PROVIDER_DEFAULT",     value = "connect" },  # connect | bedrock | openapi
+  { name = "EVAL_PROVIDER_DEFAULT",     value = "connect" },  # connect | lex | azure | strands | copilot | custom | openapi | websocket
   { name = "POLLY_VOICE_ID",            value = "Amy" },
   { name = "EVAL_RESPONSE_TIMEOUT_SECONDS", value = "120" },
   { name = "VOICE_PRE_SEND_DELAY_MS",   value = "1200" },
