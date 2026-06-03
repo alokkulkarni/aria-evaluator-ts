@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Dashboard } from './pages/Dashboard.js';
 import { ScenariosPage } from './pages/ScenariosPage.js';
 import { RunsPage } from './pages/RunsPage.js';
 import { TranscriptsPage } from './pages/TranscriptsPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
+import { AuthPage } from './pages/AuthPage.js';
+import { apiFetch } from './lib/api.js';
 
 type Page = 'dashboard' | 'scenarios' | 'runs' | 'transcripts' | 'reports' | 'settings';
+interface AuthenticatedUser {
+  id: string;
+  username: string;
+  role: string;
+}
 
 function LogoIcon() {
   return (
@@ -50,6 +57,7 @@ function getInitialPage(): Page {
 export default function App() {
   const [page, setPage] = useState<Page>(getInitialPage);
   const [openRunModal, setOpenRunModal] = useState(false);
+  const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const initialTranscriptFile = typeof window !== 'undefined'
     ? (new URLSearchParams(window.location.search).get('file') ?? undefined)
     : undefined;
@@ -57,6 +65,24 @@ export default function App() {
   function handleNewRun(): void {
     setPage('runs');
     setOpenRunModal(true);
+  }
+
+  const handleAuthenticated = useCallback((nextUser: AuthenticatedUser) => {
+    setUser(nextUser);
+  }, []);
+
+  async function handleLogout(): Promise<void> {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore logout errors and reset local auth state
+    }
+    setUser(null);
+    setPage('dashboard');
+  }
+
+  if (!user) {
+    return <AuthPage onAuthenticated={handleAuthenticated} />;
   }
 
   return (
@@ -87,6 +113,17 @@ export default function App() {
               </button>
             ))}
           </nav>
+          <div className="ml-4 flex items-center gap-3">
+            <span className="text-xs text-blue-100">
+              {user.username} ({user.role})
+            </span>
+            <button
+              className="rounded-md border border-white/30 px-2.5 py-1 text-xs font-medium text-blue-100 hover:bg-white/10"
+              onClick={() => { void handleLogout(); }}
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 

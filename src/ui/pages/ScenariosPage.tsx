@@ -1,6 +1,6 @@
 // src/ui/pages/ScenariosPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '../lib/api.js';
+import { apiFetch, toApiUrl } from '../lib/api.js';
 import type { Scenario } from '../../types/scenario.js';
 import { ScenarioBuilderModal } from './ScenarioBuilderModal.js';
 
@@ -93,7 +93,7 @@ export function ScenariosPage() {
       setRunId(data.runId);
 
       return new Promise<void>((resolve, reject) => {
-        const es = new EventSource(`/api/runs/${data.runId}/events`);
+        const es = new EventSource(toApiUrl(`/api/runs/${data.runId}/events`), { withCredentials: true });
         esRef.current = es;
 
         const finish = (scoreLine?: string) => {

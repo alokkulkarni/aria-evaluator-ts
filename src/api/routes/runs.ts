@@ -14,6 +14,7 @@ import type { RunProvider } from '../../jobs/run-job-payload.js';
 import { appendRunLogLine, readRunLogLines } from '../../jobs/run-logs.js';
 import { normalizeArtifactRef, sanitizeArtifactPathInLogLine } from '../../runtime/paths.js';
 import type { Scenario } from '../../types/scenario.js';
+import { recordAuditEventSafe } from '../audit-log.js';
 import { registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings } from '../runtime-settings.js';
 
@@ -191,6 +192,9 @@ runsRouter.delete('/:id', async (req, res) => {
         message,
       });
     }
+    await recordAuditEventSafe(req, 'runs.delete', runId, {
+      queuedJobsFailed: result.queuedJobCount,
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

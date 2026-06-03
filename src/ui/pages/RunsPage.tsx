@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch } from '../lib/api.js';
+import { apiFetch, toApiUrl } from '../lib/api.js';
 import { StatusBadge } from './Dashboard.js';
 
 interface Run {
@@ -75,16 +75,16 @@ function toPublicArtifactUrl(rawPath: string, kind: 'reports' | 'transcripts'): 
   const absoluteIdx = normalized.lastIndexOf(marker);
   if (absoluteIdx >= 0) {
     const tail = normalized.slice(absoluteIdx + marker.length);
-    return `/${kind}/${encodeURI(tail)}`;
+    return toApiUrl(`/${kind}/${encodeURI(tail)}`);
   }
   const relativeIdx = normalized.lastIndexOf(`${kind}/`);
   if (relativeIdx >= 0) {
     const tail = normalized.slice(relativeIdx + `${kind}/`.length);
-    return `/${kind}/${encodeURI(tail)}`;
+    return toApiUrl(`/${kind}/${encodeURI(tail)}`);
   }
   const name = fileNameFromPath(normalized);
   if (!name) return null;
-  return `/${kind}/${encodeURIComponent(name)}`;
+  return toApiUrl(`/${kind}/${encodeURIComponent(name)}`);
 }
 
 function extractTranscriptPaths(logs: string[]): string[] {
@@ -476,7 +476,7 @@ function TranscriptChatView({ url }: { url: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(url)
+    fetch(url, { credentials: 'include' })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d: TranscriptData) => setData(d))
       .catch((e) => setError(String(e)));
@@ -549,7 +549,7 @@ function ReportView({ url }: { url: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(url)
+    fetch(url, { credentials: 'include' })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d: ReportData) => setData(d))
       .catch((e) => setError(String(e)));
@@ -668,7 +668,7 @@ function ArtifactPreviewModal({
 
   useEffect(() => {
     if (type !== 'json') return;
-    fetch(url)
+    fetch(url, { credentials: 'include' })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -1139,7 +1139,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
     if (target.status === 'running' || target.status === 'evaluating' || target.status === 'pending') {
       // For live runs, start empty — SSE replay (with Last-Event-ID dedup) populates the log.
       setLiveEvents([]);
-      const es = new EventSource(`/api/runs/${target.id}/events`);
+      const es = new EventSource(toApiUrl(`/api/runs/${target.id}/events`), { withCredentials: true });
       esRef.current = es;
       es.addEventListener('queued', (e) => {
         const d = JSON.parse(e.data) as { message?: string };
@@ -1379,7 +1379,9 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                     ?? (reportJsonPath?.replace(/\.json$/i, '.html') ?? null);
                   const reportHtmlUrl = reportHtmlPath ? toPublicArtifactUrl(reportHtmlPath, 'reports') : null;
                   const reportJsonUrl = reportJsonPath ? toPublicArtifactUrl(reportJsonPath, 'reports') : null;
-                  const audioUrl = selected.audioPath ? `/audio/${encodeURIComponent(selected.audioPath)}` : null;
+                  const audioUrl = selected.audioPath
+                    ? toApiUrl(`/audio/${encodeURIComponent(selected.audioPath)}`)
+                    : null;
                   if (!reportHtmlUrl && !reportJsonUrl && transcriptLinks.length === 0 && !audioUrl) return null;
 
                   const btnClass = 'px-2.5 py-1 rounded-md border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 text-left';
@@ -1441,7 +1443,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                 {selected.audioPath && (
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase mb-2">🎙 Voice Recording</p>
-                    <audio controls className="w-full rounded-lg" src={`/audio/${encodeURIComponent(selected.audioPath)}`}>
+                    <audio controls className="w-full rounded-lg" crossOrigin="use-credentials" src={toApiUrl(`/audio/${encodeURIComponent(selected.audioPath)}`)}>
                       Your browser does not support the audio element.
                     </audio>
                     <p className="text-xs text-slate-400 mt-1 font-mono">{selected.audioPath}</p>
