@@ -105,7 +105,8 @@ function sanitizeEventPayload(
 }
 
 const VALID_RUN_STATUSES = new Set(['pending', 'running', 'completed', 'failed']);
-const CUID_RE = /^c[a-z0-9]{20,30}$/;
+// Prisma 6 uses cuid2 which starts with any lowercase letter (not just 'c')
+const CUID_RE = /^[a-z][a-z0-9]{20,30}$/;
 const PROVIDER_RE = /^[a-zA-Z0-9_-]{1,50}$/;
 
 function parseSingleQueryString(raw: unknown): string | undefined {
