@@ -36,7 +36,8 @@ interface RunSummary {
 
 interface DimensionScore {
   score: number;
-  notes?: string;
+  justification?: string;
+  evidence?: string;
 }
 
 interface EvalResultDetail extends EvalResultSummary {
@@ -184,25 +185,71 @@ function RunRow({
   );
 }
 
+const MARKER_RE = /^={3,}\s*.+\s*={3,}$/;
+
+function CompareTurnBubble({ turn }: { turn: { index: number; role: string; content: string } }) {
+  if (MARKER_RE.test(turn.content.trim())) {
+    return (
+      <div className="flex justify-center my-1">
+        <span className="bg-gray-100 text-gray-400 rounded-full px-2 py-0.5 text-[10px] font-medium">
+          {turn.content.replace(/={3,}/g, '').trim()}
+        </span>
+      </div>
+    );
+  }
+  const isUser = turn.role === 'customer' || turn.role === 'user';
+  return (
+    <div className={`flex mb-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[90%] rounded-lg px-2.5 py-1.5 text-xs leading-relaxed ${
+        isUser
+          ? 'bg-blue-100 text-blue-900 rounded-br-sm'
+          : 'bg-slate-100 text-slate-800 rounded-bl-sm'
+      }`}>
+        <span className="block font-semibold text-[10px] mb-0.5 opacity-60">
+          {isUser ? 'User' : 'Agent'}
+        </span>
+        {turn.content}
+      </div>
+    </div>
+  );
+}
+
 function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
   const runs = result.runs;
   const base = runs[0]!;
+  const [expandedDims, setExpandedDims] = React.useState<Set<string>>(new Set());
 
   // Collect all dimension IDs across all runs
   const dimIds = Array.from(
     new Set(runs.flatMap((r) => Object.keys(r.evalResult?.dimensionScores ?? {})))
   );
 
+  const toggleDim = (id: string) =>
+    setExpandedDims((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const allExpanded = dimIds.length > 0 && dimIds.every((d) => expandedDims.has(d));
+  const toggleAll = () =>
+    setExpandedDims(allExpanded ? new Set() : new Set(dimIds));
+
+  const dimScoreColor = (s: number) =>
+    s >= 7 ? 'text-green-700 bg-green-50 border-green-200'
+    : s >= 5 ? 'text-amber-700 bg-amber-50 border-amber-200'
+    : 'text-red-700 bg-red-50 border-red-200';
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <h3 className="font-semibold text-gray-800 text-sm">Comparison ({runs.length} runs)</h3>
 
-      {/* Summary row */}
+      {/* ── Metrics table ─────────────────────────────────────────── */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-gray-100 text-xs text-gray-500 uppercase tracking-wide">
-              <th className="px-3 py-2 text-left font-medium">Metric</th>
+              <th className="px-3 py-2 text-left font-medium w-32">Metric</th>
               {runs.map((r, i) => (
                 <th key={r.id} className="px-3 py-2 text-left font-medium">
                   {i === 0 ? '🔵 ' : ''}Run …{r.id.slice(-8)}
@@ -234,13 +281,9 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
                 const delta = i > 0 && score !== null && baseScore !== null ? score - baseScore : null;
                 return (
                   <td key={r.id} className="px-3 py-2 text-xs">
-                    {score !== null ? (
-                      <span className={`font-semibold ${scoreColor(score)}`}>{score.toFixed(2)}</span>
-                    ) : '—'}
+                    {score !== null ? <span className={`font-semibold ${scoreColor(score)}`}>{score.toFixed(2)}</span> : '—'}
                     {delta !== null && (
-                      <span className={`ml-1.5 text-[11px] ${deltaColor(delta)}`}>
-                        ({delta > 0 ? '+' : ''}{delta.toFixed(2)})
-                      </span>
+                      <span className={`ml-1.5 text-[11px] ${deltaColor(delta)}`}>({delta > 0 ? '+' : ''}{delta.toFixed(2)})</span>
                     )}
                   </td>
                 );
@@ -280,11 +323,10 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
                 <td key={r.id} className="px-3 py-2 text-xs text-gray-500">{r.telemetry?.provider ?? '—'}</td>
               ))}
             </tr>
-
-            {/* Dimension scores */}
+            {/* Dimension score summary (numeric) */}
             {dimIds.map((dimId) => (
               <tr key={dimId} className="bg-gray-50">
-                <td className="px-3 py-2 text-xs font-medium text-gray-500 italic">{dimId}</td>
+                <td className="px-3 py-2 text-xs font-medium text-gray-500 italic capitalize">{dimId.replace(/_/g, ' ')}</td>
                 {runs.map((r, i) => {
                   const dim = r.evalResult?.dimensionScores?.[dimId];
                   const score = dim?.score ?? null;
@@ -293,13 +335,9 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
                   const delta = i > 0 && score !== null && baseScore !== null ? score - baseScore : null;
                   return (
                     <td key={r.id} className="px-3 py-2 text-xs">
-                      {score !== null ? (
-                        <span className={scoreColor(score)}>{score.toFixed(1)}</span>
-                      ) : '—'}
+                      {score !== null ? <span className={scoreColor(score)}>{score.toFixed(1)}</span> : '—'}
                       {delta !== null && (
-                        <span className={`ml-1 text-[11px] ${deltaColor(delta)}`}>
-                          ({delta > 0 ? '+' : ''}{delta.toFixed(1)})
-                        </span>
+                        <span className={`ml-1 text-[11px] ${deltaColor(delta)}`}>({delta > 0 ? '+' : ''}{delta.toFixed(1)})</span>
                       )}
                     </td>
                   );
@@ -310,25 +348,138 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
         </table>
       </div>
 
-      {/* Transcript comparison */}
+      {/* ── AI Evaluation (summary + recommendation) ──────────────── */}
+      {runs.some((r) => r.evalResult?.summary || r.evalResult?.recommendation) && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">🤖 AI Evaluation</h4>
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${runs.length}, minmax(0,1fr))` }}>
+            {runs.map((r, i) => {
+              const ev = r.evalResult;
+              if (!ev) return <div key={r.id} className="border rounded p-3 bg-gray-50 text-xs text-gray-400 italic">No evaluation</div>;
+              return (
+                <div key={r.id} className="border rounded-lg overflow-hidden bg-white">
+                  {/* Header */}
+                  <div className={`px-3 py-2 flex items-center justify-between ${ev.passed ? 'bg-green-50 border-b border-green-100' : 'bg-red-50 border-b border-red-100'}`}>
+                    <span className="text-[10px] font-semibold text-gray-500">
+                      Run …{r.id.slice(-8)}{i === 0 ? ' (base)' : ''}
+                    </span>
+                    <span className={`text-xs font-bold ${ev.passed ? 'text-green-700' : 'text-red-700'}`}>
+                      {ev.passed ? '✅' : '❌'} {ev.overallScore.toFixed(1)}/10
+                    </span>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {/* Summary */}
+                    {ev.summary && (
+                      <p className="text-xs text-slate-700 leading-relaxed">{ev.summary}</p>
+                    )}
+                    {/* Recommendation / reasoning */}
+                    {ev.recommendation && (
+                      <div className="rounded-md bg-indigo-50 border border-indigo-100 px-3 py-2">
+                        <p className="text-[10px] font-semibold text-indigo-600 mb-1">🧠 AI Reasoning</p>
+                        <p className="text-xs text-indigo-800 leading-relaxed">{ev.recommendation}</p>
+                      </div>
+                    )}
+                    {/* Judge model */}
+                    {ev.judgeModel && (
+                      <p className="text-[10px] text-gray-400">Judge: <span className="font-mono">{ev.judgeModel}</span></p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Guardrails & Dimension Details ────────────────────────── */}
+      {dimIds.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">🛡 Guardrails &amp; Dimension Details</h4>
+            <button
+              onClick={toggleAll}
+              className="text-[11px] text-blue-600 hover:underline"
+            >
+              {allExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
+          </div>
+          <div className="space-y-2">
+            {dimIds.map((dimId) => {
+              const isOpen = expandedDims.has(dimId);
+              return (
+                <div key={dimId} className="border rounded-lg overflow-hidden">
+                  {/* Dimension header row — click to expand */}
+                  <button
+                    onClick={() => toggleDim(dimId)}
+                    className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-xs font-semibold text-gray-700 capitalize">{dimId.replace(/_/g, ' ')}</span>
+                    <div className="flex items-center gap-3">
+                      {/* Per-run score pills */}
+                      {runs.map((r) => {
+                        const ds = r.evalResult?.dimensionScores?.[dimId];
+                        return ds ? (
+                          <span key={r.id} className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-semibold ${dimScoreColor(ds.score)}`}>
+                            {ds.score.toFixed(1)}
+                          </span>
+                        ) : <span key={r.id} className="text-gray-300 text-xs">—</span>;
+                      })}
+                      <span className="text-gray-400 text-xs ml-1">{isOpen ? '▲' : '▼'}</span>
+                    </div>
+                  </button>
+                  {/* Expanded detail */}
+                  {isOpen && (
+                    <div className="grid divide-x divide-gray-100" style={{ gridTemplateColumns: `repeat(${runs.length}, minmax(0,1fr))` }}>
+                      {runs.map((r, i) => {
+                        const ds = r.evalResult?.dimensionScores?.[dimId];
+                        if (!ds) return (
+                          <div key={r.id} className="px-3 py-3 text-xs text-gray-400 italic">No data</div>
+                        );
+                        return (
+                          <div key={r.id} className="px-3 py-3 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex rounded border px-1.5 py-0.5 text-xs font-bold ${dimScoreColor(ds.score)}`}>
+                                {ds.score.toFixed(1)}/10
+                              </span>
+                              <span className="text-[10px] text-gray-400">Run …{r.id.slice(-8)}{i === 0 ? ' (base)' : ''}</span>
+                            </div>
+                            {ds.justification && (
+                              <p className="text-xs text-slate-700 leading-relaxed">{ds.justification}</p>
+                            )}
+                            {ds.evidence && (
+                              <div className="border-l-2 border-slate-200 pl-2">
+                                <p className="text-[10px] text-slate-400 font-semibold mb-0.5 uppercase tracking-wide">Evidence</p>
+                                <p className="text-[11px] text-slate-500 italic leading-relaxed whitespace-pre-wrap">{ds.evidence}</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Transcripts ───────────────────────────────────────────── */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Transcripts</h4>
+        <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">💬 Transcripts</h4>
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${runs.length}, minmax(0,1fr))` }}>
           {runs.map((r, i) => (
-            <div key={r.id} className="border rounded p-2 bg-white max-h-64 overflow-y-auto">
-              <div className="text-[10px] font-semibold text-gray-400 mb-1">
-                Run …{r.id.slice(-8)}{i === 0 ? ' (base)' : ''}
+            <div key={r.id} className="border rounded-lg bg-white">
+              <div className="px-3 py-2 border-b bg-gray-50 text-[10px] font-semibold text-gray-500">
+                Run …{r.id.slice(-8)}{i === 0 ? ' (base)' : ''} · {r.turns.length} turns
               </div>
-              {r.turns.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No turns</p>
-              ) : (
-                r.turns.map((t) => (
-                  <div key={t.index} className={`mb-1 text-xs rounded px-1.5 py-1 ${t.role === 'customer' ? 'bg-blue-50 text-blue-800' : 'bg-gray-100 text-gray-700'}`}>
-                    <span className="font-semibold mr-1">{t.role === 'customer' ? 'User' : 'Agent'}:</span>
-                    {t.content}
-                  </div>
-                ))
-              )}
+              <div className="p-2 max-h-72 overflow-y-auto">
+                {r.turns.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No turns</p>
+                ) : (
+                  r.turns.map((t) => <CompareTurnBubble key={t.index} turn={t} />)
+                )}
+              </div>
             </div>
           ))}
         </div>
