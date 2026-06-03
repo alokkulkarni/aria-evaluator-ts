@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
 import type { Transcript } from '../../types/transcript.js';
+import { RunAgentIcon, RunCustomerIcon, RunFailIcon, RunRunningIcon } from '../components/icons.js';
 
 interface TranscriptFile {
   filename: string;
@@ -86,8 +87,9 @@ export function TranscriptsPage({ initialFilename }: { initialFilename?: string 
                 <p className="font-medium truncate">{f.filename.replace('.json', '').replace(/_/g, ' ')}</p>
                 {f.runScenarioName && (
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-xs text-blue-700 font-medium truncate">
-                      🏃 {f.runScenarioName}
+                    <span className="flex items-center gap-1 text-xs text-blue-700 font-medium truncate">
+                      <RunRunningIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {f.runScenarioName}
                     </span>
                     <RunBadge status={f.runStatus} />
                   </div>
@@ -119,13 +121,18 @@ export function TranscriptsPage({ initialFilename }: { initialFilename?: string 
               </div>
 
               {selected.error && (
-                <div className="bg-red-50 text-red-700 rounded p-3 text-sm">⚠ {selected.error}</div>
+                <div className="flex items-center gap-2 rounded bg-red-50 p-3 text-sm text-red-700">
+                  <RunFailIcon className="h-4 w-4" aria-hidden="true" />
+                  {selected.error}
+                </div>
               )}
 
               <div className="space-y-3 max-h-[55vh] overflow-y-auto">
                 {selected.turns.map((t) => (
                   <div key={t.index} className={`flex gap-3 ${t.role === 'agent' ? 'flex-row-reverse' : ''}`}>
-                    <div className="text-xl flex-shrink-0">{t.role === 'customer' ? '👤' : '🤖'}</div>
+                    {t.role === 'customer'
+                      ? <RunCustomerIcon className="mt-1 h-5 w-5 flex-shrink-0 text-slate-500" aria-hidden="true" />
+                      : <RunAgentIcon className="mt-1 h-5 w-5 flex-shrink-0 text-slate-500" aria-hidden="true" />}
                     <div className={`rounded-xl px-4 py-3 text-sm max-w-[78%] leading-relaxed ${
                       t.role === 'customer'
                         ? 'bg-slate-950 text-white'

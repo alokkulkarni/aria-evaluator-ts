@@ -9,6 +9,18 @@ import { SettingsPage } from './pages/SettingsPage.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { AnalysisPage } from './pages/AnalysisPage.js';
 import { SchedulesPage } from './pages/SchedulesPage.js';
+import {
+  AppLogoIcon,
+  NavAnalysisIcon,
+  NavDashboardIcon,
+  NavReportsIcon,
+  NavRunsIcon,
+  NavSchedulesIcon,
+  NavScenariosIcon,
+  NavSettingsIcon,
+  NavTranscriptsIcon,
+  NavReviewQueueIcon,
+} from './components/icons.js';
 import { apiFetch } from './lib/api.js';
 
 type Page = 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings';
@@ -110,21 +122,6 @@ const TOUR_STEPS: TourStep[] = [
 ];
 
 const TOUR_STORAGE_PREFIX = 'aria-evaluator:dashboard-tour';
-
-function LogoIcon() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M19 2L35 11V27L19 36L3 27V11L19 2Z" fill="#1E40AF" stroke="#93C5FD" strokeWidth="1.5"/>
-      <circle cx="19" cy="12.5" r="2.8" fill="white"/>
-      <circle cx="12" cy="24.5" r="2.2" fill="#BFDBFE"/>
-      <circle cx="26" cy="24.5" r="2.2" fill="#BFDBFE"/>
-      <line x1="19" y1="12.5" x2="12" y2="24.5" stroke="#93C5FD" strokeWidth="1.4"/>
-      <line x1="19" y1="12.5" x2="26" y2="24.5" stroke="#93C5FD" strokeWidth="1.4"/>
-      <line x1="12" y1="24.5" x2="26" y2="24.5" stroke="#93C5FD" strokeWidth="1.4"/>
-      <path d="M16.8 12.5L18.3 14.2L21.2 10.8" stroke="#1E3A8A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
 
 function getInitialPage(): Page {
   if (typeof window === 'undefined') return 'dashboard';
@@ -319,16 +316,16 @@ function GuidedTourOverlay({
   );
 }
 
-const NAV: { id: Page; label: string; icon: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
-  { id: 'scenarios', label: 'Scenarios', icon: '📋' },
-  { id: 'runs', label: 'Runs', icon: '▶️' },
-  { id: 'review-queue', label: 'Review Queue', icon: '🔍' },
-  { id: 'analysis', label: 'Analysis', icon: '🔬' },
-  { id: 'schedules', label: 'Schedules', icon: '⏱' },
-  { id: 'transcripts', label: 'Transcripts', icon: '💬' },
-  { id: 'reports', label: 'Reports', icon: '📊' },
-  { id: 'settings', label: 'Settings', icon: '⚙️' },
+const NAV: { id: Page; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: NavDashboardIcon },
+  { id: 'scenarios', label: 'Scenarios', icon: NavScenariosIcon },
+  { id: 'runs', label: 'Runs', icon: NavRunsIcon },
+  { id: 'review-queue', label: 'Review Queue', icon: NavReviewQueueIcon },
+  { id: 'analysis', label: 'Analysis', icon: NavAnalysisIcon },
+  { id: 'schedules', label: 'Schedules', icon: NavSchedulesIcon },
+  { id: 'transcripts', label: 'Transcripts', icon: NavTranscriptsIcon },
+  { id: 'reports', label: 'Reports', icon: NavReportsIcon },
+  { id: 'settings', label: 'Settings', icon: NavSettingsIcon },
 ];
 
 export default function App() {
@@ -410,7 +407,7 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-8xl items-center gap-4 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 flex-shrink-0 items-center gap-3">
-            <span className="flex-shrink-0"><LogoIcon /></span>
+            <span className="flex-shrink-0"><AppLogoIcon /></span>
             <span className="text-sm font-semibold tracking-wide whitespace-nowrap text-white">ARIA Evaluator</span>
           </div>
 
@@ -419,6 +416,9 @@ export default function App() {
             aria-label="Primary"
           >
             {NAV.map((n) => (
+              (() => {
+              const Icon = n.icon;
+              return (
               <button
                 key={n.id}
                 onClick={() => setPage(n.id)}
@@ -429,9 +429,11 @@ export default function App() {
                     : 'text-slate-300 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <span className="text-sm leading-none">{n.icon}</span>
-                {n.label}
-              </button>
+                    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {n.label}
+                </button>
+                );
+              })()
             ))}
           </nav>
 

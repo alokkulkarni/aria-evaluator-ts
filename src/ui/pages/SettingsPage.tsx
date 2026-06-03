@@ -10,6 +10,24 @@ import {
   LEGACY_JUDGE_SYSTEM_PROMPTS,
   isKnownJudgeModel,
 } from '../../shared/judge-config.js';
+import {
+  BrandAwsIcon,
+  BrandMicrosoftIcon,
+  BrandOpenApiIcon,
+  ProviderAwsIcon,
+  ProviderBotIcon,
+  ProviderChatIcon,
+  ProviderDefaultsIcon,
+  ProviderGlobeIcon,
+  ProviderMicrosoftIcon,
+  ProviderOpenApiIcon,
+  ProviderShieldIcon,
+  ProviderTimingIcon,
+  ProviderVoiceIcon,
+  ProviderWebSocketIcon,
+  RunFailIcon,
+  RunPassIcon,
+} from '../components/icons.js';
 
 type SettingsMap = Record<string, string>;
 
@@ -25,7 +43,7 @@ interface FieldDef {
 interface ProviderSectionDef {
   id: string;
   title: string;
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
   description: string;
   fields: FieldDef[];
 }
@@ -48,7 +66,7 @@ const JUDGE_SETTING_KEYS = [
 interface GeneralSectionDef {
   id: string;
   title: string;
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
   description: string;
   fields: FieldDef[];
 }
@@ -92,7 +110,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'connect',
     title: 'Amazon Connect',
-    icon: '☁️',
+    icon: ProviderAwsIcon,
     description: 'Connect your Amazon Connect instance for chat and voice evaluation. Requires an IAM user or role with connect:StartChatContact / connect:StartContactStreaming permissions.',
     fields: [
       {
@@ -150,7 +168,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'lex',
     title: 'Amazon Lex',
-    icon: '🤖',
+    icon: ProviderAwsIcon,
     description: 'Evaluate a Lex V2 bot directly via the AWS SDK. Requires IAM credentials with lex:RecognizeText permission.',
     fields: [
       {
@@ -185,7 +203,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'azure',
     title: 'Azure Bot (Direct Line)',
-    icon: '🔷',
+    icon: ProviderMicrosoftIcon,
     description: 'Connect to an Azure Bot Service via the Direct Line API. Supports any Azure-hosted bot including Power Virtual Agents.',
     fields: [
       {
@@ -213,7 +231,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'strands',
     title: 'Strands / AgentCore',
-    icon: '🧬',
+    icon: ProviderAwsIcon,
     description: 'Evaluate an AWS Strands agent or Bedrock AgentCore endpoint over HTTP. Supports no-auth, Bearer token, and AWS SigV4 signing.',
     fields: [
       {
@@ -289,7 +307,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'copilot',
     title: 'Microsoft Copilot',
-    icon: '🪟',
+    icon: ProviderMicrosoftIcon,
     description: 'Evaluate a Microsoft Copilot Studio agent via the Direct Line API.',
     fields: [
       {
@@ -317,7 +335,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'custom-chat',
     title: 'Custom Chat Provider',
-    icon: '💬',
+    icon: ProviderChatIcon,
     description: 'Evaluate any HTTP-based chat endpoint. Each turn sends a POST/PUT with the message and conversation history.',
     fields: [
       {
@@ -363,7 +381,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'custom-voice',
     title: 'Custom Voice Provider',
-    icon: '🎤',
+    icon: ProviderVoiceIcon,
     description: 'Evaluate a voice agent over WebSocket. Supports Deepgram Voice Agent, AgentCore voice, or any generic JSON-over-WebSocket protocol.',
     fields: [
       {
@@ -440,7 +458,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'openapi',
     title: 'OpenAPI Chat Provider',
-    icon: '📄',
+    icon: ProviderOpenApiIcon,
     description: 'Evaluate any chat endpoint described by an OpenAPI spec. Supports HTTP with bearer, API key, or basic authentication.',
     fields: [
       {
@@ -504,7 +522,7 @@ const PROVIDER_SECTIONS: ProviderSectionDef[] = [
   {
     id: 'websocket',
     title: 'WebSocket Chat Provider (ws / wss)',
-    icon: '🔌',
+    icon: ProviderWebSocketIcon,
     description: 'Evaluate a chat agent over a persistent WebSocket connection. Supports plain ws:// and secure wss:// with optional authentication headers and custom JSON frame formats.',
     fields: [
       {
@@ -567,7 +585,7 @@ const GENERAL_SECTIONS: GeneralSectionDef[] = [
   {
     id: 'eval-defaults',
     title: 'Evaluation Defaults',
-    icon: '⚙️',
+    icon: ProviderDefaultsIcon,
     description: 'Default values used for every evaluation run when not overridden by scenario settings.',
     fields: [
       {
@@ -593,7 +611,7 @@ const GENERAL_SECTIONS: GeneralSectionDef[] = [
   {
     id: 'voice-timing',
     title: 'Voice Timing',
-    icon: '⏱️',
+    icon: ProviderTimingIcon,
     description: 'Fine-tune WebRTC / WebSocket voice session pacing. Only relevant when running voice evaluations.',
     fields: [
       {
@@ -740,10 +758,13 @@ function ProviderSubSection({
         className="w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors text-left"
       >
         <div className="flex items-center gap-2.5">
-          <span>{section.icon}</span>
+          <section.icon className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
           <span className="text-sm font-semibold text-slate-800">{section.title}</span>
           {isConfigured && totalRequired > 0 && (
-            <span className="text-[10px] bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium">✓ configured</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+              <RunPassIcon className="h-3 w-3" aria-hidden="true" />
+              configured
+            </span>
           )}
           {!isConfigured && (
             <span className="text-[10px] bg-slate-100 text-slate-500 rounded-full px-2 py-0.5 font-medium">
@@ -979,7 +1000,7 @@ function GeneralSection({
         className="w-full flex items-center justify-between text-left cursor-pointer"
       >
         <div className="flex items-center gap-2">
-          <span>{section.icon}</span>
+          <section.icon className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
           <h3 className="font-semibold text-slate-900">{section.title}</h3>
         </div>
         <span
@@ -1103,7 +1124,7 @@ export function SettingsPage() {
       <div className="card p-0 overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200/80 bg-white">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🔌</span>
+            <ProviderDefaultsIcon className="h-5 w-5 text-slate-500" aria-hidden="true" />
             <div>
               <h3 className="font-semibold text-base text-slate-900">Providers</h3>
               <p className="text-xs text-slate-500 mt-0.5">Configure connection settings for each evaluation provider. Expand a provider to view and edit its fields.</p>
@@ -1157,10 +1178,15 @@ export function SettingsPage() {
           disabled={saving}
           className="btn-primary disabled:opacity-50"
         >
-          {saving ? '⏳ Saving…' : '💾 Save Settings'}
+          {saving ? 'Saving…' : 'Save Settings'}
         </button>
         {message && <span className="text-sm text-green-700">{message}</span>}
-        {error && <span className="text-sm text-red-600">⚠ {error}</span>}
+        {error && (
+          <span className="inline-flex items-center gap-1 text-sm text-red-600">
+            <RunFailIcon className="h-4 w-4" aria-hidden="true" />
+            {error}
+          </span>
+        )}
       </div>
     </div>
   );

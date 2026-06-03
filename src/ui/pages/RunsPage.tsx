@@ -2,6 +2,30 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, toApiUrl } from '../lib/api.js';
 import { formatTokenCount } from '../lib/format.js';
 import { StatusBadge } from './Dashboard.js';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CategoryBankingIcon,
+  CategoryEdgeCasesIcon,
+  CategoryEscalationIcon,
+  CategoryGeneralIcon,
+  ConversationIcon,
+  ProviderAwsIcon,
+  ProviderBotIcon,
+  ProviderMicrosoftIcon,
+  ProviderOpenApiIcon,
+  RunAgentIcon,
+  RunCustomerIcon,
+  RunFailIcon,
+  RunMarkerIcon,
+  RunParallelIcon,
+  RunPassIcon,
+  RunRunningIcon,
+  RunSecurityIcon,
+  RunChatIcon,
+  RunVoiceIcon,
+  ScenarioAdversarialIcon,
+} from '../components/icons.js';
 
 interface Run {
   id: string;
@@ -239,7 +263,10 @@ function ParallelProgressBoard({ logs, isLive }: { logs: string[]; isLive: boole
       {/* Header row */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
-          ⚡ Parallel Execution
+          <span className="inline-flex items-center gap-1.5">
+            <RunParallelIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            Parallel Execution
+          </span>
         </span>
         <div className="flex items-center gap-2 text-xs">
           {isLive && runningCount > 0 && (
@@ -248,8 +275,16 @@ function ParallelProgressBoard({ logs, isLive }: { logs: string[]; isLive: boole
               {runningCount} running
             </span>
           )}
-          <span className="text-green-400">{passedCount} ✓</span>
-          {failedCount > 0 && <span className="text-red-400">{failedCount} ✗</span>}
+          <span className="inline-flex items-center gap-1 text-green-400">
+            <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            {passedCount}
+          </span>
+          {failedCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-red-400">
+              <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              {failedCount}
+            </span>
+          )}
           <span className="text-slate-400">{doneCount}/{total}</span>
         </div>
       </div>
@@ -265,10 +300,10 @@ function ParallelProgressBoard({ logs, isLive }: { logs: string[]; isLive: boole
       {/* Scenario grid */}
       <div className="grid grid-cols-1 gap-1 max-h-56 overflow-y-auto pr-1">
         {entries.map(([name, state]) => {
-          const icon =
-            state.status === 'running'  ? '⏳' :
-            state.status === 'failed'   ? '✗' :
-            state.passed                ? '✅' : '❌';
+          const Icon =
+            state.status === 'running' ? RunRunningIcon :
+            state.status === 'failed' ? RunFailIcon :
+            state.passed ? RunPassIcon : RunFailIcon;
           const rowColour =
             state.status === 'running'  ? 'text-cyan-300' :
             state.status === 'failed'   ? 'text-red-400' :
@@ -277,7 +312,7 @@ function ParallelProgressBoard({ logs, isLive }: { logs: string[]; isLive: boole
           return (
             <div key={name} className="flex items-center gap-2 text-xs">
               <span className={`w-4 flex-shrink-0 ${state.status === 'running' ? 'animate-pulse' : ''}`}>
-                {icon}
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
               <span className={`flex-1 truncate ${rowColour}`} title={name}>{name}</span>
               {state.score !== null && (
@@ -295,7 +330,10 @@ function ParallelProgressBoard({ logs, isLive }: { logs: string[]; isLive: boole
 
       {!isLive && doneCount === total && (
         <p className="text-xs text-slate-400 text-center pt-1">
-          🏁 All {total} scenarios complete · {passedCount} passed · {failedCount} failed
+          <span className="inline-flex items-center gap-1.5">
+            <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            All {total} scenarios complete · {passedCount} passed · {failedCount} failed
+          </span>
         </p>
       )}
     </div>
@@ -421,8 +459,9 @@ function LiveTranscriptPanel({ logs, isLive }: { logs: string[]; isLive: boolean
             <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
               <span className="text-xs font-semibold text-slate-600 truncate">{block.name}</span>
               {block.outcome !== null ? (
-                <span className={`text-xs font-bold ml-2 flex-shrink-0 ${block.outcome ? 'text-green-600' : 'text-red-500'}`}>
-                  {block.outcome ? '✓' : '✗'} {block.turnCount ?? 0} turns
+                <span className={`inline-flex items-center gap-1 text-xs font-bold ml-2 flex-shrink-0 ${block.outcome ? 'text-green-600' : 'text-red-500'}`}>
+                  {block.outcome ? <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {block.turnCount ?? 0} turns
                 </span>
               ) : (
                 <span className="text-xs text-slate-400 ml-2 flex-shrink-0 animate-pulse">running…</span>
@@ -435,7 +474,9 @@ function LiveTranscriptPanel({ logs, isLive }: { logs: string[]; isLive: boolean
                 const isAgent = t.role === 'agent';
                 return (
                   <div key={ti} className={`flex gap-2 items-end ${isAgent ? '' : 'flex-row-reverse'}`}>
-                    <span className="text-base flex-shrink-0">{isAgent ? '🤖' : '👤'}</span>
+                    {isAgent
+                      ? <RunAgentIcon className="h-4 w-4 flex-shrink-0 text-slate-400" aria-hidden="true" />
+                      : <RunCustomerIcon className="h-4 w-4 flex-shrink-0 text-slate-400" aria-hidden="true" />}
                     <div className={`rounded-2xl px-3 py-2 text-sm leading-snug max-w-[82%] ${
                       isAgent
                         ? 'bg-slate-100 text-slate-800 rounded-bl-sm'
@@ -448,7 +489,7 @@ function LiveTranscriptPanel({ logs, isLive }: { logs: string[]; isLive: boolean
               })}
               {block.outcome === null && isLive && (
                 <div className="flex gap-2 items-end">
-                  <span className="text-base">🤖</span>
+                  <RunAgentIcon className="h-4 w-4 text-slate-400" aria-hidden="true" />
                   <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-3 py-2">
                     <span className="flex gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0ms]" />
@@ -523,9 +564,10 @@ function TranscriptChatView({ url }: { url: string }) {
       <div className="space-y-3">
         {(data.turns ?? []).map((t, i) => {
           const isAgent = t.role === 'agent';
+          const Icon = isAgent ? RunAgentIcon : RunCustomerIcon;
           return (
             <div key={i} className={`flex gap-3 ${isAgent ? '' : 'flex-row-reverse'}`}>
-              <span className="text-2xl flex-shrink-0 self-end">{isAgent ? '🤖' : '👤'}</span>
+              <Icon className="mt-1.5 h-5 w-5 flex-shrink-0 self-end text-slate-500" aria-hidden="true" />
               <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                 isAgent ? 'bg-slate-100 text-slate-800 rounded-bl-sm' : 'bg-slate-950 text-white rounded-br-sm'
               }`}>
@@ -591,13 +633,17 @@ function ReportView({ url }: { url: string }) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-semibold text-slate-800 text-sm">{r.scenarioName}</p>
             {r.scenarioType === 'security' && (
-              <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Security Test</span>
+              <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">
+                <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                Security Test
+              </span>
             )}
           </div>
           {r.summary && <p className="text-xs text-slate-600 mt-0.5">{r.summary}</p>}
         </div>
-        <span className={`text-base font-bold flex-shrink-0 ${r.passed ? 'text-green-600' : 'text-red-600'}`}>
-          {r.passed ? '✅' : '❌'} {r.overallScore.toFixed(1)}/10
+        <span className={`inline-flex items-center gap-1 text-base font-bold flex-shrink-0 ${r.passed ? 'text-green-600' : 'text-red-600'}`}>
+          {r.passed ? <RunPassIcon className="h-4 w-4" aria-hidden="true" /> : <RunFailIcon className="h-4 w-4" aria-hidden="true" />}
+          {r.overallScore.toFixed(1)}/10
         </span>
       </div>
       {r.dimensionScores && (
@@ -644,7 +690,10 @@ function ReportView({ url }: { url: string }) {
       {/* Security tests note */}
       {securityResults.length > 0 && qualityResults.length > 0 && (
         <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-2.5 text-xs text-purple-800">
-          🛡 <strong>{securityResults.length} security test{securityResults.length > 1 ? 's' : ''}</strong> are shown separately below and excluded from the quality score.
+          <span className="inline-flex items-center gap-1">
+            <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            <strong>{securityResults.length} security test{securityResults.length > 1 ? 's' : ''}</strong> are shown separately below and excluded from the quality score.
+          </span>
         </div>
       )}
 
@@ -661,7 +710,10 @@ function ReportView({ url }: { url: string }) {
       {/* Security results */}
       {securityResults.length > 0 && (
         <div className="space-y-3">
-          <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">🛡 Security / Adversarial Tests</p>
+          <p className="inline-flex items-center gap-1 text-xs font-semibold text-purple-600 uppercase tracking-wide">
+            <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            Security / Adversarial Tests
+          </p>
           {securityResults.map(renderResult)}
         </div>
       )}
@@ -712,9 +764,14 @@ function ArtifactPreviewModal({
           <p className="text-sm font-semibold text-slate-800 truncate max-w-[75%]" title={label}>{label}</p>
           <div className="flex items-center gap-3">
             <a href={url} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:text-slate-700 underline shrink-0">
-              Open in new tab ↗
+              <span className="inline-flex items-center gap-1">
+                Open in new tab
+                <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
             </a>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none font-bold">✕</button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none font-bold" aria-label="Close">
+              <RunFailIcon className="h-5 w-5" aria-hidden="true" />
+            </button>
           </div>
         </div>
 
@@ -860,7 +917,9 @@ function NewRunModal({
       <div className="rounded-3xl border border-slate-200/80 bg-white/95 shadow-[0_24px_70px_rgba(15,23,42,0.18)] w-full max-w-2xl mx-4 flex flex-col max-h-[85vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="text-lg font-bold text-slate-900">New Evaluation Run</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none" aria-label="Close">
+            <RunFailIcon className="h-5 w-5" aria-hidden="true" />
+          </button>
         </div>
 
         <div className="px-6 pt-4 pb-2">
@@ -893,12 +952,12 @@ function NewRunModal({
               if (!subMap.has(sub)) subMap.set(sub, []);
               subMap.get(sub)!.push(o);
             }
-            const catMeta: Record<string, { icon: string; hdr: string }> = {
-              adversarial: { icon: '⚔️', hdr: 'bg-red-50 text-red-800 border-red-200' },
-              banking:     { icon: '🏦', hdr: 'bg-blue-50 text-blue-800 border-blue-200' },
-              edge_cases:  { icon: '🔬', hdr: 'bg-purple-50 text-purple-800 border-purple-200' },
-              escalation:  { icon: '📈', hdr: 'bg-amber-50 text-amber-800 border-amber-200' },
-              general:     { icon: '📋', hdr: 'bg-slate-50 text-slate-700 border-slate-200' },
+            const catMeta: Record<string, { icon: React.ComponentType<{ className?: string }>; hdr: string }> = {
+              adversarial: { icon: ScenarioAdversarialIcon, hdr: 'bg-red-50 text-red-800 border-red-200' },
+              banking:     { icon: CategoryBankingIcon, hdr: 'bg-blue-50 text-blue-800 border-blue-200' },
+              edge_cases:  { icon: CategoryEdgeCasesIcon, hdr: 'bg-purple-50 text-purple-800 border-purple-200' },
+              escalation:  { icon: CategoryEscalationIcon, hdr: 'bg-amber-50 text-amber-800 border-amber-200' },
+              general:     { icon: CategoryGeneralIcon, hdr: 'bg-slate-50 text-slate-700 border-slate-200' },
             };
 
             return Array.from(grouped.entries()).map(([cat, subMap]) => {
@@ -924,13 +983,15 @@ function NewRunModal({
                       onClick={() => toggleModalCat(cat)}
                       className="flex-1 flex items-center justify-between text-left font-semibold text-sm">
                       <span className="flex items-center gap-2">
-                        <span>{meta.icon}</span>
+                        <meta.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                         <span>{modalFmt(cat)}</span>
                         <span className="text-xs font-normal opacity-70">
                           {selectedCount > 0 ? `${selectedCount}/` : ''}{allRefs.length}
                         </span>
                       </span>
-                      <span className="text-xs">{collapsed ? '▶' : '▼'}</span>
+                      <span className="text-xs text-slate-400">
+                        {collapsed ? <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronDownIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                      </span>
                     </button>
                   </div>
 
@@ -978,10 +1039,13 @@ function NewRunModal({
                                     <p className="font-medium text-slate-800">{o.name}</p>
                                     {o.goal && <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{o.goal}</p>}
                                   </div>
-                                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${
                                     o.channel === 'voice' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                                   }`}>
-                                    {o.channel === 'voice' ? '🎤' : '💬'} {o.channel}
+                                    {o.channel === 'voice'
+                                      ? <RunVoiceIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                                      : <RunChatIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                                    {o.channel}
                                   </span>
                                 </label>
                               );
@@ -1012,14 +1076,20 @@ function NewRunModal({
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  {p}
+                  {p === 'connect' && <ProviderAwsIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {p === 'lex' && <ProviderBotIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {p === 'azure' && <ProviderMicrosoftIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {p === 'strands' && <ProviderBotIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {p === 'copilot' && <ProviderMicrosoftIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {p === 'custom' && <ProviderBotIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {p === 'openapi' && <ProviderOpenApiIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {p === 'websocket' && <ProviderBotIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  <span>{p}</span>
                   {isChatOnlyBot(p) && (
-                    <span
-                      className={`text-[10px] leading-none ${provider === p ? 'text-blue-200' : 'text-slate-400'}`}
+                    <RunChatIcon
+                      className={`h-3 w-3 shrink-0 ${provider === p ? 'text-blue-200' : 'text-slate-400'}`}
                       aria-label="chat only"
-                    >
-                      💬
-                    </span>
+                    />
                   )}
                 </button>
               ))}
@@ -1038,7 +1108,12 @@ function NewRunModal({
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  {c === 'chat' ? '💬 Chat' : '🎤 Voice'}
+                  <span className="inline-flex items-center gap-1">
+                    {c === 'chat'
+                      ? <RunChatIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      : <RunVoiceIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                    {c === 'chat' ? 'Chat' : 'Voice'}
+                  </span>
                 </button>
               ))}
               {isChatOnlyBot(provider) && (
@@ -1055,7 +1130,12 @@ function NewRunModal({
             <span className="text-xs text-slate-500">{selectedScenarioRefs.length} scenario(s) selected</span>
           </div>
 
-          {error && <p className="text-xs text-red-600">⚠ {error}</p>}
+          {error && (
+            <p className="inline-flex items-center gap-1 text-xs text-red-600">
+              <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              {error}
+            </p>
+          )}
 
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-secondary flex-1 text-sm">Cancel</button>
@@ -1064,7 +1144,12 @@ function NewRunModal({
               onClick={startRun}
               className="btn-primary flex-1 text-sm disabled:opacity-40"
             >
-              {running ? '⏳ Starting…' : '▶ Start Run'}
+              {running ? 'Starting…' : (
+                <span className="inline-flex items-center gap-1.5">
+                  <RunRunningIcon className="h-4 w-4" aria-hidden="true" />
+                  Start Run
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -1160,7 +1245,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
       esRef.current = es;
       es.addEventListener('queued', (e) => {
         const d = JSON.parse(e.data) as { message?: string };
-        setLiveEvents((prev) => [...prev, d.message ?? '🕒 Run queued']);
+        setLiveEvents((prev) => [...prev, d.message ?? 'Run queued']);
       });
       es.addEventListener('start', (e) => {
         const d = JSON.parse(e.data) as {
@@ -1169,7 +1254,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
           channel?: string;
           scenarioCount?: number;
         };
-        const fallback = `▶ Run started (${d.provider ?? 'unknown'} · ${d.channel ?? 'chat'} · ${d.scenarioCount ?? 0} scenario(s))`;
+        const fallback = `Run started (${d.provider ?? 'unknown'} · ${d.channel ?? 'chat'} · ${d.scenarioCount ?? 0} scenario(s))`;
         setLiveEvents((prev) => [...prev, d.message ?? fallback]);
       });
       es.addEventListener('log', (e) => {
@@ -1178,7 +1263,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
       });
       es.addEventListener('complete', async (e) => {
         const d = JSON.parse(e.data);
-        setLiveEvents((prev) => [...prev, d.summary ? `✅ ${d.summary}` : '✅ Run completed']);
+        setLiveEvents((prev) => [...prev, d.summary ? d.summary : 'Run completed']);
         es.close();
         esRef.current = null;
         // Reload both run detail and persisted logs — mirrors what a page refresh does,
@@ -1193,7 +1278,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
       });
       es.addEventListener('failed', async (e) => {
         const d = JSON.parse(e.data);
-        setLiveEvents((prev) => [...prev, `❌ Failed: ${d.error}`]);
+        setLiveEvents((prev) => [...prev, `Failed: ${d.error}`]);
         es.close();
         esRef.current = null;
         const [refreshed, persistedLogs] = await Promise.all([
@@ -1274,7 +1359,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
             <h2 className="text-xl font-semibold text-slate-900 md:hidden">Evaluation Runs</h2>
           </div>
           <button onClick={() => openNewRun()} className="btn-primary">
-            + New Run
+            <span className="inline-flex items-center gap-1.5">
+              <RunRunningIcon className="h-4 w-4" aria-hidden="true" />
+              New Run
+            </span>
           </button>
         </div>
 
@@ -1285,7 +1373,12 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
             ) : runs.length === 0 ? (
               <div className="card text-center space-y-3 py-8">
                 <p className="text-slate-400 text-sm">No runs yet.</p>
-                <button onClick={() => openNewRun()} className="btn-primary text-sm">+ New Run</button>
+                <button onClick={() => openNewRun()} className="btn-primary text-sm">
+                  <span className="inline-flex items-center gap-1.5">
+                    <RunRunningIcon className="h-4 w-4" aria-hidden="true" />
+                    New Run
+                  </span>
+                </button>
               </div>
             ) : (
               runs.map((r) => (
@@ -1307,7 +1400,9 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                     <div className="flex items-center gap-2 min-w-0">
                       <span className={r.channel === 'voice' ? 'badge-voice' : 'badge-chat'}>{r.channel}</span>
                       {r.evalResult?.scenarioType === 'security' && (
-                        <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡</span>
+                        <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">
+                          <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
                       )}
                       {r.evalResult && (
                         <span className={r.evalResult.passed ? 'text-green-700 font-bold text-xs' : 'text-red-600 font-bold text-xs'}>
@@ -1329,10 +1424,11 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); void deleteRun(r.id); }}
-                      className="text-xs text-red-600 hover:underline font-medium"
+                      className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline font-medium"
                       title="Delete run"
                     >
-                      🗑 Delete
+                      <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -1351,13 +1447,19 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                   <div className="flex items-center gap-2">
                     <StatusBadge status={selected.status} />
                     <button onClick={() => openNewRun()} className="btn-primary text-xs py-1 px-3">
-                      ↩ Re-run
+                      <span className="inline-flex items-center gap-1">
+                        <RunRunningIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        Re-run
+                      </span>
                     </button>
                     <button
                       onClick={() => { void deleteRun(selected.id); }}
                       className="btn-secondary text-xs py-1 px-3"
                     >
-                      🗑 Delete
+                      <span className="inline-flex items-center gap-1">
+                        <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        Delete
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -1366,14 +1468,23 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                   <div className="bg-slate-50 rounded-lg p-4">
                     <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-slate-700">
-                          {selected.evalResult.passed ? '✅ PASS' : '❌ FAIL'} — {selected.evalResult.overallScore.toFixed(1)}/10
+                        <p className={`inline-flex items-center gap-1 text-sm font-semibold ${selected.evalResult.passed ? 'text-green-700' : 'text-red-600'}`}>
+                          {selected.evalResult.passed
+                            ? <RunPassIcon className="h-4 w-4" aria-hidden="true" />
+                            : <RunFailIcon className="h-4 w-4" aria-hidden="true" />}
+                          {selected.evalResult.passed ? 'PASS' : 'FAIL'} — {selected.evalResult.overallScore.toFixed(1)}/10
                         </p>
                         {selected.evalResult.scenarioType === 'security' && (
-                          <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Security Test</span>
+                          <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">
+                            <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            Security Test
+                          </span>
                         )}
                         {selected.evalResult.scenarioType === 'mixed' && (
-                          <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Contains Security Tests</span>
+                          <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">
+                            <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            Contains Security Tests
+                          </span>
                         )}
                       </div>
                       <button
@@ -1382,7 +1493,12 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                         className="text-xs px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-40"
                         title="Add to judge calibration review queue"
                       >
-                        {queueingRunId === selected.id ? '⏳ Queuing…' : '🔍 Queue for Review'}
+                        {queueingRunId === selected.id ? 'Queuing…' : (
+                          <span className="inline-flex items-center gap-1">
+                            <RunMarkerIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            Queue for Review
+                          </span>
+                        )}
                       </button>
                     </div>
                     {queueMessage?.runId === selected.id && (
@@ -1406,7 +1522,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
 
                 {selected.errorMessage && (
                   <div className="bg-red-50 text-red-700 rounded-lg p-3 text-sm">
-                    ⚠ {selected.errorMessage}
+                    <span className="inline-flex items-center gap-1">
+                      <RunFailIcon className="h-4 w-4" aria-hidden="true" />
+                      {selected.errorMessage}
+                    </span>
                   </div>
                 )}
 
@@ -1476,14 +1595,20 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                               title={t.name}
                               onClick={() => setArtifactModal({ url: t.rawUrl, label: t.name, type: 'json' })}
                             >
-                              🧾 {t.name}
+                              <span className="inline-flex items-center gap-1">
+                                <RunMarkerIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                                {t.name}
+                              </span>
                             </button>
                             <button
                               className={btnClass}
                               title={`Transcript conversation — ${t.name}`}
                               onClick={() => setArtifactModal({ url: t.rawUrl, label: `Transcript: ${t.name}`, type: 'transcript' })}
                             >
-                              💬 Transcript HTML
+                              <span className="inline-flex items-center gap-1">
+                                <ConversationIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                                Transcript HTML
+                              </span>
                             </button>
                           </React.Fragment>
                         ))}
@@ -1493,7 +1618,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                             title={reportHtmlPath ?? undefined}
                             onClick={() => setArtifactModal({ url: reportHtmlUrl, label: 'HTML Report', type: 'html' })}
                           >
-                            📊 HTML report
+                            <span className="inline-flex items-center gap-1">
+                              <RunParallelIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                              HTML report
+                            </span>
                           </button>
                         )}
                         {reportJsonUrl && (
@@ -1502,7 +1630,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                             title={reportJsonPath ?? undefined}
                             onClick={() => setArtifactModal({ url: reportJsonUrl, label: 'JSON Report', type: 'report' })}
                           >
-                            🧠 JSON report
+                            <span className="inline-flex items-center gap-1">
+                              <RunMarkerIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                              JSON report
+                            </span>
                           </button>
                         )}
                         {audioUrl && (
@@ -1512,7 +1643,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                             className={`${btnClass} inline-flex items-center`}
                             title={selected.audioPath ?? 'Voice recording WAV'}
                           >
-                            🎙 Voice recording
+                            <span className="inline-flex items-center gap-1">
+                              <RunVoiceIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                              Voice recording
+                            </span>
                           </a>
                         )}
                       </div>
@@ -1522,7 +1656,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
 
                 {selected.audioPath && (
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase mb-2">🎙 Voice Recording</p>
+                    <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase text-slate-500">
+                      <RunVoiceIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      Voice Recording
+                    </p>
                     <audio controls className="w-full rounded-lg" crossOrigin="use-credentials" src={toApiUrl(`/audio/${encodeURIComponent(selected.audioPath)}`)}>
                       Your browser does not support the audio element.
                     </audio>
@@ -1536,7 +1673,9 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {selected.turns.map((t, i) => (
                         <div key={`${t.index}-${i}`} className={`flex gap-2 ${t.role === 'customer' ? '' : 'flex-row-reverse'}`}>
-                          <span className="text-lg flex-shrink-0">{t.role === 'customer' ? '👤' : '🤖'}</span>
+                          {t.role === 'customer'
+                            ? <RunCustomerIcon className="h-5 w-5 flex-shrink-0 text-slate-500" aria-hidden="true" />
+                            : <RunAgentIcon className="h-5 w-5 flex-shrink-0 text-slate-500" aria-hidden="true" />}
                           <div className={`rounded-lg px-3 py-2 text-sm max-w-[80%] ${
                             t.role === 'customer' ? 'bg-blue-50 text-blue-900' : 'bg-slate-100 text-slate-800'
                           }`}>

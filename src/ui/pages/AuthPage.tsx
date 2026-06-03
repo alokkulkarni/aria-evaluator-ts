@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ApiError, apiFetch } from '../lib/api.js';
+import { AppLogoIcon } from '../components/icons.js';
 
 interface AuthenticatedUser {
   id: string;
@@ -113,9 +114,7 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
         <div className="flex flex-col justify-between bg-[linear-gradient(160deg,#0b1f4d_0%,#102b66_55%,#0f172a_100%)] p-8 text-white sm:p-10">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10">
-                <span className="text-lg">⚡</span>
-              </div>
+              <AppLogoIcon className="h-12 w-12" />
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">ARIA Evaluator</p>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight">Enterprise-grade evaluation workspace</h1>

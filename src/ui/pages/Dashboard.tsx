@@ -2,6 +2,14 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
 import { formatLatency, formatTokenCount } from '../lib/format.js';
+import {
+  ChevronRightIcon,
+  NavReportsIcon,
+  NavRunsIcon,
+  NavScenariosIcon,
+  NavTranscriptsIcon,
+  RunSecurityIcon,
+} from '../components/icons.js';
 
 interface Run {
   id: string;
@@ -212,7 +220,10 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-semibold text-slate-900">Recent Runs</h3>
           <button onClick={() => onNavigate('runs')} className="text-sm font-medium text-blue-700 hover:underline">
-            View all →
+            <span className="inline-flex items-center gap-1">
+              View all
+              <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
           </button>
         </div>
 
@@ -222,7 +233,10 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
           <div className="py-8 text-center text-sm text-slate-400">
             No runs yet.{' '}
             <button onClick={() => onNewRun ? onNewRun() : onNavigate('runs')} className="font-medium text-blue-700 hover:underline">
-              Start one →
+              <span className="inline-flex items-center gap-1">
+                Start one
+                <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
             </button>
           </div>
         ) : (
@@ -253,7 +267,10 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                     {r.evalResult ? (
                       <div className="flex items-center gap-1.5">
                         {r.evalResult.scenarioType === 'security' && (
-                          <span title="Security test" className="rounded px-1.5 py-0.5 text-xs font-semibold text-purple-700 ring-1 ring-purple-200 bg-purple-50">🛡 Security</span>
+                          <span title="Security test" className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold text-purple-700 ring-1 ring-purple-200 bg-purple-50">
+                            <RunSecurityIcon className="h-3 w-3" aria-hidden="true" />
+                            Security
+                          </span>
                         )}
                         <span className={r.evalResult.passed ? 'font-semibold text-green-700' : 'font-semibold text-red-600'}>
                           {r.evalResult.overallScore.toFixed(1)}/10
@@ -290,17 +307,20 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
-            { label: '📋 Browse Scenarios', page: 'scenarios' as const, newRun: false },
-            { label: '▶️ New Run', page: 'runs' as const, newRun: true },
-            { label: '💬 View Transcripts', page: 'transcripts' as const, newRun: false },
-            { label: '📊 View Reports', page: 'reports' as const, newRun: false },
+            { label: 'Browse Scenarios', icon: NavScenariosIcon, page: 'scenarios' as const, newRun: false },
+            { label: 'New Run', icon: NavRunsIcon, page: 'runs' as const, newRun: true },
+            { label: 'View Transcripts', icon: NavTranscriptsIcon, page: 'transcripts' as const, newRun: false },
+            { label: 'View Reports', icon: NavReportsIcon, page: 'reports' as const, newRun: false },
           ].map((a) => (
             <button
               key={a.label}
               onClick={() => a.newRun && onNewRun ? onNewRun() : onNavigate(a.page)}
               className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-4 text-center text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
             >
-              {a.label}
+              <span className="flex items-center justify-center gap-2">
+                <a.icon className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                {a.label}
+              </span>
             </button>
           ))}
         </div>

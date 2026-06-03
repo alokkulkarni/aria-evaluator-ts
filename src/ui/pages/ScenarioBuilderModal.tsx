@@ -5,6 +5,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ApiError, apiFetch } from '../lib/api.js';
 import type { Scenario } from '../../types/scenario.js';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  ScenarioAdversarialIcon,
+  ScenarioConversationalIcon,
+  ScenarioScriptedIcon,
+  RunFailIcon,
+} from '../components/icons.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -377,7 +386,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-950 text-white">
             <div>
               <h2 className="text-lg font-bold text-white">
-                {mode === 'create' ? '✨ New Scenario' : '✏️ Edit Scenario'}
+                {mode === 'create' ? 'New Scenario' : 'Edit Scenario'}
               </h2>
               <p className="mt-0.5 text-xs text-slate-300">
                 {mode === 'create'
@@ -385,7 +394,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                   : `Editing: ${scenario?.filePath ?? ''}`}
               </p>
             </div>
-            <button onClick={onClose} className="p-1 text-xl leading-none text-slate-300 hover:text-white">✕</button>
+            <button onClick={onClose} className="p-1 text-xl leading-none text-slate-300 hover:text-white" aria-label="Close">×</button>
           </div>
 
           {/* Form body */}
@@ -394,22 +403,27 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
             {/* Errors */}
             {errors.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1">
-                {errors.map((e, i) => <p key={i} className="text-sm text-red-700">⚠ {e}</p>)}
+                {errors.map((e, i) => (
+                  <p key={i} className="flex items-center gap-1 text-sm text-red-700">
+                    <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {e}
+                  </p>
+                ))}
               </div>
             )}
 
             {/* ── Scenario Type Preset (create only) ── */}
             {mode === 'create' && (
-              <Section title="📐 Scenario Type">
+              <Section title="Scenario Type">
                 <p className="text-xs text-slate-500 -mt-2">
                   Choose a type to pre-fill sensible defaults. You can adjust everything after.
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {([
-                    ['conversational', '💬', 'Conversational', 'LLM-driven customer, open conversation. Banking / general queries.'],
-                    ['scripted', '📋', 'Scripted', 'Fixed sequence of pre-written turns. Escalation or compliance flows.'],
-                    ['adversarial', '🛡', 'Adversarial', 'Security / injection testing. Fixed attack payloads sent in order.'],
-                  ] as const).map(([type, icon, label, desc]) => (
+                    ['conversational', ScenarioConversationalIcon, 'Conversational', 'LLM-driven customer, open conversation. Banking / general queries.'],
+                    ['scripted', ScenarioScriptedIcon, 'Scripted', 'Fixed sequence of pre-written turns. Escalation or compliance flows.'],
+                    ['adversarial', ScenarioAdversarialIcon, 'Adversarial', 'Security / injection testing. Fixed attack payloads sent in order.'],
+                  ] as const).map(([type, Icon, label, desc]) => (
                     <button
                       key={type}
                       onClick={() => applyTypeDefaults(type)}
@@ -417,7 +431,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                         ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20'
                         : 'border-slate-200 bg-white hover:border-slate-300'}`}
                     >
-                      <div className="text-xl mb-1">{icon}</div>
+                      <Icon className="h-6 w-6 mb-1 text-slate-500" aria-hidden="true" />
                       <div className="text-sm font-semibold text-slate-800">{label}</div>
                       <div className="text-xs text-slate-400 mt-0.5 leading-tight">{desc}</div>
                     </button>
@@ -427,7 +441,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
             )}
 
             {/* ── Basic Info ── */}
-            <Section title="📋 Basic Info">
+            <Section title="Basic Info">
               <div>
                 <Label hint="E.g. 'Account — Balance Enquiry' or 'Injection — Persona Override'. Use ' — ' to separate category from description.">
                   Scenario name <span className="text-red-500">*</span>
@@ -469,9 +483,9 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                     onChange={(e) => set('channel', e.target.value as 'chat' | 'voice' | 'both')}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="chat">💬 Chat</option>
-                    <option value="voice">🎤 Voice</option>
-                    <option value="both">🔀 Both (chat + voice)</option>
+                    <option value="chat">Chat</option>
+                    <option value="voice">Voice</option>
+                    <option value="both">Both (chat + voice)</option>
                   </select>
                 </div>
               </div>
@@ -483,7 +497,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                   {([
                     {
                       value: 'agent' as const,
-                      icon: '🤖',
+                      icon: ScenarioConversationalIcon,
                       title: 'Conversational (LLM)',
                       short: 'AI plays the customer',
                       bullets: [
@@ -496,7 +510,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                     },
                     {
                       value: 'script' as const,
-                      icon: '📋',
+                      icon: ScenarioScriptedIcon,
                       title: 'Scripted (fixed turns)',
                       short: 'You write every message',
                       bullets: [
@@ -548,7 +562,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
 
             {/* ── Adversarial ── */}
             {form.scenarioType === 'adversarial' && (
-              <Section title="🛡 Security / Injection">
+              <Section title="Security / Injection">
                 <div>
                   <Label hint="Used by the judge to apply security-focused scoring dimensions. Omit for non-adversarial scenarios.">
                     Attack type <span className="text-red-500">*</span>
@@ -574,7 +588,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
 
             {/* ── Conversation (agent mode) ── */}
             {form.mode === 'agent' && (
-              <Section title="💬 Conversation">
+              <Section title="Conversation">
                 <div>
                   <Label hint="The first message the customer sends. Sets context for the agent before the LLM customer takes over.">
                     Opening message
@@ -612,7 +626,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
 
             {/* ── Script Turns ── */}
             {form.mode === 'script' && (
-              <Section title="📋 Script Turns">
+              <Section title="Script Turns">
                 <p className="text-xs text-slate-500 -mt-2">
                   Turns are sent to the agent in order. Add one turn per customer message.
                   {form.scenarioType === 'adversarial' && ' Write each attack payload as a separate turn.'}
@@ -622,9 +636,13 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                     <div key={t.id} className="flex gap-2 items-start">
                       <div className="flex flex-col gap-1 pt-2">
                         <button onClick={() => moveTurn(t.id, -1)} disabled={idx === 0}
-                          className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">▲</button>
+                          className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">
+                          <ChevronUpIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
                         <button onClick={() => moveTurn(t.id, 1)} disabled={idx === form.turns.length - 1}
-                          className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">▼</button>
+                          className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">
+                          <ChevronDownIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
                       </div>
                       <div className="flex-1 bg-white border border-slate-200 rounded-xl p-3 space-y-2">
                         <div className="flex items-center gap-2">
@@ -646,7 +664,9 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                         />
                       </div>
                       <button onClick={() => removeTurn(t.id)}
-                        className="mt-2 text-slate-300 hover:text-red-500 transition-colors text-lg leading-none">✕</button>
+                         className="mt-2 text-slate-300 hover:text-red-500 transition-colors text-lg leading-none" aria-label="Remove turn">
+                         <RunFailIcon className="h-4 w-4" aria-hidden="true" />
+                       </button>
                     </div>
                   ))}
                 </div>
@@ -672,7 +692,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
 
             {/* ── Escalation ── */}
             {form.scenarioType !== 'adversarial' && (
-              <Section title="⚡ Escalation">
+              <Section title="Escalation">
                 <div className="flex items-center gap-3">
                   <input type="checkbox" id="esc" checked={form.expected_escalation}
                     onChange={(e) => set('expected_escalation', e.target.checked)}
@@ -719,7 +739,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
 
             {/* ── File Location (create only) ── */}
             {mode === 'create' && (
-              <Section title="💾 Save Location">
+              <Section title="Save Location">
                 <p className="text-xs text-slate-500 -mt-2">
                   Scenarios are saved as YAML files under the scenarios directory.
                   Scenarios in the same file are separated by <code className="bg-slate-100 px-1 rounded">---</code>.
@@ -733,7 +753,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {folders.map((f) => <option key={f} value={f}>{f}</option>)}
-                      <option value="__custom__">✏ Custom…</option>
+                      <option value="__custom__">Custom…</option>
                     </select>
                     {form.category === '__custom__' && (
                       <TextInput
@@ -755,7 +775,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                 </div>
                 {targetPath && (
                   <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 text-xs text-slate-500 font-mono">
-                    <span className="text-slate-400">→</span> {targetPath}
+                    <ChevronRightIcon className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" /> {targetPath}
                     {fileExists && <span className="ml-auto text-amber-600 font-sans font-medium">File exists</span>}
                   </div>
                 )}
@@ -782,7 +802,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
               disabled={saving}
               className="btn-primary px-5 py-2 text-sm font-semibold disabled:opacity-50 ml-auto"
             >
-              {saving ? '⏳ Saving…' : mode === 'create' ? '✨ Create Scenario' : '💾 Save Changes'}
+              {saving ? 'Saving…' : mode === 'create' ? 'Create Scenario' : 'Save Changes'}
             </button>
           </div>
         </div>
@@ -799,7 +819,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
               }}
               className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 hover:border-slate-400 transition-colors"
             >
-              {copyDone ? '✓ Copied' : 'Copy'}
+              {copyDone ? 'Copied' : 'Copy'}
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4">

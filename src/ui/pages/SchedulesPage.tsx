@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { apiFetch, toApiUrl } from '../lib/api.js';
+import { NavSchedulesIcon, RunFailIcon, RunRunningIcon } from '../components/icons.js';
 
 interface Schedule {
   id: string;
@@ -188,7 +189,10 @@ export function SchedulesPage() {
       </section>
 
       <div className="flex justify-between items-center gap-4">
-        <h1 className="text-xl font-semibold text-slate-900">⏱ Schedules</h1>
+        <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+          <NavSchedulesIcon className="h-5 w-5 text-slate-500" aria-hidden="true" />
+          Schedules
+        </h1>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
           className="btn-primary px-4 py-2"
@@ -367,28 +371,40 @@ export function SchedulesPage() {
                     onClick={() => triggerNow(selectedSchedule.id)}
                     className="btn-primary w-full justify-center"
                   >
-                    ▶ Run Now
+                    <span className="flex items-center gap-1.5">
+                      <RunRunningIcon className="h-4 w-4" aria-hidden="true" />
+                      Run Now
+                    </span>
                   </button>
                   {selectedSchedule.status === 'active' ? (
                     <button
                       onClick={() => pauseSchedule(selectedSchedule.id)}
                       className="btn-secondary w-full justify-center"
                     >
-                      ⏸ Pause
+                      <span className="flex items-center gap-1.5">
+                        <RunFailIcon className="h-4 w-4" aria-hidden="true" />
+                        Pause
+                      </span>
                     </button>
                   ) : (
                     <button
                       onClick={() => resumeSchedule(selectedSchedule.id)}
                       className="btn-primary w-full justify-center"
                     >
-                      ▶ Resume
+                      <span className="flex items-center gap-1.5">
+                        <RunRunningIcon className="h-4 w-4" aria-hidden="true" />
+                        Resume
+                      </span>
                     </button>
                   )}
                   <button
                     onClick={() => deleteSchedule(selectedSchedule.id)}
                     className="btn-danger w-full justify-center"
                   >
-                    🗑 Delete
+                    <span className="flex items-center gap-1.5">
+                      <RunFailIcon className="h-4 w-4" aria-hidden="true" />
+                      Delete
+                    </span>
                   </button>
                 </div>
 

@@ -1,6 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
 import { formatLatency } from '../lib/format.js';
+import {
+  ConversationIcon,
+  RunAgentIcon,
+  RunFailIcon,
+  RunPassIcon,
+  RunMarkerIcon,
+  RunSecurityIcon,
+} from '../components/icons.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -159,7 +167,10 @@ function RunRow({
       </td>
       <td className="px-3 py-2 text-xs">
         {passed !== undefined && passed !== null ? (
-          <span className={passed ? 'text-green-700' : 'text-red-700'}>{passed ? '✓ Pass' : '✗ Fail'}</span>
+          <span className={`inline-flex items-center gap-1 ${passed ? 'text-green-700' : 'text-red-700'}`}>
+            {passed ? <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+            {passed ? 'Pass' : 'Fail'}
+          </span>
         ) : '—'}
       </td>
       <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">{fmtDate(run.createdAt)}</td>
@@ -167,8 +178,9 @@ function RunRow({
       <td className="px-3 py-2 text-xs">
         {run.securityAttack ? (
           <div className="flex flex-col gap-1">
-            <span className="inline-flex items-center rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-800">
-              🔐 {run.securityAttack.category}
+            <span className="inline-flex items-center gap-1 rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-800">
+              <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              {run.securityAttack.category}
             </span>
             <span className="text-gray-600">
               Severity: <span className="font-semibold">{run.securityAttack.severity}</span>
@@ -252,7 +264,8 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
               <th className="px-3 py-2 text-left font-medium w-32">Metric</th>
               {runs.map((r, i) => (
                 <th key={r.id} className="px-3 py-2 text-left font-medium">
-                  {i === 0 ? '🔵 ' : ''}Run …{r.id.slice(-8)}
+                  {i === 0 ? <RunMarkerIcon className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" /> : null}
+                  Run …{r.id.slice(-8)}
                   {i === 0 && <span className="ml-1 text-blue-500 text-[10px]">(base)</span>}
                 </th>
               ))}
@@ -294,7 +307,14 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
               {runs.map((r) => (
                 <td key={r.id} className="px-3 py-2 text-xs">
                   {r.evalResult?.passed !== undefined && r.evalResult.passed !== null
-                    ? <span className={r.evalResult.passed ? 'text-green-700' : 'text-red-700'}>{r.evalResult.passed ? '✓ Pass' : '✗ Fail'}</span>
+                    ? (
+                      <span className={`inline-flex items-center gap-1 ${r.evalResult.passed ? 'text-green-700' : 'text-red-700'}`}>
+                        {r.evalResult.passed
+                          ? <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                          : <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                        {r.evalResult.passed ? 'Pass' : 'Fail'}
+                      </span>
+                    )
                     : '—'}
                 </td>
               ))}
@@ -351,7 +371,10 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
       {/* ── AI Evaluation (summary + recommendation) ──────────────── */}
       {runs.some((r) => r.evalResult?.summary || r.evalResult?.recommendation) && (
         <div>
-          <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">🤖 AI Evaluation</h4>
+          <h4 className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
+            <RunAgentIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            AI Evaluation
+          </h4>
           <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${runs.length}, minmax(0,1fr))` }}>
             {runs.map((r, i) => {
               const ev = r.evalResult;
@@ -363,8 +386,9 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
                     <span className="text-[10px] font-semibold text-gray-500">
                       Run …{r.id.slice(-8)}{i === 0 ? ' (base)' : ''}
                     </span>
-                    <span className={`text-xs font-bold ${ev.passed ? 'text-green-700' : 'text-red-700'}`}>
-                      {ev.passed ? '✅' : '❌'} {ev.overallScore.toFixed(1)}/10
+                    <span className={`inline-flex items-center gap-1 text-xs font-bold ${ev.passed ? 'text-green-700' : 'text-red-700'}`}>
+                      {ev.passed ? <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {ev.overallScore.toFixed(1)}/10
                     </span>
                   </div>
                   <div className="p-3 space-y-2">
@@ -375,7 +399,10 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
                     {/* Recommendation / reasoning */}
                     {ev.recommendation && (
                       <div className="rounded-md bg-indigo-50 border border-indigo-100 px-3 py-2">
-                        <p className="text-[10px] font-semibold text-indigo-600 mb-1">🧠 AI Reasoning</p>
+                        <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-indigo-600">
+                          <RunAgentIcon className="h-3 w-3" aria-hidden="true" />
+                          AI Reasoning
+                        </p>
                         <p className="text-xs text-indigo-800 leading-relaxed">{ev.recommendation}</p>
                       </div>
                     )}
@@ -395,7 +422,10 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
       {dimIds.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">🛡 Guardrails &amp; Dimension Details</h4>
+            <h4 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
+              <RunSecurityIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              Guardrails &amp; Dimension Details
+            </h4>
             <button
               onClick={toggleAll}
               className="text-[11px] text-blue-600 hover:underline"
@@ -424,7 +454,7 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
                           </span>
                         ) : <span key={r.id} className="text-gray-300 text-xs">—</span>;
                       })}
-                      <span className="text-gray-400 text-xs ml-1">{isOpen ? '▲' : '▼'}</span>
+                      <span className="ml-1 text-xs text-gray-400">{isOpen ? 'Expanded' : 'Collapsed'}</span>
                     </div>
                   </button>
                   {/* Expanded detail */}
@@ -466,7 +496,10 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
 
       {/* ── Transcripts ───────────────────────────────────────────── */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">💬 Transcripts</h4>
+        <h4 className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
+          <ConversationIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          Transcripts
+        </h4>
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${runs.length}, minmax(0,1fr))` }}>
           {runs.map((r, i) => (
             <div key={r.id} className="border rounded-lg bg-white">
@@ -859,7 +892,10 @@ export function AnalysisPage() {
                 onClick={() => { setCompareResult(null); setSelectedIds(new Set()); }}
                 className="text-xs text-slate-400 hover:text-slate-600"
               >
-                ✕ Clear
+                <span className="inline-flex items-center gap-1">
+                  <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  Clear
+                </span>
               </button>
             </div>
             <ComparePanel result={compareResult} />

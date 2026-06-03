@@ -1,6 +1,7 @@
 // src/ui/pages/ReportsPage.tsx
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import { ChevronRightIcon, NavReportsIcon, RunRunningIcon } from '../components/icons.js';
 
 interface ReportFile {
   filename: string;
@@ -65,13 +66,15 @@ export function ReportsPage() {
                   className={`card cursor-pointer transition-all text-sm ${
                   selectedUrl === url ? 'ring-2 ring-blue-500' : 'hover:shadow-md'
                   }`}>
-                  <p className="font-medium truncate">
-                    📊 {r.filename.replace('report_', '').replace('.html', '')}
+                  <p className="flex items-center gap-1.5 font-medium truncate">
+                    <NavReportsIcon className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                    {r.filename.replace('report_', '').replace('.html', '')}
                   </p>
                   {r.runScenarioName && (
                     <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs text-blue-700 font-medium truncate">
-                        🏃 {r.runScenarioName}
+                      <span className="flex items-center gap-1 text-xs text-blue-700 font-medium truncate">
+                        <RunRunningIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        {r.runScenarioName}
                       </span>
                       <RunBadge status={r.runStatus} />
                     </div>
@@ -86,7 +89,10 @@ export function ReportsPage() {
                   <a href={url} target="_blank" rel="noopener"
                     onClick={(e) => e.stopPropagation()}
                     className="text-xs text-blue-600 hover:underline mt-1 block">
-                    Open in new tab ↗
+                    <span className="inline-flex items-center gap-1">
+                      Open in new tab
+                      <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
                   </a>
                 </div>
               );

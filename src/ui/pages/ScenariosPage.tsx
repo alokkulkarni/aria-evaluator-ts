@@ -3,6 +3,21 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
 import type { Scenario } from '../../types/scenario.js';
 import { ScenarioBuilderModal } from './ScenarioBuilderModal.js';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CategoryBankingIcon,
+  CategoryEdgeCasesIcon,
+  CategoryEscalationIcon,
+  CategoryGeneralIcon,
+  ConversationIcon,
+  PowerIcon,
+  RunChatIcon,
+  RunFailIcon,
+  RunMarkerIcon,
+  RunVoiceIcon,
+  ScenarioAdversarialIcon,
+} from '../components/icons.js';
 
 interface ScenarioFile {
   filename: string;
@@ -131,7 +146,7 @@ export function ScenariosPage() {
             if (d.run?.status === 'completed') {
               const score = typeof d.run?.evalResult?.overallScore === 'number'
                 ? ` — Score: ${d.run.evalResult.overallScore}/10` : '';
-              finish(`✅ Complete${score}`);
+              finish(`Complete${score}`);
             } else if (d.run?.status === 'failed') {
               fail(d.run?.errorMessage ?? 'Run failed');
             }
@@ -152,13 +167,13 @@ export function ScenariosPage() {
             channel?: string;
             scenarioCount?: number;
           };
-          const fallback = `▶ Run started (${d.provider ?? 'unknown'} · ${d.channel ?? 'chat'} · ${d.scenarioCount ?? 0} scenario(s))`;
+          const fallback = `Run started (${d.provider ?? 'unknown'} · ${d.channel ?? 'chat'} · ${d.scenarioCount ?? 0} scenario(s))`;
           appendEvent(d.message ?? fallback);
         });
         es.addEventListener('complete', (e) => {
           const d = JSON.parse(e.data) as { overallScore?: number };
           const score = typeof d.overallScore === 'number' ? ` — Score: ${d.overallScore}/10` : '';
-          finish(`✅ Complete${score}`);
+          finish(`Complete${score}`);
         });
         es.addEventListener('failed', (e) => {
           fail((JSON.parse(e.data) as { error: string }).error);
@@ -184,11 +199,11 @@ export function ScenariosPage() {
   async function startBothRun(scenario: Scenario) {
     cleanup();
     setRunState('running');
-    setLiveEvents(['── 💬 Chat ──']);
+    setLiveEvents(['-- Chat --']);
     setRunError(null);
     try {
       await runOneChannel(scenario, 'chat', (line) => setLiveEvents((p) => [...p, line]));
-      setLiveEvents((p) => [...p, '', '── 🎤 Voice ──']);
+      setLiveEvents((p) => [...p, '', '-- Voice --']);
       await runOneChannel(scenario, 'voice', (line) => setLiveEvents((p) => [...p, line]));
       setRunState('done');
     } catch (err) {
@@ -332,7 +347,8 @@ export function ScenariosPage() {
           <button
             onClick={() => setBuilder({ mode: 'create' })}
             className="btn-primary px-4 py-2 text-sm font-semibold">
-            ✨ New Scenario
+            <PowerIcon className="h-4 w-4" aria-hidden="true" />
+            New Scenario
           </button>
           <div className="flex gap-1">
             {(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi', 'websocket'] as const).map((p) => (
@@ -353,7 +369,12 @@ export function ScenariosPage() {
                   ? 'bg-slate-950 text-white border-slate-950 shadow-sm'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}>
-              {c === 'all' ? 'All' : c === 'chat' ? '💬 Chat' : '🎤 Voice'}
+              {c === 'all' ? 'All' : (
+                <span className="inline-flex items-center gap-1">
+                  {c === 'chat' ? <ConversationIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <RunVoiceIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {c === 'chat' ? 'Chat' : 'Voice'}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -379,12 +400,12 @@ export function ScenariosPage() {
               if (!subMap.has(sub)) subMap.set(sub, []);
               subMap.get(sub)!.push(s);
             }
-            const catMeta: Record<string, { icon: string; colour: string }> = {
-              adversarial: { icon: '⚔️', colour: 'bg-red-50 border-red-200 text-red-800' },
-              banking:     { icon: '🏦', colour: 'bg-blue-50 border-blue-200 text-blue-800' },
-              edge_cases:  { icon: '🔬', colour: 'bg-purple-50 border-purple-200 text-purple-800' },
-              escalation:  { icon: '📈', colour: 'bg-amber-50 border-amber-200 text-amber-800' },
-              general:     { icon: '📋', colour: 'bg-slate-50 border-slate-200 text-slate-700' },
+            const catMeta: Record<string, { icon: React.ComponentType<{ className?: string }>; colour: string }> = {
+              adversarial: { icon: ScenarioAdversarialIcon, colour: 'bg-red-50 border-red-200 text-red-800' },
+              banking:     { icon: CategoryBankingIcon, colour: 'bg-blue-50 border-blue-200 text-blue-800' },
+              edge_cases:  { icon: CategoryEdgeCasesIcon, colour: 'bg-purple-50 border-purple-200 text-purple-800' },
+              escalation:  { icon: CategoryEscalationIcon, colour: 'bg-amber-50 border-amber-200 text-amber-800' },
+              general:     { icon: CategoryGeneralIcon, colour: 'bg-slate-50 border-slate-200 text-slate-700' },
             };
             const fmt = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const toggleCat = (cat: string) => setCollapsedCategories(prev => {
@@ -405,11 +426,13 @@ export function ScenariosPage() {
                     onClick={() => toggleCat(cat)}
                     className={`w-full flex items-center justify-between px-4 py-3 font-semibold text-sm ${meta.colour} border-b border-inherit`}>
                     <span className="flex items-center gap-2">
-                      <span>{meta.icon}</span>
+                      <meta.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                       <span>{fmt(cat)}</span>
                       <span className="ml-1 px-2 py-0.5 rounded-full bg-white/60 text-xs font-bold">{totalInCat}</span>
                     </span>
-                    <span className="text-lg">{catCollapsed ? '▶' : '▼'}</span>
+                    <span className="text-lg text-slate-500">
+                      {catCollapsed ? <ChevronRightIcon className="h-4 w-4" aria-hidden="true" /> : <ChevronDownIcon className="h-4 w-4" aria-hidden="true" />}
+                    </span>
                   </button>
 
                   {!catCollapsed && (
@@ -424,7 +447,9 @@ export function ScenariosPage() {
                               onClick={() => toggleSub(subKey)}
                               className="w-full flex items-center justify-between px-4 py-2 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-600 transition-colors">
                               <span>{fmt(sub)} <span className="font-normal text-slate-400">({items.length})</span></span>
-                              <span>{subCollapsed ? '▶' : '▼'}</span>
+                              <span className="text-slate-400">
+                                {subCollapsed ? <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronDownIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                              </span>
                             </button>
 
                             {!subCollapsed && items.map((s, i) => (
@@ -441,7 +466,7 @@ export function ScenariosPage() {
                                       s.channel === 'both'  ? 'bg-green-100 text-green-700' :
                                                               'bg-blue-100 text-blue-700'
                                     }`}>
-                                      {s.channel === 'both' ? '🔀' : s.channel === 'voice' ? '🎤' : '💬'} {s.channel}
+                                      {s.channel === 'both' ? 'Both' : s.channel === 'voice' ? 'Voice' : 'Chat'}
                                     </span>
                                     <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full font-semibold ${
                                       (s.lifecycle_status ?? 'active') === 'deprecated'
@@ -567,13 +592,21 @@ export function ScenariosPage() {
                   disabled={runState === 'running' || !supportedChannels(provider).includes('chat')}
                   onClick={() => startRun(selected, 'chat')}
                   className="btn-primary flex-1 disabled:opacity-50">
-                  {runState === 'running' ? '⏳ Running…' : '💬 Chat'}
+                  {runState === 'running' ? 'Running…' : (
+                    <span className="inline-flex items-center gap-1">
+                      <RunChatIcon className="h-4 w-4" aria-hidden="true" />
+                      Chat
+                    </span>
+                  )}
                 </button>
                 <button
                   disabled={runState === 'running' || !supportedChannels(provider).includes('voice')}
                   onClick={() => startRun(selected, 'voice')}
                   className="btn-secondary flex-1 disabled:opacity-50">
-                  🎤 Voice
+                  <span className="inline-flex items-center gap-1">
+                    <RunVoiceIcon className="h-4 w-4" aria-hidden="true" />
+                    Voice
+                  </span>
                 </button>
                 {supportedChannels(provider).includes('voice') && (
                   <button
@@ -581,14 +614,22 @@ export function ScenariosPage() {
                     onClick={() => void startBothRun(selected)}
                     title="Run on Chat then Voice sequentially"
                     className="px-3 py-2 text-sm font-medium border-2 border-purple-300 text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 disabled:opacity-50 transition-colors flex-1">
-                    {runState === 'running' ? '⏳ Running…' : '🔀 Both'}
+                    {runState === 'running' ? 'Running…' : (
+                      <span className="inline-flex items-center gap-1">
+                        <RunMarkerIcon className="h-4 w-4" aria-hidden="true" />
+                        Both
+                      </span>
+                    )}
                   </button>
                 )}
                 <button
                   onClick={() => setBuilder({ mode: 'edit', scenario: selected })}
                   className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
                   title="Edit this scenario">
-                  ✏️ Edit
+                  <span className="inline-flex items-center gap-1">
+                    <RunMarkerIcon className="h-4 w-4" aria-hidden="true" />
+                    Edit
+                  </span>
                 </button>
               </div>
 
@@ -599,7 +640,12 @@ export function ScenariosPage() {
                   {runState === 'running' && <div className="animate-pulse text-slate-400">…</div>}
                 </div>
               )}
-              {runError && <p className="text-sm text-red-600">⚠ {runError}</p>}
+              {runError && (
+                <p className="inline-flex items-center gap-1 text-sm text-red-600">
+                  <RunFailIcon className="h-4 w-4" aria-hidden="true" />
+                  {runError}
+                </p>
+              )}
             </div>
           ) : (
             <div className="card flex items-center justify-center h-48 text-slate-400 text-sm">

@@ -4,6 +4,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
 import type { Turn } from '../../types/transcript.js';
+import { RunAgentIcon, RunFailIcon, RunMarkerIcon, RunPassIcon } from '../components/icons.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -213,7 +214,8 @@ function ConversationTurn({ turn }: { turn: Turn }) {
     return (
       <div className="flex justify-center my-2">
         <span className="px-3 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium border border-slate-200">
-          📋 {extractMarkerLabel(trimmed)}
+          <RunMarkerIcon className="mr-1 inline h-3 w-3 align-[-0.15em]" aria-hidden="true" />
+          {extractMarkerLabel(trimmed)}
         </span>
       </div>
     );
@@ -436,7 +438,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
               {turns.length === 0 ? (
                 review.run === null || review.run === undefined ? (
                   <div className="flex flex-col items-center justify-center h-full text-center py-10">
-                    <span className="text-3xl mb-2">🗑️</span>
+                    <RunFailIcon className="mb-2 h-8 w-8 text-slate-300" aria-hidden="true" />
                     <p className="text-sm font-medium text-slate-700">Transcript unavailable</p>
                     <p className="mt-1 text-xs text-slate-500">The run associated with this review was deleted.</p>
                   </div>
@@ -465,7 +467,12 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${review.evalResult.passed ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70' : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/70'}`}>
-                      {review.evalResult.passed ? '✓ PASS' : '✗ FAIL'}
+                      <span className={`inline-flex items-center gap-1 ${review.evalResult.passed ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {review.evalResult.passed
+                          ? <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                          : <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                        {review.evalResult.passed ? 'PASS' : 'FAIL'}
+                      </span>
                     </span>
                     {review.evalResult.scenarioType && (
                       <span className="text-xs text-slate-600 bg-white px-2.5 py-1 rounded-full capitalize ring-1 ring-slate-200">
@@ -481,7 +488,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
               {review.evalResult.recommendation && (
                 <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/80 p-4">
                   <div className="mb-1.5 flex items-center gap-1.5">
-                    <span className="text-xs">🧠</span>
+                    <RunAgentIcon className="h-3.5 w-3.5" aria-hidden="true" />
                     <span className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-700">AI Reasoning</span>
                   </div>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-indigo-950">
@@ -814,7 +821,9 @@ export function ReviewQueuePage() {
                       {r.evalResult.overallScore.toFixed(1)}
                     </span>
                     <span className={`ml-1.5 text-xs font-semibold ${r.evalResult.passed ? 'text-green-600' : 'text-red-500'}`}>
-                      {r.evalResult.passed ? '✓' : '✗'}
+                      {r.evalResult.passed
+                        ? <RunPassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        : <RunFailIcon className="h-3.5 w-3.5" aria-hidden="true" />}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -856,7 +865,7 @@ export function ReviewQueuePage() {
                           className="rounded-md px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors disabled:opacity-40"
                           title="Remove from queue"
                         >
-                          ✕
+                          <RunFailIcon className="h-4 w-4" aria-hidden="true" />
                         </button>
                       )}
                     </div>
