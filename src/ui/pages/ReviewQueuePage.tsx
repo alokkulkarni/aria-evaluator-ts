@@ -280,7 +280,6 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
         };
         const r = { ...data.review, run: data.run ?? data.review.run };
         setReview(r);
-        setStatusDraft(r.status);
         setScoreDraft(r.scoreOverride !== null ? String(r.scoreOverride) : '');
         setPassDraft(r.passedOverride !== null ? (r.passedOverride ? 'pass' : 'fail') : '');
         setNotesDraft(r.notes ?? '');
@@ -289,6 +288,23 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
           const dims = JSON.parse(r.evalResult.dimensionScores) as Record<string, unknown>;
           setExpandedDims(new Set(Object.keys(dims)));
         } catch { /* ignore */ }
+
+        // Auto-transition pending → in_review when reviewer opens the modal
+        if (r.status === 'pending') {
+          try {
+            await apiFetch(`/api/reviews/${r.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'in_review' }),
+            });
+            setStatusDraft('in_review');
+          } catch {
+            // If transition fails just show current status — reviewer can still try to save
+            setStatusDraft(r.status);
+          }
+        } else {
+          setStatusDraft(r.status);
+        }
       } catch (err) {
         setLoadError((err as Error).message);
       } finally {
@@ -537,8 +553,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 value={statusDraft}
                 onChange={(e) => setStatusDraft(e.target.value as ReviewStatus)}
               >
-                <option value="pending">Pending</option>
-                <option value="in_review">In Review</option>
+                <option value="in_review">In Review (not finalised)</option>
                 <option value="approved">Approved (AI correct)</option>
                 <option value="overridden">Overridden (human score)</option>
                 <option value="rejected">Rejected (exclude from calibration)</option>
