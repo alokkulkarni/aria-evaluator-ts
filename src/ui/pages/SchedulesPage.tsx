@@ -178,39 +178,47 @@ export function SchedulesPage() {
   }
 
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">⏱ Schedules</h1>
+    <div className="space-y-6 max-w-7xl mx-auto px-4 py-4">
+      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Automation</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Schedules</h1>
+          <p className="text-sm leading-6 text-slate-200/80">Manage recurring evaluation runs and watch upcoming activity.</p>
+        </div>
+      </section>
+
+      <div className="flex justify-between items-center gap-4">
+        <h1 className="text-xl font-semibold text-slate-900">⏱ Schedules</h1>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          className="btn-primary px-4 py-2"
         >
           {showCreateForm ? 'Cancel' : '+ New Schedule'}
         </button>
       </div>
 
       {showCreateForm && (
-        <div className="bg-white p-4 rounded-lg border mb-6 space-y-4">
-          <h2 className="text-lg font-semibold">Create New Schedule</h2>
-          <div className="grid grid-cols-2 gap-4">
+        <div className="card space-y-4">
+          <h2 className="text-lg font-semibold text-slate-900">Create New Schedule</h2>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <input
               type="text"
               placeholder="Schedule name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="border rounded px-3 py-2"
+              className="h-11"
             />
             <input
               type="text"
               placeholder="Description (optional)"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="border rounded px-3 py-2"
+              className="h-11"
             />
             <select
               value={formData.frequency}
               onChange={(e) => setFormData({ ...formData, frequency: e.target.value as any })}
-              className="border rounded px-3 py-2"
+              className="h-11"
             >
               {FREQUENCIES.map((f) => (
                 <option key={f} value={f}>
@@ -226,7 +234,7 @@ export function SchedulesPage() {
                 placeholder="Hour"
                 value={formData.hour}
                 onChange={(e) => setFormData({ ...formData, hour: parseInt(e.target.value, 10) })}
-                className="border rounded px-3 py-2 w-24"
+                className="h-11 w-24"
               />
               <input
                 type="number"
@@ -235,14 +243,14 @@ export function SchedulesPage() {
                 placeholder="Minute"
                 value={formData.minute}
                 onChange={(e) => setFormData({ ...formData, minute: parseInt(e.target.value, 10) })}
-                className="border rounded px-3 py-2 w-24"
+                className="h-11 w-24"
               />
             </div>
             {formData.frequency === 'weekly' && (
               <select
                 value={formData.dayOfWeek}
                 onChange={(e) => setFormData({ ...formData, dayOfWeek: parseInt(e.target.value, 10) })}
-                className="border rounded px-3 py-2"
+                className="h-11"
               >
                 {DAYS.map((day, idx) => (
                   <option key={idx} value={idx}>
@@ -254,7 +262,7 @@ export function SchedulesPage() {
             <select
               value={formData.timezone}
               onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-              className="border rounded px-3 py-2"
+              className="h-11"
             >
               <option value="America/New_York">America/New_York</option>
               <option value="America/Chicago">America/Chicago</option>
@@ -266,7 +274,7 @@ export function SchedulesPage() {
             <select
               value={formData.provider}
               onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-              className="border rounded px-3 py-2"
+              className="h-11"
             >
               <option value="connect">Connect</option>
               <option value="lex">Lex</option>
@@ -284,39 +292,39 @@ export function SchedulesPage() {
           </div>
           <button
             onClick={createSchedule}
-            className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+            className="btn-primary w-full justify-center"
           >
             Create Schedule
           </button>
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid gap-6 lg:grid-cols-3">
         {/* Schedules List */}
-        <div className="col-span-2 bg-white rounded-lg border">
-          <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">Schedules ({schedules.length})</h2>
+        <div className="card lg:col-span-2 p-0 overflow-hidden">
+          <div className="p-4 border-b border-slate-100">
+            <h2 className="text-lg font-semibold text-slate-900">Schedules ({schedules.length})</h2>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
             {schedules.length === 0 ? (
-              <div className="p-4 text-gray-500">No schedules yet</div>
+              <div className="p-4 text-slate-500">No schedules yet</div>
             ) : (
               schedules.map((schedule) => (
                 <div
                   key={schedule.id}
                   onClick={() => setSelectedSchedule(schedule)}
-                  className={`p-4 cursor-pointer hover:bg-gray-50 ${
-                    selectedSchedule?.id === schedule.id ? 'bg-blue-50' : ''
+                  className={`p-4 cursor-pointer hover:bg-slate-50 transition-colors ${
+                    selectedSchedule?.id === schedule.id ? 'bg-blue-50/70 border-l-4 border-blue-500' : ''
                   }`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <h3 className="font-semibold">{schedule.name}</h3>
-                      <p className="text-sm text-gray-600">{schedule.description || 'No description'}</p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-sm text-slate-600">{schedule.description || 'No description'}</p>
+                      <p className="text-xs text-slate-500 mt-1">
                         {formatFrequency(schedule.frequency, schedule.hour, schedule.minute, schedule.dayOfWeek)}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-slate-500">
                         Next: {formatDateTime(schedule.nextRunAt)}
                       </p>
                     </div>
@@ -331,25 +339,25 @@ export function SchedulesPage() {
         </div>
 
         {/* Schedule Details and Recent Runs */}
-        <div className="bg-white rounded-lg border">
+        <div className="card p-0 overflow-hidden">
           {selectedSchedule ? (
             <>
-              <div className="p-4 border-b">
-                <h2 className="text-lg font-semibold">Details</h2>
+              <div className="p-4 border-b border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">Details</h2>
               </div>
               <div className="p-4 space-y-3">
                 <div>
-                  <p className="text-xs text-gray-600">Status</p>
+                  <p className="text-xs text-slate-600">Status</p>
                   <p className="font-semibold">{selectedSchedule.status}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-600">Last Run</p>
+                  <p className="text-xs text-slate-600">Last Run</p>
                   <p className="font-semibold text-sm">
                     {selectedSchedule.lastRunAt ? formatDateTime(selectedSchedule.lastRunAt) : 'Never'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-600">Failures</p>
+                  <p className="text-xs text-slate-600">Failures</p>
                   <p className="font-semibold">
                     {selectedSchedule.failureCount} / {selectedSchedule.maxFailures}
                   </p>
@@ -357,38 +365,38 @@ export function SchedulesPage() {
                 <div className="pt-3 space-y-2">
                   <button
                     onClick={() => triggerNow(selectedSchedule.id)}
-                    className="w-full px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
+                    className="btn-primary w-full justify-center"
                   >
                     ▶ Run Now
                   </button>
                   {selectedSchedule.status === 'active' ? (
                     <button
                       onClick={() => pauseSchedule(selectedSchedule.id)}
-                      className="w-full px-3 py-2 bg-yellow-500 text-white text-sm rounded hover:bg-yellow-600"
+                      className="btn-secondary w-full justify-center"
                     >
                       ⏸ Pause
                     </button>
                   ) : (
                     <button
                       onClick={() => resumeSchedule(selectedSchedule.id)}
-                      className="w-full px-3 py-2 bg-green-500 text-white text-sm rounded hover:bg-green-600"
+                      className="btn-primary w-full justify-center"
                     >
                       ▶ Resume
                     </button>
                   )}
                   <button
                     onClick={() => deleteSchedule(selectedSchedule.id)}
-                    className="w-full px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600"
+                    className="btn-danger w-full justify-center"
                   >
                     🗑 Delete
                   </button>
                 </div>
 
                 <div className="pt-4 border-t">
-                  <h3 className="text-sm font-semibold mb-2">Recent Runs ({scheduleRuns.length})</h3>
+                  <h3 className="text-sm font-semibold mb-2 text-slate-900">Recent Runs ({scheduleRuns.length})</h3>
                   <div className="space-y-1 max-h-32 overflow-y-auto text-xs">
                     {scheduleRuns.length === 0 ? (
-                      <p className="text-gray-500">No runs yet</p>
+                      <p className="text-slate-500">No runs yet</p>
                     ) : (
                       scheduleRuns.map((run) => (
                         <div key={run.id} className="flex items-center justify-between">
@@ -397,7 +405,7 @@ export function SchedulesPage() {
                               {run.status}
                             </span>
                           </span>
-                          <span className="text-gray-600">{new Date(run.triggeredAt).toLocaleTimeString()}</span>
+                          <span className="text-slate-600">{new Date(run.triggeredAt).toLocaleTimeString()}</span>
                         </div>
                       ))
                     )}
@@ -406,7 +414,7 @@ export function SchedulesPage() {
               </div>
             </>
           ) : (
-            <div className="p-4 text-gray-500">Select a schedule to see details</div>
+            <div className="p-4 text-slate-500">Select a schedule to see details</div>
           )}
         </div>
       </div>

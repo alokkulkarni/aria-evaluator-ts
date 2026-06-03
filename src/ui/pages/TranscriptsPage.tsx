@@ -61,10 +61,13 @@ export function TranscriptsPage({ initialFilename }: { initialFilename?: string 
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900">Transcripts</h2>
-        <p className="text-slate-500 mt-1">{files.length} saved transcript(s)</p>
-      </div>
+      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Conversation history</p>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Transcripts</h2>
+          <p className="text-sm leading-6 text-slate-200/80">{files.length} saved transcript(s)</p>
+        </div>
+      </section>
 
       <div className="grid md:grid-cols-5 gap-4">
         {/* ── File List ── */}
@@ -78,12 +81,12 @@ export function TranscriptsPage({ initialFilename }: { initialFilename?: string 
               <div key={f.filename} onClick={() => loadTranscript(f.filename)}
                 className={`card cursor-pointer transition-all text-sm ${
                   selected?.id && f.filename.includes(selected.id.slice(0, 8))
-                    ? 'ring-2 ring-[#0D2A66]' : 'hover:shadow-md'
+                    ? 'ring-2 ring-blue-500' : 'hover:shadow-md'
                 }`}>
                 <p className="font-medium truncate">{f.filename.replace('.json', '').replace(/_/g, ' ')}</p>
                 {f.runScenarioName && (
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-xs text-[#0D2A66] font-medium truncate">
+                    <span className="text-xs text-blue-700 font-medium truncate">
                       🏃 {f.runScenarioName}
                     </span>
                     <RunBadge status={f.runStatus} />
@@ -125,7 +128,7 @@ export function TranscriptsPage({ initialFilename }: { initialFilename?: string 
                     <div className="text-xl flex-shrink-0">{t.role === 'customer' ? '👤' : '🤖'}</div>
                     <div className={`rounded-xl px-4 py-3 text-sm max-w-[78%] leading-relaxed ${
                       t.role === 'customer'
-                        ? 'bg-[#0D2A66] text-white'
+                        ? 'bg-slate-950 text-white'
                         : 'bg-slate-100 text-slate-900'
                     }`}>
                       {t.content}
@@ -147,4 +150,3 @@ export function TranscriptsPage({ initialFilename }: { initialFilename?: string 
     </div>
   );
 }
-

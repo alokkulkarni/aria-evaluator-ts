@@ -218,7 +218,7 @@ function ConversationTurn({ turn }: { turn: Turn }) {
   return (
     <div className={`flex ${isAgent ? 'justify-start' : 'justify-end'} gap-2`}>
       {isAgent && (
-        <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+        <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
           A
         </div>
       )}
@@ -589,7 +589,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
                   <select
-                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={statusDraft}
                     onChange={(e) => setStatusDraft(e.target.value as ReviewStatus)}
                   >
@@ -611,7 +611,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                     max={10}
                     step={0.5}
                     placeholder="Leave empty to use AI score"
-                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={scoreDraft}
                     onChange={(e) => setScoreDraft(e.target.value)}
                   />
@@ -621,7 +621,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Verdict</label>
                   <select
-                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={passDraft}
                     onChange={(e) => setPassDraft(e.target.value)}
                   >
@@ -637,7 +637,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
                 <textarea
                   rows={2}
-                  className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                  className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   placeholder="Reviewer notes (optional)…"
                   value={notesDraft}
                   onChange={(e) => setNotesDraft(e.target.value)}
@@ -656,7 +656,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 <button
                   onClick={() => { void handleSave(); }}
                   disabled={saving}
-                  className="px-4 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  className="btn-primary px-4 py-1.5 text-sm font-medium disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : 'Save Review'}
                 </button>
@@ -741,7 +741,7 @@ export function ReviewQueuePage() {
             onClick={() => handleFilterChange(s)}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
               statusFilter === s
-                ? 'bg-blue-600 text-white'
+                ? 'bg-slate-950 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -821,7 +821,7 @@ export function ReviewQueuePage() {
                         className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                           r.status === 'approved' || r.status === 'overridden' || r.status === 'rejected'
                             ? 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-                            : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100 ring-1 ring-blue-200'
                         }`}
                       >
                         {r.status === 'approved' || r.status === 'overridden' || r.status === 'rejected' ? 'View' : 'Review'}

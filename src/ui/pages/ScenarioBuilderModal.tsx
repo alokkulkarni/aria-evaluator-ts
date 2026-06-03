@@ -368,24 +368,24 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 backdrop-blur-sm overflow-hidden">
-      <div className="flex w-full max-w-6xl m-4 bg-slate-50 rounded-2xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/60 backdrop-blur-sm overflow-hidden">
+      <div className="flex w-full max-w-6xl m-4 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 shadow-[0_24px_70px_rgba(15,23,42,0.18)]">
 
         {/* ── Left: form ─────────────────────────────────────────────────────── */}
         <div className="flex flex-col w-[58%] border-r border-slate-200">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-950 text-white">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-lg font-bold text-white">
                 {mode === 'create' ? '✨ New Scenario' : '✏️ Edit Scenario'}
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="mt-0.5 text-xs text-slate-300">
                 {mode === 'create'
                   ? 'Define a new test scenario. Fill in the fields — the YAML preview updates live.'
                   : `Editing: ${scenario?.filePath ?? ''}`}
               </p>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none p-1">✕</button>
+            <button onClick={onClose} className="p-1 text-xl leading-none text-slate-300 hover:text-white">✕</button>
           </div>
 
           {/* Form body */}
@@ -414,7 +414,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                       key={type}
                       onClick={() => applyTypeDefaults(type)}
                       className={`text-left p-3 rounded-xl border-2 transition-all ${form.scenarioType === type
-                        ? 'border-blue-600 bg-blue-50'
+                        ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20'
                         : 'border-slate-200 bg-white hover:border-slate-300'}`}
                     >
                       <div className="text-xl mb-1">{icon}</div>
@@ -513,10 +513,9 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                       type="button"
                       onClick={() => set('mode', value)}
                       className={`text-left p-3 rounded-xl border-2 transition-all space-y-2 ${
-                        form.mode === value
-                          ? 'border-blue-600 bg-blue-50'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
+                       form.mode === value
+                         ? 'border-blue-600 bg-blue-50'
+                         : 'border-slate-200 bg-white hover:border-slate-300'}`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xl">{icon}</span>
@@ -652,7 +651,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                   ))}
                 </div>
                 <button onClick={addTurn}
-                  className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors">
+                  className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-500 hover:border-blue-500 hover:text-blue-700 transition-colors">
                   + Add Turn
                 </button>
                 {form.mode === 'script' && (
@@ -781,7 +780,7 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-5 py-2 text-sm font-semibold bg-[#0D2A66] text-white rounded-lg hover:bg-blue-900 disabled:opacity-50 ml-auto"
+              className="btn-primary px-5 py-2 text-sm font-semibold disabled:opacity-50 ml-auto"
             >
               {saving ? '⏳ Saving…' : mode === 'create' ? '✨ Create Scenario' : '💾 Save Changes'}
             </button>

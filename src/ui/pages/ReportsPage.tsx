@@ -41,10 +41,13 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900">Reports</h2>
-        <p className="text-slate-500 mt-1">{reports.length} evaluation report(s)</p>
-      </div>
+      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Shared outputs</p>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reports</h2>
+          <p className="text-sm leading-6 text-slate-200/80">{reports.length} evaluation report(s)</p>
+        </div>
+      </section>
 
       <div className="grid md:grid-cols-4 gap-4">
         {/* ── Report List ── */}
@@ -60,14 +63,14 @@ export function ReportsPage() {
                 <div key={r.filename}
                   onClick={() => setSelectedUrl(url)}
                   className={`card cursor-pointer transition-all text-sm ${
-                    selectedUrl === url ? 'ring-2 ring-[#0D2A66]' : 'hover:shadow-md'
+                  selectedUrl === url ? 'ring-2 ring-blue-500' : 'hover:shadow-md'
                   }`}>
                   <p className="font-medium truncate">
                     📊 {r.filename.replace('report_', '').replace('.html', '')}
                   </p>
                   {r.runScenarioName && (
                     <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs text-[#0D2A66] font-medium truncate">
+                      <span className="text-xs text-blue-700 font-medium truncate">
                         🏃 {r.runScenarioName}
                       </span>
                       <RunBadge status={r.runStatus} />

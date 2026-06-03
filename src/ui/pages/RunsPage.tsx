@@ -424,7 +424,7 @@ function LiveTranscriptPanel({ logs, isLive }: { logs: string[]; isLive: boolean
                     <div className={`rounded-2xl px-3 py-2 text-sm leading-snug max-w-[82%] ${
                       isAgent
                         ? 'bg-slate-100 text-slate-800 rounded-bl-sm'
-                        : 'bg-[#0D2A66] text-white rounded-br-sm'
+                        : 'bg-slate-950 text-white rounded-br-sm'
                     }`}>
                       {t.content}
                     </div>
@@ -512,7 +512,7 @@ function TranscriptChatView({ url }: { url: string }) {
             <div key={i} className={`flex gap-3 ${isAgent ? '' : 'flex-row-reverse'}`}>
               <span className="text-2xl flex-shrink-0 self-end">{isAgent ? '🤖' : '👤'}</span>
               <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                isAgent ? 'bg-slate-100 text-slate-800 rounded-bl-sm' : 'bg-[#0D2A66] text-white rounded-br-sm'
+                isAgent ? 'bg-slate-100 text-slate-800 rounded-bl-sm' : 'bg-slate-950 text-white rounded-br-sm'
               }`}>
                 <p>{t.content}</p>
                 {t.durationMs && (
@@ -614,7 +614,7 @@ function ReportView({ url }: { url: string }) {
           {
             label: qualityResults.length > 0 ? 'Quality Score' : 'Overall Score',
             value: `${avgScore.toFixed(1)}/10`,
-            color: 'text-[#0D2A66]',
+            color: 'text-slate-900',
           },
           { label: 'Passed', value: `${passed}/${results.length}`, color: 'text-green-600' },
           { label: 'Generated', value: data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '—', color: 'text-slate-600' },
@@ -691,7 +691,7 @@ function ArtifactPreviewModal({
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-xl shadow-2xl flex flex-col w-full max-w-3xl h-[90vh]">
+      <div className="rounded-3xl border border-slate-200/80 bg-white/95 shadow-[0_24px_70px_rgba(15,23,42,0.18)] flex flex-col w-full max-w-3xl h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
           <p className="text-sm font-semibold text-slate-800 truncate max-w-[75%]" title={label}>{label}</p>
@@ -842,7 +842,7 @@ function NewRunModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[85vh]">
+      <div className="rounded-3xl border border-slate-200/80 bg-white/95 shadow-[0_24px_70px_rgba(15,23,42,0.18)] w-full max-w-2xl mx-4 flex flex-col max-h-[85vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="text-lg font-bold text-slate-900">New Evaluation Run</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
@@ -855,7 +855,7 @@ function NewRunModal({
             placeholder="Search scenarios…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D2A66]"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <p className="text-xs text-slate-500 mt-2">
             Select one or more scenarios. Voice runs selected scenarios in a single WebRTC session.
@@ -993,7 +993,7 @@ function NewRunModal({
                   title={isChatOnlyBot(p) ? 'Chat only — this bot provider does not support voice' : undefined}
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors flex items-center gap-1 ${
                     provider === p
-                      ? 'bg-[#0D2A66] text-white border-[#0D2A66]'
+                      ? 'bg-slate-950 text-white border-slate-950 shadow-sm'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
@@ -1019,7 +1019,7 @@ function NewRunModal({
                   onClick={() => setChannel(c)}
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                     channel === c
-                      ? 'bg-[#0D2A66] text-white border-[#0D2A66]'
+                      ? 'bg-slate-950 text-white border-slate-950 shadow-sm'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
@@ -1246,10 +1246,17 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
       )}
 
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Run operations</p>
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Evaluation Runs</h2>
+            <p className="text-sm leading-6 text-slate-200/80">{runs.length} visible run(s)</p>
+          </div>
+        </section>
+
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Evaluation Runs</h2>
-            <p className="text-slate-500 mt-1">{runs.length} visible run(s)</p>
+            <h2 className="text-xl font-semibold text-slate-900 md:hidden">Evaluation Runs</h2>
           </div>
           <button onClick={() => openNewRun()} className="btn-primary">
             + New Run
@@ -1271,7 +1278,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                   key={r.id}
                   onClick={() => { void selectRun(r); }}
                   className={`card cursor-pointer transition-all text-sm ${
-                    selected?.id === r.id ? 'ring-2 ring-[#0D2A66]' : 'hover:shadow-md'
+                    selected?.id === r.id ? 'ring-2 ring-blue-500' : 'hover:shadow-md'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">

@@ -656,7 +656,7 @@ function SettingsField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
         autoComplete={field.sensitive ? 'off' : undefined}
-        className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D2A66] ${
+        className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
           field.required && !value
             ? 'border-orange-300 bg-orange-50/30'
             : 'border-slate-200'
@@ -830,14 +830,16 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900">Settings</h2>
-        <p className="text-slate-500 mt-1">
-          Configure providers and runtime parameters. Changes take effect immediately — no redeploy required.
-          Fields marked <span className="text-red-500 font-bold">*</span> are required for the provider to function.
-        </p>
-      </div>
+      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Administration</p>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h2>
+          <p className="text-sm leading-6 text-slate-200/80">
+            Configure providers and runtime parameters. Changes take effect immediately — no redeploy required.
+            Fields marked <span className="font-bold text-cyan-200">*</span> are required for the provider to function.
+          </p>
+        </div>
+      </section>
 
       {/* Provider Defaults */}
       <div className="card">
@@ -851,7 +853,7 @@ export function SettingsPage() {
           <select
             value={settings['EVAL_PROVIDER_DEFAULT'] ?? 'connect'}
             onChange={(e) => updateValue('EVAL_PROVIDER_DEFAULT', e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0D2A66]"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {PROVIDER_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -862,7 +864,7 @@ export function SettingsPage() {
 
       {/* Providers group */}
       <div className="card p-0 overflow-hidden">
-        <div className="px-5 py-4 bg-[#0D2A66] text-white">
+        <div className="px-5 py-4 bg-slate-950 text-white">
           <div className="flex items-center gap-2">
             <span className="text-lg">🔌</span>
             <div>

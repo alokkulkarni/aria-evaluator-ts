@@ -316,15 +316,22 @@ export function ScenariosPage() {
       />
     )}
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Scenario library</p>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Scenarios</h2>
+          <p className="text-sm leading-6 text-slate-200/80">{filtered.length} scenario(s) available</p>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Scenarios</h2>
-          <p className="text-slate-500 mt-1">{filtered.length} scenario(s) available</p>
+          <h2 className="text-xl font-semibold text-slate-900 md:hidden">Scenarios</h2>
         </div>
         <div className="flex gap-2 items-center">
           <button
             onClick={() => setBuilder({ mode: 'create' })}
-            className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-[#0D2A66] text-white hover:bg-blue-900 transition-colors">
+            className="btn-primary px-4 py-2 text-sm font-semibold">
             ✨ New Scenario
           </button>
           <div className="flex gap-1">
@@ -332,7 +339,7 @@ export function ScenariosPage() {
               <button key={p} onClick={() => setProvider(p)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                   provider === p
-                    ? 'bg-[#0D2A66] text-white border-[#0D2A66]'
+                    ? 'bg-slate-950 text-white border-slate-950 shadow-sm'
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}>
                 {p}
@@ -343,7 +350,7 @@ export function ScenariosPage() {
             <button key={c} onClick={() => setChannelFilter(c)}
               className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                 channelFilter === c
-                  ? 'bg-[#0D2A66] text-white border-[#0D2A66]'
+                  ? 'bg-slate-950 text-white border-slate-950 shadow-sm'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}>
               {c === 'all' ? 'All' : c === 'chat' ? '💬 Chat' : '🎤 Voice'}
@@ -392,7 +399,7 @@ export function ScenariosPage() {
               const catCollapsed = collapsedCategories.has(cat);
               const totalInCat = Array.from(subMap.values()).reduce((a, v) => a + v.length, 0);
               return (
-                <div key={cat} className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div key={cat} className="rounded-2xl border border-slate-200/80 overflow-hidden shadow-[0_12px_30px_rgba(15,23,42,0.06)] bg-white/90">
                   {/* Category header */}
                   <button
                     onClick={() => toggleCat(cat)}
@@ -424,7 +431,7 @@ export function ScenariosPage() {
                               <div key={i}
                                 onClick={() => setSelected(s)}
                                 className={`px-4 py-3 cursor-pointer transition-all hover:bg-slate-50 ${
-                                  selected === s ? 'bg-blue-50 border-l-4 border-[#0D2A66]' : ''
+                                  selected === s ? 'bg-blue-50 border-l-4 border-blue-500' : ''
                                 }`}>
                                 <div className="flex items-start justify-between">
                                   <p className="font-medium text-slate-800 text-sm leading-snug pr-2">{s.name}</p>
@@ -485,7 +492,7 @@ export function ScenariosPage() {
                   ))}
                 </tbody>
               </table>
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Management metadata</p>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                   <input
@@ -511,7 +518,7 @@ export function ScenariosPage() {
                   <button
                     onClick={() => void saveScenarioMetadata()}
                     disabled={metaSaving || !selected.scenario_id}
-                    className="rounded bg-[#0D2A66] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                    className="btn-primary px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                   >
                     {metaSaving ? 'Saving…' : 'Save metadata'}
                   </button>
