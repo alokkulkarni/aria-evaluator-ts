@@ -2,13 +2,14 @@ import React, { useCallback, useState } from 'react';
 import { Dashboard } from './pages/Dashboard.js';
 import { ScenariosPage } from './pages/ScenariosPage.js';
 import { RunsPage } from './pages/RunsPage.js';
+import { ReviewQueuePage } from './pages/ReviewQueuePage.js';
 import { TranscriptsPage } from './pages/TranscriptsPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { apiFetch } from './lib/api.js';
 
-type Page = 'dashboard' | 'scenarios' | 'runs' | 'transcripts' | 'reports' | 'settings';
+type Page = 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'settings';
 interface AuthenticatedUser {
   id: string;
   username: string;
@@ -37,18 +38,19 @@ function LogoIcon() {
 }
 
 const NAV: { id: Page; label: string; icon: string }[] = [
-  { id: 'dashboard',   label: 'Dashboard',   icon: '🏠' },
-  { id: 'scenarios',   label: 'Scenarios',   icon: '📋' },
-  { id: 'runs',        label: 'Runs',        icon: '▶️'  },
-  { id: 'transcripts', label: 'Transcripts', icon: '💬' },
-  { id: 'reports',     label: 'Reports',     icon: '📊' },
-  { id: 'settings',    label: 'Settings',    icon: '⚙️' },
+  { id: 'dashboard',    label: 'Dashboard',     icon: '🏠' },
+  { id: 'scenarios',    label: 'Scenarios',     icon: '📋' },
+  { id: 'runs',         label: 'Runs',          icon: '▶️'  },
+  { id: 'review-queue', label: 'Review Queue',  icon: '🔍' },
+  { id: 'transcripts',  label: 'Transcripts',   icon: '💬' },
+  { id: 'reports',      label: 'Reports',       icon: '📊' },
+  { id: 'settings',     label: 'Settings',      icon: '⚙️' },
 ];
 
 function getInitialPage(): Page {
   if (typeof window === 'undefined') return 'dashboard';
   const page = new URLSearchParams(window.location.search).get('page');
-  if (page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'transcripts' || page === 'reports' || page === 'settings') {
+  if (page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'settings') {
     return page;
   }
   return 'dashboard';
@@ -129,12 +131,13 @@ export default function App() {
 
       {/* ── Content ────────────────────────────────────────────────────────── */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        {page === 'dashboard'   && <Dashboard   onNavigate={setPage} onNewRun={handleNewRun} />}
-        {page === 'scenarios'   && <ScenariosPage />}
-        {page === 'runs'        && <RunsPage autoOpenModal={openRunModal} onModalAutoOpened={() => setOpenRunModal(false)} />}
-        {page === 'transcripts' && <TranscriptsPage initialFilename={initialTranscriptFile} />}
-        {page === 'reports'     && <ReportsPage />}
-        {page === 'settings'    && <SettingsPage />}
+        {page === 'dashboard'    && <Dashboard   onNavigate={setPage} onNewRun={handleNewRun} />}
+        {page === 'scenarios'    && <ScenariosPage />}
+        {page === 'runs'         && <RunsPage autoOpenModal={openRunModal} onModalAutoOpened={() => setOpenRunModal(false)} />}
+        {page === 'review-queue' && <ReviewQueuePage />}
+        {page === 'transcripts'  && <TranscriptsPage initialFilename={initialTranscriptFile} />}
+        {page === 'reports'      && <ReportsPage />}
+        {page === 'settings'     && <SettingsPage />}
       </main>
     </div>
   );

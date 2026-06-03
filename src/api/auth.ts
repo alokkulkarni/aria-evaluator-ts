@@ -331,6 +331,15 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
+export function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
+  const auth = getRequestAuth(req);
+  if (!auth || auth.role !== 'admin') {
+    res.status(403).json({ error: 'Admin authorization required' });
+    return;
+  }
+  next();
+}
+
 authRouter.get('/bootstrap-status', async (_req, res) => {
   try {
     const userCount = await prisma.user.count();

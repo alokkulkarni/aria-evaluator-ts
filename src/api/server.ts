@@ -16,6 +16,7 @@ import { appPaths, ensureManagedStateDirs, getStateLayoutWarnings } from '../run
 import { attachAuthContext, authRouter, requireAuth } from './auth.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { runsRouter } from './routes/runs.js';
+import { reviewsRouter } from './routes/reviews.js';
 import { transcriptsRouter } from './routes/transcripts.js';
 import { reportsRouter } from './routes/reports.js';
 import { settingsRouter } from './routes/settings.js';
@@ -112,6 +113,7 @@ app.use('/api', enforceTrustedOrigin);
 app.use('/api', requireAuth);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/runs', runsRouter);
+app.use('/api/reviews', reviewsRouter);
 app.use('/api/transcripts', transcriptsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/settings', settingsRouter);

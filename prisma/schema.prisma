@@ -24,6 +24,7 @@ model User {
   lastLoginAt  DateTime?
   sessions     AuthSession[]
   auditLogs    AuditLog[]
+  reviews      Review[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -170,6 +171,30 @@ model EvalResult {
   judgeModel      String
   scenarioType    String?  // 'security' | 'quality'
   createdAt       DateTime @default(now())
+  review          Review?
+}
+
+// ─── Review ───────────────────────────────────────────────────────────────────
+model Review {
+  id                     String      @id @default(cuid())
+  evalResultId           String      @unique
+  evalResult             EvalResult  @relation(fields: [evalResultId], references: [id], onDelete: Cascade)
+  runId                  String                  // denormalized for efficient queue queries
+  status                 String      @default("pending") // pending|in_review|approved|overridden|rejected
+  reviewedBy             String?
+  reviewer               User?       @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewedAt             DateTime?
+  scoreOverride          Float?                  // 0–10; null = use AI score
+  passedOverride         Boolean?                // null = use AI passed
+  notes                  String?
+  dimensionOverridesJson String?                 // JSON: Record<string, {score: number, notes: string}>
+  queuedAt               DateTime    @default(now())
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  @@index([runId])
+  @@index([status, queuedAt])
+  @@index([reviewedBy])
 }
 
 // ─── Report ───────────────────────────────────────────────────────────────────

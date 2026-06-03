@@ -251,6 +251,7 @@ function parseScenarioDocuments(content: string, options?: { enforceSingleDoc?: 
   });
 
   return { docs, details };
+}
 
 function walkYaml(dir: string): string[] {
   if (!existsSync(dir)) return [];
