@@ -5,6 +5,7 @@ import {
   DEFAULT_JUDGE_MODEL_ID,
   DEFAULT_JUDGE_SYSTEM_PROMPT,
   DEFAULT_JUDGE_TEMPERATURE,
+  JUDGE_GUARDRAILS,
   JUDGE_MODEL_GROUPS,
   isKnownJudgeModel,
 } from '../../shared/judge-config.js';
@@ -30,9 +31,13 @@ interface ProviderSectionDef {
 
 const JUDGE_MODEL_FIELD_KEY = 'JUDGE_MODEL_ID';
 const JUDGE_CUSTOM_MODEL_FIELD_KEY = 'JUDGE_CUSTOM_MODEL_ID';
+const JUDGE_USE_CUSTOM_MODEL_FIELD_KEY = 'JUDGE_USE_CUSTOM_MODEL_ID';
 const JUDGE_TEMPERATURE_FIELD_KEY = 'JUDGE_TEMPERATURE';
 const JUDGE_MAX_TOKENS_FIELD_KEY = 'JUDGE_MAX_TOKENS';
 const JUDGE_SYSTEM_PROMPT_FIELD_KEY = 'JUDGE_SYSTEM_PROMPT';
+
+const LEGACY_JUDGE_SYSTEM_PROMPT =
+  'You are a strict JSON API. Always respond with valid RFC 8259 JSON only — no markdown, no prose, no code fences. Escape all double-quote characters inside string values with \\". Do not use literal newlines or tabs inside string values.';
 
 interface GeneralSectionDef {
   id: string;
@@ -59,9 +64,12 @@ function normalizeJudgeSettings(settings: SettingsMap): SettingsMap {
   next[JUDGE_MODEL_FIELD_KEY] = modelId;
   next[JUDGE_TEMPERATURE_FIELD_KEY] = next[JUDGE_TEMPERATURE_FIELD_KEY]?.trim() || DEFAULT_JUDGE_TEMPERATURE;
   next[JUDGE_MAX_TOKENS_FIELD_KEY] = next[JUDGE_MAX_TOKENS_FIELD_KEY]?.trim() || DEFAULT_JUDGE_MAX_TOKENS;
-  next[JUDGE_SYSTEM_PROMPT_FIELD_KEY] = next[JUDGE_SYSTEM_PROMPT_FIELD_KEY]?.trim() || DEFAULT_JUDGE_SYSTEM_PROMPT;
-  if (!next[JUDGE_CUSTOM_MODEL_FIELD_KEY] && !isKnownJudgeModel(modelId)) {
-    next[JUDGE_CUSTOM_MODEL_FIELD_KEY] = modelId;
+  const prompt = next[JUDGE_SYSTEM_PROMPT_FIELD_KEY]?.trim();
+  next[JUDGE_SYSTEM_PROMPT_FIELD_KEY] =
+    !prompt || prompt === LEGACY_JUDGE_SYSTEM_PROMPT ? DEFAULT_JUDGE_SYSTEM_PROMPT : prompt;
+  const customModel = next[JUDGE_CUSTOM_MODEL_FIELD_KEY]?.trim() || '';
+  if (next[JUDGE_USE_CUSTOM_MODEL_FIELD_KEY] == null) {
+    next[JUDGE_USE_CUSTOM_MODEL_FIELD_KEY] = customModel ? 'true' : 'false';
   }
   return next;
 }
@@ -767,15 +775,22 @@ function JudgeLlmSection({
   settings: SettingsMap;
   onUpdate: (key: string, value: string) => void;
 }) {
+  const [open, setOpen] = useState(true);
   const modelId = settings[JUDGE_MODEL_FIELD_KEY] ?? DEFAULT_JUDGE_MODEL_ID;
-  const customModelId = settings[JUDGE_CUSTOM_MODEL_FIELD_KEY] ?? (isKnownJudgeModel(modelId) ? '' : modelId);
+  const useCustomModel = (settings[JUDGE_USE_CUSTOM_MODEL_FIELD_KEY] ?? 'false') === 'true';
+  const customModelId = settings[JUDGE_CUSTOM_MODEL_FIELD_KEY] ?? '';
   const temperature = settings[JUDGE_TEMPERATURE_FIELD_KEY] ?? DEFAULT_JUDGE_TEMPERATURE;
   const maxTokens = settings[JUDGE_MAX_TOKENS_FIELD_KEY] ?? DEFAULT_JUDGE_MAX_TOKENS;
   const systemPrompt = settings[JUDGE_SYSTEM_PROMPT_FIELD_KEY] ?? DEFAULT_JUDGE_SYSTEM_PROMPT;
+  const activeModel = useCustomModel && customModelId ? customModelId : modelId;
 
   return (
     <section className="card space-y-5">
-      <div className="flex items-start justify-between gap-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-start justify-between gap-4 text-left"
+      >
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Judge LLM</p>
           <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Model, temperature, and prompt</h3>
@@ -783,89 +798,150 @@ function JudgeLlmSection({
             Changes apply to the next run immediately. A custom model ID overrides the preset when filled.
           </p>
         </div>
-        <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white">
-          Bedrock
-        </span>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-            Preset model
-            <HintTooltip hint="Choose a common Amazon Bedrock text model. You can override it with a custom model ID below." />
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white">
+            Bedrock
           </span>
-          <select
-            value={isKnownJudgeModel(modelId) ? modelId : DEFAULT_JUDGE_MODEL_ID}
-            onChange={(e) => {
-              onUpdate(JUDGE_MODEL_FIELD_KEY, e.target.value);
-              onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, '');
-            }}
-          >
-            {JUDGE_MODEL_GROUPS.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.options.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            {open ? 'Collapse' : 'Expand'}
+          </span>
+        </div>
+      </button>
+
+      {open ? (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                Preset model
+                <HintTooltip hint="Choose a common Amazon Bedrock text model. You can override it with a custom model ID below." />
+              </span>
+              <select
+                value={isKnownJudgeModel(modelId) ? modelId : DEFAULT_JUDGE_MODEL_ID}
+                onChange={(e) => {
+                  onUpdate(JUDGE_MODEL_FIELD_KEY, e.target.value);
+                  onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, '');
+                }}
+              >
+                {JUDGE_MODEL_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </optgroup>
                 ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
+              </select>
+            </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-            Custom model ID
-            <HintTooltip hint="Optional. If filled, this exact Bedrock model ID or inference profile is used instead of the preset." />
-          </span>
-          <input
-            type="text"
-            value={customModelId}
-            onChange={(e) => onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, e.target.value)}
-            placeholder="Leave blank to use the preset model"
-          />
-        </label>
+            <label className="flex flex-col gap-1">
+              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                Custom model ID
+                <HintTooltip hint="Optional. Enable the checkbox to use an imported or custom Bedrock model ID instead of the preset." />
+              </span>
+              <label className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={useCustomModel}
+                  onChange={(e) => onUpdate(JUDGE_USE_CUSTOM_MODEL_FIELD_KEY, e.target.checked ? 'true' : 'false')}
+                />
+                Use custom model ID
+              </label>
+              <input
+                type="text"
+                value={customModelId}
+                onChange={(e) => onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, e.target.value)}
+                placeholder="Enter a Bedrock model ID"
+                readOnly={!useCustomModel}
+                title={useCustomModel ? 'Custom model ID' : 'Enable the checkbox to edit'}
+              />
+            </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-            Temperature
-            <HintTooltip hint="Lower values make the judge stricter and more deterministic. Defaults to 0." />
-          </span>
-          <input
-            type="number"
-            min="0"
-            max="2"
-            step="0.1"
-            value={temperature}
-            onChange={(e) => onUpdate(JUDGE_TEMPERATURE_FIELD_KEY, e.target.value)}
-          />
-        </label>
+            <label className="flex flex-col gap-1">
+              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                Temperature
+                <HintTooltip hint="Lower values make the judge stricter and more deterministic. Defaults to 0." />
+              </span>
+              <input
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                value={temperature}
+                onChange={(e) => onUpdate(JUDGE_TEMPERATURE_FIELD_KEY, e.target.value)}
+              />
+            </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-            Max tokens
-            <HintTooltip hint="Maximum output tokens for each judge call. Defaults to 2000." />
-          </span>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={maxTokens}
-            onChange={(e) => onUpdate(JUDGE_MAX_TOKENS_FIELD_KEY, e.target.value)}
-          />
-        </label>
-      </div>
+            <label className="flex flex-col gap-1">
+              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                Max tokens
+                <HintTooltip hint="Maximum output tokens for each judge call. Defaults to 2000." />
+              </span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={maxTokens}
+                onChange={(e) => onUpdate(JUDGE_MAX_TOKENS_FIELD_KEY, e.target.value)}
+              />
+            </label>
+          </div>
 
-      <label className="flex flex-col gap-1">
-        <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-          System prompt
-          <HintTooltip hint="The judge system prompt is editable here and will be used on the next run without a restart." />
-        </span>
-        <textarea
-          rows={14}
-          value={systemPrompt}
-          onChange={(e) => onUpdate(JUDGE_SYSTEM_PROMPT_FIELD_KEY, e.target.value)}
-          className="min-h-[280px] font-mono text-xs leading-6"
-        />
-      </label>
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 space-y-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Configured guardrails</p>
+              <p className="mt-1 text-xs text-slate-500">
+                These are part of the default system prompt and are sent to Bedrock on every judge call.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                The app also adds run-specific dimension instructions for each evaluation.
+              </p>
+            </div>
+            <ul className="space-y-1.5 text-sm text-slate-700">
+              {JUDGE_GUARDRAILS.map((rule) => (
+                <li key={rule} className="flex gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-cyan-500" />
+                  <span>{rule}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+              System prompt
+              <HintTooltip hint="This exact text is sent as the judge system prompt. It is editable and takes effect on the next run." />
+            </span>
+            <textarea
+              rows={14}
+              value={systemPrompt}
+              onChange={(e) => onUpdate(JUDGE_SYSTEM_PROMPT_FIELD_KEY, e.target.value)}
+              className="min-h-[280px] font-mono text-xs leading-6"
+            />
+          </label>
+        </>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Model</p>
+            <p className="mt-1 text-sm font-medium text-slate-900 truncate">{activeModel}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Temperature</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">{temperature}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Max tokens</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">{maxTokens}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Prompt</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">Configured</p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              {useCustomModel ? 'Custom override enabled' : 'Preset model in use'}
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

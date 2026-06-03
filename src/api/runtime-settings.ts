@@ -15,6 +15,7 @@ export const EDITABLE_SETTING_KEYS = [
   'EVAL_PROVIDER_DEFAULT',
   'JUDGE_MODEL_ID',
   'JUDGE_CUSTOM_MODEL_ID',
+  'JUDGE_USE_CUSTOM_MODEL_ID',
   'JUDGE_TEMPERATURE',
   'JUDGE_MAX_TOKENS',
   'JUDGE_SYSTEM_PROMPT',
@@ -183,7 +184,9 @@ export function getJudgeRuntimeConfig(): JudgeRuntimeConfig {
   const effective = getEffectiveSettings();
   const presetModelId = effective['JUDGE_MODEL_ID']?.trim() || DEFAULT_JUDGE_MODEL_ID;
   const customModelId = effective['JUDGE_CUSTOM_MODEL_ID']?.trim() || '';
-  const modelId = customModelId || presetModelId;
+  const useCustom = (effective['JUDGE_USE_CUSTOM_MODEL_ID']?.trim().toLowerCase() ?? '') === 'true'
+    || (!effective['JUDGE_USE_CUSTOM_MODEL_ID'] && customModelId !== '');
+  const modelId = useCustom && customModelId ? customModelId : presetModelId;
   return {
     modelId,
     temperature: parseNumberSetting(effective['JUDGE_TEMPERATURE'], Number(DEFAULT_JUDGE_TEMPERATURE)),
