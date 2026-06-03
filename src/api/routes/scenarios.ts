@@ -234,14 +234,23 @@ function parseScenarioDocuments(content: string, options?: { enforceSingleDoc?: 
   }
 
   const docs: NormalizedScenarioDoc[] = [];
+  const seenScenarioIds = new Map<string, number>();
   parsedDocs.forEach((parsedDoc, index) => {
     const normalized = normalizeScenarioDoc(parsedDoc, index + 1, options?.assignScenarioId ?? false);
-    if (normalized.doc) docs.push(normalized.doc);
     details.push(...normalized.details);
+    if (!normalized.doc) return;
+
+    const previousDocNumber = seenScenarioIds.get(normalized.doc.scenarioId);
+    if (previousDocNumber != null) {
+      details.push(`Document ${index + 1}: duplicate scenario_id "${normalized.doc.scenarioId}" (already used in document ${previousDocNumber})`);
+      return;
+    }
+
+    seenScenarioIds.set(normalized.doc.scenarioId, index + 1);
+    docs.push(normalized.doc);
   });
 
   return { docs, details };
-}
 
 function walkYaml(dir: string): string[] {
   if (!existsSync(dir)) return [];
