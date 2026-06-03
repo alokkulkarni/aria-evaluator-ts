@@ -238,17 +238,52 @@ function getRequestIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
+function normalizeIpAddress(address: string): string {
+  const normalized = address.trim().toLowerCase();
+  return normalized.startsWith('::ffff:') ? normalized.slice(7) : normalized;
+}
+
 function isLoopbackAddress(address: string | null | undefined): boolean {
   if (!address) return false;
-  const normalized = address.trim().toLowerCase();
+  const normalized = normalizeIpAddress(address);
   return normalized === '::1'
     || normalized === '127.0.0.1'
-    || normalized === '::ffff:127.0.0.1'
     || normalized.startsWith('127.');
 }
 
+function isPrivateIpv4Address(address: string | null | undefined): boolean {
+  if (!address) return false;
+  const normalized = normalizeIpAddress(address);
+  const octets = normalized.split('.');
+  if (octets.length !== 4) return false;
+  const values = octets.map((octet) => Number.parseInt(octet, 10));
+  if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return false;
+  const first = values[0] ?? -1;
+  const second = values[1] ?? -1;
+  return first === 10
+    || (first === 172 && second >= 16 && second <= 31)
+    || (first === 192 && second === 168);
+}
+
+function isLoopbackHostHeader(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return false;
+  const host = hostHeader.trim().toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (host.startsWith('localhost:') || host.startsWith('127.0.0.1:')) return true;
+  if (host.startsWith('[::1]')) return true;
+  return false;
+}
+
+function isTrustedLocalContainerRequest(req: Request): boolean {
+  // If forwarded headers are present, treat as proxied traffic and require token.
+  if (req.get('x-forwarded-for')) return false;
+  if (!isLoopbackHostHeader(req.get('host') ?? undefined)) return false;
+  const remoteAddress = req.socket.remoteAddress;
+  return isLoopbackAddress(remoteAddress) || isPrivateIpv4Address(remoteAddress);
+}
+
 function isLoopbackRequest(req: Request): boolean {
-  return isLoopbackAddress(getRequestIp(req));
+  return isLoopbackAddress(getRequestIp(req)) || isTrustedLocalContainerRequest(req);
 }
 
 function constantTimeEqual(input: string, expected: string): boolean {
