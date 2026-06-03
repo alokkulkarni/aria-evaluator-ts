@@ -163,8 +163,9 @@ function buildScenarioYaml(f: FormState): string {
 
 function validate(f: FormState, mode: 'create' | 'edit'): string[] {
   const errors: string[] = [];
-  if (!f.scenario_id.trim()) errors.push('Scenario ID is required.');
-  if (!/^[a-z0-9][a-z0-9_-]{2,79}$/.test(f.scenario_id.trim())) {
+  if (!f.scenario_id.trim()) {
+    errors.push('Scenario ID is required.');
+  } else if (!/^[a-z0-9][a-z0-9_-]{2,79}$/.test(f.scenario_id.trim())) {
     errors.push('Scenario ID may only contain lowercase letters, numbers, hyphens and underscores (3-80 chars).');
   }
   if (!f.name.trim()) errors.push('Scenario name is required.');
