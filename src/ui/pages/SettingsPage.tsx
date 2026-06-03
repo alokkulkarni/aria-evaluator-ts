@@ -1056,37 +1056,34 @@ export function SettingsPage() {
 
       <JudgeLlmSection settings={settings} onUpdate={updateValue} />
 
-      {/* Provider Defaults */}
-      <div className="card">
-        <h3 className="font-semibold text-slate-900 mb-1">Provider Defaults</h3>
-        <p className="text-xs text-slate-500 mb-4">Sets the pre-selected provider in the New Run modal and Scenarios page.</p>
-        <label className="flex flex-col gap-1 max-w-xs">
-          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-            Default Provider
-            <HintTooltip hint="The provider pre-selected when starting a new run. Can be overridden per-run in the New Run modal." />
-          </span>
-          <select
-            value={settings['EVAL_PROVIDER_DEFAULT'] ?? 'connect'}
-            onChange={(e) => updateValue('EVAL_PROVIDER_DEFAULT', e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {PROVIDER_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       {/* Providers group */}
       <div className="card p-0 overflow-hidden">
-        <div className="px-5 py-4 bg-slate-950 text-white">
+        <div className="px-5 py-4 border-b border-slate-200/80 bg-white">
           <div className="flex items-center gap-2">
             <span className="text-lg">🔌</span>
             <div>
-              <h3 className="font-semibold text-base">Providers</h3>
-              <p className="text-xs text-blue-200 mt-0.5">Configure connection settings for each evaluation provider. Expand a provider to view and edit its fields.</p>
+              <h3 className="font-semibold text-base text-slate-900">Providers</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Configure connection settings for each evaluation provider. Expand a provider to view and edit its fields.</p>
             </div>
           </div>
+        </div>
+        <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4">
+          <label className="flex flex-col gap-1 max-w-xs">
+            <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+              Default Provider
+              <HintTooltip hint="The provider pre-selected when starting a new run. Can be overridden per-run in the New Run modal." />
+            </span>
+            <select
+              value={settings['EVAL_PROVIDER_DEFAULT'] ?? 'connect'}
+              onChange={(e) => updateValue('EVAL_PROVIDER_DEFAULT', e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {PROVIDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-3 text-xs text-slate-500">Sets the pre-selected provider in the New Run modal and Scenarios page.</p>
         </div>
         <div className="divide-y divide-slate-100">
           {PROVIDER_SECTIONS.map((section) => (
