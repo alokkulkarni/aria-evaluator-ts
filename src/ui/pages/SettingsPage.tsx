@@ -7,6 +7,7 @@ import {
   DEFAULT_JUDGE_TEMPERATURE,
   JUDGE_GUARDRAILS,
   JUDGE_MODEL_GROUPS,
+  LEGACY_JUDGE_SYSTEM_PROMPTS,
   isKnownJudgeModel,
 } from '../../shared/judge-config.js';
 
@@ -36,9 +37,6 @@ const JUDGE_TEMPERATURE_FIELD_KEY = 'JUDGE_TEMPERATURE';
 const JUDGE_MAX_TOKENS_FIELD_KEY = 'JUDGE_MAX_TOKENS';
 const JUDGE_SYSTEM_PROMPT_FIELD_KEY = 'JUDGE_SYSTEM_PROMPT';
 
-const LEGACY_JUDGE_SYSTEM_PROMPT =
-  'You are a strict JSON API. Always respond with valid RFC 8259 JSON only — no markdown, no prose, no code fences. Escape all double-quote characters inside string values with \\". Do not use literal newlines or tabs inside string values.';
-
 interface GeneralSectionDef {
   id: string;
   title: string;
@@ -66,7 +64,7 @@ function normalizeJudgeSettings(settings: SettingsMap): SettingsMap {
   next[JUDGE_MAX_TOKENS_FIELD_KEY] = next[JUDGE_MAX_TOKENS_FIELD_KEY]?.trim() || DEFAULT_JUDGE_MAX_TOKENS;
   const prompt = next[JUDGE_SYSTEM_PROMPT_FIELD_KEY]?.trim();
   next[JUDGE_SYSTEM_PROMPT_FIELD_KEY] =
-    !prompt || prompt === LEGACY_JUDGE_SYSTEM_PROMPT ? DEFAULT_JUDGE_SYSTEM_PROMPT : prompt;
+    !prompt || LEGACY_JUDGE_SYSTEM_PROMPTS.includes(prompt) ? DEFAULT_JUDGE_SYSTEM_PROMPT : prompt;
   const customModel = next[JUDGE_CUSTOM_MODEL_FIELD_KEY]?.trim() || '';
   if (next[JUDGE_USE_CUSTOM_MODEL_FIELD_KEY] == null) {
     next[JUDGE_USE_CUSTOM_MODEL_FIELD_KEY] = customModel ? 'true' : 'false';
