@@ -71,7 +71,10 @@ regressionRouter.post(
 
       // Fetch runs for this scenario
       const runs = await prisma.run.findMany({
-        where: { scenarioId },
+        where: {
+          scenarioId,
+          evalResult: { is: { judgeModel } },
+        },
         orderBy: { createdAt: 'desc' },
         include: {
           evalResult: {
