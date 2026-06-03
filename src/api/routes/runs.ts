@@ -104,16 +104,208 @@ function sanitizeEventPayload(
   return payload;
 }
 
-// GET /api/runs
-runsRouter.get('/', async (_req, res) => {
+const VALID_RUN_STATUSES = new Set(['pending', 'running', 'completed', 'failed']);
+const CUID_RE = /^c[a-z0-9]{20,30}$/;
+const PROVIDER_RE = /^[a-zA-Z0-9_-]{1,50}$/;
+
+function parseSingleQueryString(raw: unknown): string | undefined {
+  if (Array.isArray(raw)) return undefined;
+  if (typeof raw === 'string') return raw;
+  return undefined;
+}
+
+// GET /api/runs — supports optional filter params: status, channel, provider, since, until, scenarioId, limit, offset
+runsRouter.get('/', async (req, res) => {
+  const status = parseSingleQueryString(req.query['status']);
+  if (status !== undefined && !VALID_RUN_STATUSES.has(status)) {
+    return res.status(400).json({ error: 'status must be one of: pending, running, completed, failed' });
+  }
+
+  const channel = parseSingleQueryString(req.query['channel']);
+  if (channel !== undefined && channel !== 'chat' && channel !== 'voice') {
+    return res.status(400).json({ error: 'channel must be chat or voice' });
+  }
+
+  const provider = parseSingleQueryString(req.query['provider']);
+  if (provider !== undefined && !PROVIDER_RE.test(provider)) {
+    return res.status(400).json({ error: 'provider must be alphanumeric, underscores, or hyphens, max 50 chars' });
+  }
+
+  const sinceRaw = parseSingleQueryString(req.query['since']);
+  const untilRaw = parseSingleQueryString(req.query['until']);
+  let sinceDate: Date | undefined;
+  let untilDate: Date | undefined;
+  if (sinceRaw !== undefined) {
+    sinceDate = new Date(sinceRaw);
+    if (!Number.isFinite(sinceDate.getTime())) {
+      return res.status(400).json({ error: 'since must be a valid ISO date' });
+    }
+  }
+  if (untilRaw !== undefined) {
+    untilDate = new Date(untilRaw);
+    if (!Number.isFinite(untilDate.getTime())) {
+      return res.status(400).json({ error: 'until must be a valid ISO date' });
+    }
+  }
+  if (sinceDate !== undefined && untilDate !== undefined && sinceDate > untilDate) {
+    return res.status(400).json({ error: 'since must not be after until' });
+  }
+
+  const scenarioId = parseSingleQueryString(req.query['scenarioId']);
+  if (scenarioId !== undefined && !CUID_RE.test(scenarioId)) {
+    return res.status(400).json({ error: 'invalid scenarioId format' });
+  }
+
+  const limitRaw = Number.parseInt(parseSingleQueryString(req.query['limit']) ?? '100', 10);
+  const limit = Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 500 ? limitRaw : 100;
+
+  const offsetRaw = Number.parseInt(parseSingleQueryString(req.query['offset']) ?? '0', 10);
+  const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+
+  try {
+    const where = {
+      NOT: { status: 'deleted' },
+      ...(status !== undefined ? { status } : {}),
+      ...(channel !== undefined ? { channel } : {}),
+      ...(sinceDate !== undefined || untilDate !== undefined
+        ? {
+            createdAt: {
+              ...(sinceDate !== undefined ? { gte: sinceDate } : {}),
+              ...(untilDate !== undefined ? { lte: untilDate } : {}),
+            },
+          }
+        : {}),
+      ...(scenarioId !== undefined ? { scenarioId } : {}),
+      ...(provider !== undefined ? { telemetry: { provider } } : {}),
+    };
+
+    const [runs, total] = await Promise.all([
+      prisma.run.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+        include: {
+          evalResult: true,
+          telemetry: { select: { provider: true, latencyMs: true, failureClass: true } },
+        },
+      }),
+      prisma.run.count({ where }),
+    ]);
+    res.json({ runs, total, limit, offset });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// GET /api/runs/compare — MUST be before /:id to avoid route shadowing
+// Query param: ids (comma-separated, 2–10 run IDs)
+runsRouter.get('/compare', async (req, res) => {
+  const idsRaw = parseSingleQueryString(req.query['ids']) ?? '';
+  const ids = idsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+
+  if (ids.length < 2) {
+    return res.status(400).json({ error: 'At least 2 run IDs are required' });
+  }
+  if (ids.length > 10) {
+    return res.status(400).json({ error: 'At most 10 run IDs allowed' });
+  }
+  if (!ids.every((id) => CUID_RE.test(id))) {
+    return res.status(400).json({ error: 'One or more run IDs have an invalid format' });
+  }
+
   try {
     const runs = await prisma.run.findMany({
-      where: { NOT: { status: 'deleted' } },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: { evalResult: true },
+      where: { id: { in: ids }, NOT: { status: 'deleted' } },
+      include: {
+        turns: { orderBy: { index: 'asc' } },
+        evalResult: true,
+        telemetry: true,
+      },
     });
-    res.json({ runs });
+
+    if (runs.length !== ids.length) {
+      const foundIds = new Set(runs.map((r) => r.id));
+      const missing = ids.filter((id) => !foundIds.has(id));
+      return res.status(404).json({ error: `Runs not found: ${missing.join(', ')}` });
+    }
+
+    const runsWithParsed = runs.map((run) => {
+      let dimensionScores: Record<string, unknown> = {};
+      let dimensionScoresParseError = false;
+      if (run.evalResult?.dimensionScores) {
+        try {
+          dimensionScores = JSON.parse(run.evalResult.dimensionScores) as Record<string, unknown>;
+        } catch {
+          dimensionScoresParseError = true;
+        }
+      }
+      return {
+        ...run,
+        evalResult: run.evalResult
+          ? { ...run.evalResult, dimensionScores, dimensionScoresParseError }
+          : null,
+      };
+    });
+
+    // Preserve the caller's requested ordering
+    const ordered = ids.map((id) => runsWithParsed.find((r) => r.id === id)!);
+    res.json({ runs: ordered });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// GET /api/runs/failures/summary — MUST be before /:id to avoid route shadowing
+// Query param: hours (1–168, default 48)
+runsRouter.get('/failures/summary', async (req, res) => {
+  const rawHours = req.query['hours'];
+  let hours = 48;
+  if (rawHours !== undefined) {
+    if (Array.isArray(rawHours)) {
+      return res.status(400).json({ error: 'hours must be a single value' });
+    }
+    if (typeof rawHours !== 'string' || rawHours.trim() === '') {
+      return res.status(400).json({ error: 'hours must be an integer between 1 and 168' });
+    }
+    const parsed = Number.parseInt(rawHours, 10);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 168) {
+      return res.status(400).json({ error: 'hours must be an integer between 1 and 168' });
+    }
+    hours = parsed;
+  }
+
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+  try {
+    // Query RunTelemetry directly (consistent with observability); runs without telemetry are excluded.
+    const failures = await prisma.runTelemetry.findMany({
+      where: {
+        status: 'failed',
+        createdAt: { gte: since },
+        run: { NOT: { status: 'deleted' } },
+      },
+      select: {
+        run: { select: { scenarioName: true } },
+        failureClass: true,
+      },
+    });
+
+    const clusterMap = new Map<string, { scenarioName: string; failureClass: string; count: number }>();
+    for (const row of failures) {
+      const scenarioName = row.run.scenarioName;
+      const failureClass = row.failureClass ?? 'unknown';
+      const key = `${scenarioName}::${failureClass}`;
+      const existing = clusterMap.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        clusterMap.set(key, { scenarioName, failureClass, count: 1 });
+      }
+    }
+
+    const clusters = Array.from(clusterMap.values()).sort((a, b) => b.count - a.count);
+    res.json({ window: { hours, since: since.toISOString() }, totalFailures: failures.length, clusters });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
