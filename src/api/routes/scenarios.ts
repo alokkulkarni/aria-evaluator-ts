@@ -254,7 +254,13 @@ function walkYaml(dir: string): string[] {
 }
 
 function splitMultiDoc(content: string): { preamble: string; docs: string[] } {
-  const parts = content.split(/^---\s*$/m).map((part) => part.trim()).filter(Boolean);
+  const rawParts = content.split(/^---\s*$/m);
+  if (rawParts.length <= 1) {
+    const doc = content.trim();
+    return { preamble: '', docs: doc ? [doc] : [] };
+  }
+
+  const parts = rawParts.map((part) => part.trim()).filter(Boolean);
   if (parts[0] && /^#/.test(parts[0])) {
     return { preamble: parts[0], docs: parts.slice(1) };
   }
