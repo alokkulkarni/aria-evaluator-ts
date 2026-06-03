@@ -1,6 +1,6 @@
 // src/ui/pages/ScenariosPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { apiFetch, toApiUrl } from '../lib/api.js';
+import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
 import type { Scenario } from '../../types/scenario.js';
 import { ScenarioBuilderModal } from './ScenarioBuilderModal.js';
 
@@ -13,6 +13,16 @@ interface RunDetail {
   status: string;
   errorMessage?: string | null;
   evalResult?: { overallScore: number } | null;
+}
+
+type LifecycleStatus = 'draft' | 'active' | 'deprecated';
+
+interface ScenarioRevision {
+  id: string;
+  source: string;
+  sourceRef: string;
+  changedBy: string | null;
+  createdAt: string;
 }
 
 type Provider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
@@ -34,6 +44,15 @@ export function ScenariosPage() {
   const [runError, setRunError] = useState<string | null>(null);
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [builder, setBuilder] = useState<{ mode: 'create' | 'edit'; scenario?: Scenario } | null>(null);
+  const [metadataDraft, setMetadataDraft] = useState<{ owner: string; lifecycleStatus: LifecycleStatus }>({
+    owner: '',
+    lifecycleStatus: 'active',
+  });
+  const [metaSaving, setMetaSaving] = useState(false);
+  const [metaNotice, setMetaNotice] = useState<string | null>(null);
+  const [revisions, setRevisions] = useState<ScenarioRevision[]>([]);
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [revisionsError, setRevisionsError] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedSubCategories, setCollapsedSubCategories] = useState<Set<string>>(new Set());
   const esRef = useRef<EventSource | null>(null);
@@ -181,11 +200,109 @@ export function ScenariosPage() {
   async function reloadScenarios() {
     try {
       const data = await apiFetch('/api/scenarios') as { scenarios: Scenario[] };
-      setScenarios(data.scenarios ?? []);
-      const unique = [...new Set((data.scenarios ?? []).map((sc: Scenario) => sc.filePath?.split('#')[0] ?? ''))];
+      const nextScenarios = data.scenarios ?? [];
+      setScenarios(nextScenarios);
+      setSelected((prev) => {
+        if (!prev) return prev;
+        return nextScenarios.find((scenario) => (
+          (prev.scenario_id && scenario.scenario_id === prev.scenario_id)
+          || scenario.filePath === prev.filePath
+        )) ?? prev;
+      });
+      const unique = [...new Set(nextScenarios.map((sc: Scenario) => sc.filePath?.split('#')[0] ?? ''))];
       setFiles(unique.filter(Boolean));
     } catch { /* ignore */ }
   }
+
+  function applyScenarioMetadata(scenarioId: string, patch: Partial<Scenario>) {
+    setScenarios((prev) => prev.map((scenario) => (
+      scenario.scenario_id === scenarioId ? { ...scenario, ...patch } : scenario
+    )));
+    setSelected((prev) => (
+      prev && prev.scenario_id === scenarioId ? { ...prev, ...patch } : prev
+    ));
+  }
+
+  async function loadRevisions(scenario: Scenario) {
+    if (!scenario.scenario_id) {
+      setRevisions([]);
+      setRevisionsError('Save this scenario once to assign a stable Scenario ID before revisions can be tracked.');
+      return;
+    }
+    setRevisionsLoading(true);
+    setRevisionsError(null);
+    try {
+      const data = await apiFetch(`/api/scenarios/revisions?scenarioId=${encodeURIComponent(scenario.scenario_id)}`) as {
+        revisions?: ScenarioRevision[];
+      };
+      setRevisions(data.revisions ?? []);
+    } catch (err) {
+      setRevisions([]);
+      setRevisionsError((err as Error).message);
+    } finally {
+      setRevisionsLoading(false);
+    }
+  }
+
+  async function saveScenarioMetadata() {
+    if (!selected?.scenario_id || !selected.filePath) {
+      setMetaNotice('This scenario does not have a stable ID yet. Save it from Edit first.');
+      return;
+    }
+    setMetaSaving(true);
+    setMetaNotice(null);
+    try {
+      const body = {
+        scenarioId: selected.scenario_id,
+        scenarioRef: selected.filePath,
+        owner: metadataDraft.owner.trim() || null,
+        lifecycleStatus: metadataDraft.lifecycleStatus,
+      };
+      const data = await apiFetch('/api/scenarios/metadata', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }) as {
+        metadata?: {
+          owner?: string | null;
+          lifecycleStatus?: LifecycleStatus;
+          revisionCount?: number;
+          lastRevisionAt?: string | null;
+        };
+      };
+
+      applyScenarioMetadata(selected.scenario_id, {
+        owner: data.metadata?.owner ?? null,
+        lifecycle_status: data.metadata?.lifecycleStatus ?? metadataDraft.lifecycleStatus,
+        revision_count: data.metadata?.revisionCount ?? selected.revision_count,
+        last_revision_at: data.metadata?.lastRevisionAt ?? selected.last_revision_at ?? null,
+      });
+      setMetaNotice('Scenario metadata saved.');
+    } catch (err) {
+      if (err instanceof ApiError && err.error) {
+        setMetaNotice(err.error);
+      } else {
+        setMetaNotice((err as Error).message);
+      }
+    } finally {
+      setMetaSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!selected) {
+      setMetadataDraft({ owner: '', lifecycleStatus: 'active' });
+      setMetaNotice(null);
+      setRevisions([]);
+      setRevisionsError(null);
+      return;
+    }
+    setMetadataDraft({
+      owner: selected.owner ?? '',
+      lifecycleStatus: selected.lifecycle_status ?? 'active',
+    });
+    setMetaNotice(null);
+    void loadRevisions(selected);
+  }, [selected]);
 
   return (
     <>
@@ -311,13 +428,24 @@ export function ScenariosPage() {
                                 }`}>
                                 <div className="flex items-start justify-between">
                                   <p className="font-medium text-slate-800 text-sm leading-snug pr-2">{s.name}</p>
-                                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
-                                    s.channel === 'voice' ? 'bg-purple-100 text-purple-700' :
-                                    s.channel === 'both'  ? 'bg-green-100 text-green-700' :
-                                                            'bg-blue-100 text-blue-700'
-                                  }`}>
-                                    {s.channel === 'both' ? '🔀' : s.channel === 'voice' ? '🎤' : '💬'} {s.channel}
-                                  </span>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                      s.channel === 'voice' ? 'bg-purple-100 text-purple-700' :
+                                      s.channel === 'both'  ? 'bg-green-100 text-green-700' :
+                                                              'bg-blue-100 text-blue-700'
+                                    }`}>
+                                      {s.channel === 'both' ? '🔀' : s.channel === 'voice' ? '🎤' : '💬'} {s.channel}
+                                    </span>
+                                    <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full font-semibold ${
+                                      (s.lifecycle_status ?? 'active') === 'deprecated'
+                                        ? 'bg-rose-100 text-rose-700'
+                                        : (s.lifecycle_status ?? 'active') === 'draft'
+                                          ? 'bg-amber-100 text-amber-700'
+                                          : 'bg-emerald-100 text-emerald-700'
+                                    }`}>
+                                      {s.lifecycle_status ?? 'active'}
+                                    </span>
+                                  </div>
                                 </div>
                                 {s.goal && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{s.goal}</p>}
                               </div>
@@ -342,6 +470,9 @@ export function ScenariosPage() {
               <table className="text-sm w-full">
                 <tbody>
                   {[
+                    ['Scenario ID', selected.scenario_id ?? '—'],
+                    ['Lifecycle', selected.lifecycle_status ?? 'active'],
+                    ['Owner', selected.owner ?? '—'],
                     ['Channel', selected.channel],
                     ['Authenticated', selected.authenticated ? 'Yes' : 'No'],
                     ['Max turns', selected.max_turns ?? '—'],
@@ -354,6 +485,63 @@ export function ScenariosPage() {
                   ))}
                 </tbody>
               </table>
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Management metadata</p>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <input
+                    type="text"
+                    value={metadataDraft.owner}
+                    onChange={(e) => setMetadataDraft((prev) => ({ ...prev, owner: e.target.value }))}
+                    placeholder="Owner (optional)"
+                    className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    disabled={!selected.scenario_id}
+                  />
+                  <select
+                    value={metadataDraft.lifecycleStatus}
+                    onChange={(e) => setMetadataDraft((prev) => ({ ...prev, lifecycleStatus: e.target.value as LifecycleStatus }))}
+                    className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    disabled={!selected.scenario_id}
+                  >
+                    <option value="active">active</option>
+                    <option value="draft">draft</option>
+                    <option value="deprecated">deprecated</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void saveScenarioMetadata()}
+                    disabled={metaSaving || !selected.scenario_id}
+                    className="rounded bg-[#0D2A66] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {metaSaving ? 'Saving…' : 'Save metadata'}
+                  </button>
+                  {metaNotice && <p className="text-xs text-slate-600">{metaNotice}</p>}
+                </div>
+              </div>
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Revision history</p>
+                {revisionsLoading ? (
+                  <p className="text-xs text-slate-400">Loading revisions…</p>
+                ) : revisionsError ? (
+                  <p className="text-xs text-amber-700">{revisionsError}</p>
+                ) : revisions.length === 0 ? (
+                  <p className="text-xs text-slate-400">No revisions tracked yet.</p>
+                ) : (
+                  <div className="max-h-36 space-y-1 overflow-y-auto">
+                    {revisions.map((revision) => (
+                      <div key={revision.id} className="rounded bg-slate-50 px-2 py-1.5 text-xs text-slate-700">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{revision.source}</span>
+                          <span className="text-slate-400">{new Date(revision.createdAt).toLocaleString()}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {revision.changedBy ? `by ${revision.changedBy}` : 'by system'} · {revision.sourceRef}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               {selected.goal && (
                 <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Goal</p>

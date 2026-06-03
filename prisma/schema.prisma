@@ -59,14 +59,38 @@ model AuditLog {
 // ─── Scenario ─────────────────────────────────────────────────────────────────
 model Scenario {
   id          String   @id @default(cuid())
-  filePath    String   @unique        // relative path, e.g. "banking/account_query#0"
+  filePath    String   @unique        // stable key, e.g. "scenario:banking_balance_01"
+  sourceRef   String?                 // relative source ref, e.g. "banking/account_query.yaml#0"
   name        String
   channel     String                  // "chat" | "voice"
   description String?
   yamlContent String                  // full YAML text of the scenario block
+  owner       String?
+  lifecycleStatus String @default("active") // draft|active|deprecated
+  contentHash String?
+  lastRevisionAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  revisions   ScenarioRevision[]
   runs        Run[]
+
+  @@index([sourceRef])
+  @@index([lifecycleStatus])
+}
+
+model ScenarioRevision {
+  id         String   @id @default(cuid())
+  scenarioId String
+  scenario   Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  sourceRef  String
+  yamlContent String
+  contentHash String
+  source     String   // create|edit|sync
+  changedBy  String?
+  createdAt  DateTime @default(now())
+
+  @@unique([scenarioId, contentHash])
+  @@index([scenarioId, createdAt])
 }
 
 // ─── Run ──────────────────────────────────────────────────────────────────────

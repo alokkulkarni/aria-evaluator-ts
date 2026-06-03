@@ -3,7 +3,7 @@
 // Supports create (new file / append) and edit (replace single doc) modes.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '../lib/api.js';
+import { ApiError, apiFetch } from '../lib/api.js';
 import type { Scenario } from '../../types/scenario.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -17,6 +17,7 @@ interface TurnRow {
 }
 
 interface FormState {
+  scenario_id: string;
   name: string;
   description: string;
   channel: 'chat' | 'voice' | 'both';
@@ -60,6 +61,7 @@ const TYPE_DEFAULTS: Record<ScenarioType, Partial<FormState>> = {
 
 function blankForm(): FormState {
   return {
+    scenario_id: '',
     name: '', description: '', channel: 'chat', scenarioType: 'conversational',
     mode: 'agent', authenticated: true, attack_type: '', opening_message: '',
     goal: '', customer_persona: '', max_turns: 12, turns: [],
@@ -81,6 +83,7 @@ function scenarioToForm(sc: Scenario): Partial<FormState> {
       ? 'scripted'
       : 'conversational';
   return {
+    scenario_id: sc.scenario_id ?? '',
     name: sc.name ?? '',
     description: sc.description ?? '',
     channel: sc.channel ?? 'chat',
@@ -113,6 +116,7 @@ function blockPipe(s: string, indent = '  '): string {
 
 function buildScenarioYaml(f: FormState): string {
   const lines: string[] = [];
+  lines.push(`scenario_id: ${q(f.scenario_id)}`);
   lines.push(`name: ${q(f.name)}`);
   if (f.attack_type) lines.push(`attack_type: ${q(f.attack_type)}`);
   if (f.description) {
@@ -159,6 +163,10 @@ function buildScenarioYaml(f: FormState): string {
 
 function validate(f: FormState, mode: 'create' | 'edit'): string[] {
   const errors: string[] = [];
+  if (!f.scenario_id.trim()) errors.push('Scenario ID is required.');
+  if (!/^[a-z0-9][a-z0-9_-]{2,79}$/.test(f.scenario_id.trim())) {
+    errors.push('Scenario ID may only contain lowercase letters, numbers, hyphens and underscores (3-80 chars).');
+  }
   if (!f.name.trim()) errors.push('Scenario name is required.');
   if (f.mode === 'script' && f.turns.length === 0) errors.push('Script mode requires at least one turn.');
   if (f.mode === 'script' && f.turns.some((t) => !t.send.trim())) errors.push('All turns must have a non-empty message.');
@@ -176,6 +184,14 @@ function validate(f: FormState, mode: 'create' | 'edit'): string[] {
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 60) || 'scenario';
+}
+
+function generateScenarioId(name: string): string {
+  const base = slugify(name).slice(0, 40);
+  const randomPart = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+    : Math.random().toString(16).slice(2, 12);
+  return `${base || 'scenario'}_${randomPart}`;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -262,6 +278,12 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
     }
   }, [form.name, mode]);
 
+  useEffect(() => {
+    if (!form.scenario_id) {
+      setForm((f) => ({ ...f, scenario_id: generateScenarioId(f.name) }));
+    }
+  }, [form.name, form.scenario_id]);
+
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: val }));
 
@@ -302,7 +324,13 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
       onSaved();
       onClose();
     } catch (e) {
-      setErrors([(e as Error).message]);
+      if (e instanceof ApiError && Array.isArray(e.details) && e.details.length > 0) {
+        setErrors(e.details);
+      } else if (e instanceof ApiError && e.error) {
+        setErrors([e.error]);
+      } else {
+        setErrors([(e as Error).message]);
+      }
     } finally {
       setSaving(false);
     }
@@ -409,6 +437,16 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                     setForm((f) => ({ ...f, name: v, filename: mode === 'create' ? slugify(v) : f.filename }));
                   }}
                   placeholder="e.g. Account — Balance Enquiry Authenticated"
+                />
+              </div>
+              <div>
+                <Label hint="Stable identifier used for metadata and revisions. Usually auto-generated.">
+                  Scenario ID <span className="text-red-500">*</span>
+                </Label>
+                <TextInput
+                  value={form.scenario_id}
+                  onChange={(v) => set('scenario_id', v.toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 80))}
+                  placeholder="account_balance_enquiry_001"
                 />
               </div>
               <div>

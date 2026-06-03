@@ -15,6 +15,7 @@ export interface ScriptTurn {
 }
 
 export interface Scenario {
+  scenario_id?: string;
   name: string;
   description?: string;
   channel: 'chat' | 'voice' | 'both';
@@ -51,6 +52,10 @@ export interface Scenario {
   escalation_policy?: string;
   // filled in by scenario-loader after parsing
   filePath?: string;
+  owner?: string | null;
+  lifecycle_status?: 'draft' | 'active' | 'deprecated';
+  revision_count?: number;
+  last_revision_at?: string | null;
 }
 
 export interface ScenarioFile {
