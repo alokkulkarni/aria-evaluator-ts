@@ -24,7 +24,7 @@ environment = "local"
 #   app_dockerfile_context = "/absolute/path/to/aria-evaluator-ts"
 #
 # To force a full rebuild after source changes (Dockerfile hash hasn't changed):
-#   terraform taint module.docker_local.docker_image.app
+#   terraform taint module.docker_local.null_resource.build_app_image
 #   terraform apply
 
 app_image_name         = "aria-evaluator:local"

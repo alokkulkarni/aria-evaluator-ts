@@ -104,32 +104,55 @@ resource "docker_volume" "state" {
 # To force a full rebuild without changing the Dockerfile, taint the resource:
 #   terraform taint module.docker_local.docker_image.app
 
-resource "docker_image" "app" {
-  name         = var.app_image_name
-  keep_locally = true
+# ── Application image ──────────────────────────────────────────────────────────
+# Builds the image locally by shelling out to docker build instead of using
+# the kreuzwerker/docker provider's built-in build{} block.  The provider's
+# legacy tar-based build path has known compatibility issues with certain build
+# contexts (archive/tar: invalid tar header) and does not support BuildKit.
+#
+# Using docker CLI directly:
+#   • avoids the tar-packing bug in the provider
+#   • enables BuildKit (DOCKER_BUILDKIT=1) so Dockerfile.local can use
+#     --mount=type=cache for the npm and Prisma engine download caches
+#   • streams real-time docker build output to the terminal
+#
+# To force a full rebuild without changing tracked files, taint the resource:
+#   terraform taint module.docker_local.null_resource.build_app_image
 
-  build {
-    context    = local.effective_build_context
-    dockerfile = var.app_dockerfile
-    # Tag the built image so it is addressable by name:tag locally.
-    tag = [var.app_image_name]
-  }
-
-  # Rebuild when the Dockerfile or npm dependency manifest changes.
-  # For a full source rebuild (e.g. after src/ changes), either:
-  #   a) change app_image_name to a new tag, or
-  #   b) run: terraform taint module.docker_local.docker_image.app && terraform apply
+resource "null_resource" "build_app_image" {
   triggers = {
     dockerfile_sha   = filesha1("${local.effective_build_context}/${var.app_dockerfile}")
     package_lock_sha = filesha1("${local.effective_build_context}/package-lock.json")
   }
+
+  provisioner "local-exec" {
+    # DOCKER_BUILDKIT=1 activates BuildKit so --mount=type=cache directives
+    # in Dockerfile.local are honoured.  Docker Desktop on macOS enables
+    # BuildKit by default since v22; the explicit export keeps it working in
+    # plain Docker Engine environments as well.
+    environment = {
+      DOCKER_BUILDKIT = "1"
+    }
+
+    command = <<-EOT
+      docker build \
+        --tag "${var.app_image_name}" \
+        --file "${local.effective_build_context}/${var.app_dockerfile}" \
+        "${local.effective_build_context}"
+    EOT
+  }
+}
+
+data "docker_image" "app" {
+  name       = var.app_image_name
+  depends_on = [null_resource.build_app_image]
 }
 
 # ── Application container ──────────────────────────────────────────────────────
 
 resource "docker_container" "app" {
   name  = local.name_prefix
-  image = docker_image.app.image_id
+  image = data.docker_image.app.id
 
   # Restart automatically unless the operator explicitly stops it
   restart = "unless-stopped"
