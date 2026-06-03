@@ -69,6 +69,8 @@ export function calculateLatency(
 
 export interface EvalResultSnapshot {
   score: number;
+  passed: boolean;
+  createdAt: Date;
   dimensionScoresJson: string | null;
 }
 
@@ -120,10 +122,8 @@ export function computeScenarioMetrics(
   // Process each run
   let totalEvals = 0;
   for (const { run, evalResults } of filteredRuns) {
-    // For pass rate: determine if any eval passed
-    // Note: passed is not directly available in EvalResultSnapshot, so we rely on score > threshold
-    // For now, we'll treat any positive score as passed for simplicity
-    if (evalResults.length > 0) {
+    // For pass rate: count if any eval result passed
+    if (evalResults.some((er) => er.passed)) {
       passCount++;
     }
 
@@ -131,15 +131,15 @@ export function computeScenarioMetrics(
     for (const evalResult of evalResults) {
       totalEvals++;
       totalScore += evalResult.score || 0;
-      totalLatency += calculateLatency(run.createdAt, run.createdAt); // We don't have evalResult.createdAt here
+      totalLatency += calculateLatency(run.createdAt, evalResult.createdAt);
 
       // Extract dimension scores
       if (evalResult.dimensionScoresJson) {
         try {
-          const dimScores = JSON.parse(evalResult.dimensionScoresJson);
+          const dimScores = JSON.parse(evalResult.dimensionScoresJson) as Record<string, { score: number }>;
           for (const dimId of dimensionIds) {
-            if (typeof dimScores[dimId] === 'number' && dimensionScores[dimId]) {
-              dimensionScores[dimId]!.push(dimScores[dimId]);
+            if (dimScores[dimId]?.score !== undefined && dimensionScores[dimId]) {
+              dimensionScores[dimId]!.push(dimScores[dimId].score);
             }
           }
         } catch {
@@ -223,8 +223,9 @@ export function detectRegression(
   // Classify severity
   let severity: 'NONE' | 'LOW' | 'MEDIUM' | 'CRITICAL' = 'NONE';
 
-  // Pass rate drop is most critical
-  if (passRateDeltaPercent <= -(thresholds.passRateDrop / 100)) {
+  // Pass rate drop is most critical (e.g., -5 percentage points)
+  // Note: passRateDeltaPercent is already in percentage (e.g., -5), so compare directly to -threshold
+  if (passRateDeltaPercent <= -thresholds.passRateDrop) {
     severity = 'CRITICAL';
   }
   // Score drop is medium

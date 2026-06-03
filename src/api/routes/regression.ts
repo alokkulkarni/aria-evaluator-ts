@@ -121,6 +121,8 @@ regressionRouter.post(
           ? [
               {
                 score: r.evalResult.overallScore,
+                passed: r.evalResult.passed,
+                createdAt: r.evalResult.createdAt,
                 dimensionScoresJson: r.evalResult.dimensionScores,
               },
             ]
@@ -365,6 +367,8 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
         ? [
             {
               score: r.evalResult.overallScore,
+              passed: r.evalResult.passed,
+              createdAt: r.evalResult.createdAt,
               dimensionScoresJson: r.evalResult.dimensionScores,
             },
           ]
