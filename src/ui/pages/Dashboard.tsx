@@ -1,7 +1,7 @@
 // src/ui/pages/Dashboard.tsx
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
-import { formatLatency } from '../lib/format.js';
+import { formatLatency, formatTokenCount } from '../lib/format.js';
 
 interface Run {
   id: string;
@@ -9,7 +9,16 @@ interface Run {
   channel: string;
   status: string;
   createdAt: string;
-  evalResult?: { overallScore: number; passed: boolean; scenarioType?: string } | null;
+  evalResult?: {
+    overallScore: number;
+    passed: boolean;
+    scenarioType?: string;
+    judgeTokenTotalEstimate?: number | null;
+  } | null;
+  telemetry?: {
+    provider?: string;
+    tokenTotalEstimate?: number | null;
+  } | null;
 }
 
 interface ObservabilityMetrics {
@@ -22,6 +31,10 @@ interface ObservabilityMetrics {
     p95LatencyMs: number | null;
     tokenTotalEstimate: number;
     avgTokensPerRunEstimate: number | null;
+    scenarioTokenTotalEstimate: number;
+    judgeTokenTotalEstimate: number;
+    avgScenarioTokensPerRunEstimate: number | null;
+    avgJudgeTokensPerRunEstimate: number | null;
   };
   providers: Array<{
     provider: string;
@@ -129,10 +142,18 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                 </p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Estimated tokens</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Judge tokens</p>
                 <p className="text-lg font-semibold text-slate-900">
-                  {metrics.totals.tokenTotalEstimate.toLocaleString()}
+                  {metrics.totals.judgeTokenTotalEstimate > 0 ? formatTokenCount(metrics.totals.judgeTokenTotalEstimate) : '—'}
                 </p>
+                <p className="text-[11px] text-slate-500">
+                  Scenario turns: {metrics.totals.scenarioTokenTotalEstimate > 0
+                    ? formatTokenCount(metrics.totals.scenarioTokenTotalEstimate)
+                    : '—'}
+                </p>
+                {metrics.totals.judgeTokenTotalEstimate === 0 && metrics.totals.scenarioTokenTotalEstimate > 0 && (
+                  <p className="mt-1 text-[10px] text-amber-600">Judge usage appears on new runs.</p>
+                )}
               </div>
             </div>
 
@@ -212,6 +233,7 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                 <th className="pb-2 font-medium">Channel</th>
                 <th className="pb-2 font-medium">Status</th>
                 <th className="pb-2 font-medium">Score</th>
+                <th className="pb-2 font-medium">Tokens</th>
                 <th className="pb-2 font-medium">Date</th>
               </tr>
             </thead>
@@ -238,6 +260,20 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                         </span>
                       </div>
                     ) : '—'}
+                  </td>
+                  <td className="py-2.5">
+                    {r.evalResult?.judgeTokenTotalEstimate != null || r.telemetry?.tokenTotalEstimate != null ? (
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-semibold text-slate-800">
+                          Judge {r.evalResult?.judgeTokenTotalEstimate != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate) : '—'}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Scenario {r.telemetry?.tokenTotalEstimate != null ? formatTokenCount(r.telemetry.tokenTotalEstimate) : '—'}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
                   </td>
                   <td className="py-2.5 text-slate-400">{new Date(r.createdAt).toLocaleDateString()}</td>
                 </tr>

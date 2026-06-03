@@ -16,6 +16,9 @@ export interface EvalResult {
   recommendation?: string;
   judgeModel: string;
   evaluatedAt: string;   // ISO-8601
+  judgeTokenInputEstimate?: number;
+  judgeTokenOutputEstimate?: number;
+  judgeTokenTotalEstimate?: number;
   /** 'security' for injection/adversarial scenarios; 'quality' for normal scenarios */
   scenarioType?: 'security' | 'quality';
 }

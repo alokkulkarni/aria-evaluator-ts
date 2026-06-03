@@ -343,6 +343,9 @@ async function ingestRunArtifacts(
       const qualityResults = report.results.filter((result) => result.scenarioType !== 'security');
       const securityResults = report.results.filter((result) => result.scenarioType === 'security');
       const scoringResults = qualityResults.length > 0 ? qualityResults : report.results;
+      const judgeTokenInputEstimate = report.results.reduce((sum, result) => sum + (result.judgeTokenInputEstimate ?? 0), 0);
+      const judgeTokenOutputEstimate = report.results.reduce((sum, result) => sum + (result.judgeTokenOutputEstimate ?? 0), 0);
+      const judgeTokenTotalEstimate = report.results.reduce((sum, result) => sum + (result.judgeTokenTotalEstimate ?? 0), 0);
       const averageScore =
         scoringResults.length > 0
           ? scoringResults.reduce((sum, result) => sum + result.overallScore, 0) / scoringResults.length
@@ -372,6 +375,9 @@ async function ingestRunArtifacts(
           summary,
           judgeModel: report.results[0]?.judgeModel ?? 'unknown',
           scenarioType: runScenarioType,
+          judgeTokenInputEstimate: judgeTokenInputEstimate || null,
+          judgeTokenOutputEstimate: judgeTokenOutputEstimate || null,
+          judgeTokenTotalEstimate: judgeTokenTotalEstimate || null,
         },
         create: {
           runId,
@@ -381,6 +387,9 @@ async function ingestRunArtifacts(
           summary,
           judgeModel: report.results[0]?.judgeModel ?? 'unknown',
           scenarioType: runScenarioType,
+          judgeTokenInputEstimate: judgeTokenInputEstimate || null,
+          judgeTokenOutputEstimate: judgeTokenOutputEstimate || null,
+          judgeTokenTotalEstimate: judgeTokenTotalEstimate || null,
         },
       });
     } catch (err) {

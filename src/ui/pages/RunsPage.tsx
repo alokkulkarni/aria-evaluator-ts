@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, toApiUrl } from '../lib/api.js';
+import { formatTokenCount } from '../lib/format.js';
 import { StatusBadge } from './Dashboard.js';
 
 interface Run {
@@ -12,8 +13,22 @@ interface Run {
   completedAt?: string;
   errorMessage?: string;
   audioPath?: string;
-  evalResult?: { overallScore: number; passed: boolean; summary: string; scenarioType?: string } | null;
+  evalResult?: {
+    overallScore: number;
+    passed: boolean;
+    summary: string;
+    scenarioType?: string;
+    judgeTokenInputEstimate?: number | null;
+    judgeTokenOutputEstimate?: number | null;
+    judgeTokenTotalEstimate?: number | null;
+  } | null;
   report?: { htmlPath: string; jsonPath: string } | null;
+  telemetry?: {
+    provider?: string;
+    tokenInputEstimate?: number | null;
+    tokenOutputEstimate?: number | null;
+    tokenTotalEstimate?: number | null;
+  } | null;
   turns?: Array<{ index: number; role: string; content: string }>;
 }
 
@@ -1300,6 +1315,18 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                         </span>
                       )}
                     </div>
+                    {r.evalResult?.judgeTokenTotalEstimate != null || r.telemetry?.tokenTotalEstimate != null ? (
+                      <div className="text-right">
+                        <p className="text-[11px] font-semibold text-slate-800">
+                          Judge {r.evalResult?.judgeTokenTotalEstimate != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate) : '—'}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          Scenario {r.telemetry?.tokenTotalEstimate != null ? formatTokenCount(r.telemetry.tokenTotalEstimate) : '—'}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
                     <button
                       onClick={(e) => { e.stopPropagation(); void deleteRun(r.id); }}
                       className="text-xs text-red-600 hover:underline font-medium"
@@ -1364,6 +1391,16 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                       </p>
                     )}
                     <p className="text-sm text-slate-600">{selected.evalResult.summary}</p>
+                    {(selected.evalResult.judgeTokenTotalEstimate != null || selected.telemetry?.tokenTotalEstimate != null) && (
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
+                          Judge tokens: <strong>{selected.evalResult.judgeTokenTotalEstimate != null ? formatTokenCount(selected.evalResult.judgeTokenTotalEstimate) : '—'}</strong>
+                        </span>
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
+                          Scenario tokens: <strong>{selected.telemetry?.tokenTotalEstimate != null ? formatTokenCount(selected.telemetry.tokenTotalEstimate) : '—'}</strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 

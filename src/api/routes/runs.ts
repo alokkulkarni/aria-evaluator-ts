@@ -213,7 +213,15 @@ runsRouter.get('/', async (req, res) => {
         skip: offset,
         include: {
           evalResult: true,
-          telemetry: { select: { provider: true, latencyMs: true, failureClass: true, attackCategory: true } },
+          telemetry: {
+            select: {
+              provider: true,
+              latencyMs: true,
+              failureClass: true,
+              attackCategory: true,
+              tokenTotalEstimate: true,
+            },
+          },
           securityAttack: { select: { category: true, severity: true, confidence: true } },
         },
       }),

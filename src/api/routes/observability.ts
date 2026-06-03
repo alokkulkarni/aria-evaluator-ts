@@ -107,6 +107,17 @@ observabilityRouter.get('/metrics', async (req, res) => {
       tokenTotalEstimate: true,
       failureClass: true,
       attackCategory: true,
+      run: {
+        select: {
+          evalResult: {
+            select: {
+              judgeTokenInputEstimate: true,
+              judgeTokenOutputEstimate: true,
+              judgeTokenTotalEstimate: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -126,6 +137,9 @@ observabilityRouter.get('/metrics', async (req, res) => {
   const tokenInputTotal = telemetry.reduce((sum, row) => sum + (row.tokenInputEstimate ?? 0), 0);
   const tokenOutputTotal = telemetry.reduce((sum, row) => sum + (row.tokenOutputEstimate ?? 0), 0);
   const tokenTotal = telemetry.reduce((sum, row) => sum + (row.tokenTotalEstimate ?? 0), 0);
+  const judgeTokenInputTotal = telemetry.reduce((sum, row) => sum + (row.run.evalResult?.judgeTokenInputEstimate ?? 0), 0);
+  const judgeTokenOutputTotal = telemetry.reduce((sum, row) => sum + (row.run.evalResult?.judgeTokenOutputEstimate ?? 0), 0);
+  const judgeTokenTotal = telemetry.reduce((sum, row) => sum + (row.run.evalResult?.judgeTokenTotalEstimate ?? 0), 0);
 
   const providerBuckets = new Map<string, {
     runCount: number;
@@ -237,8 +251,14 @@ observabilityRouter.get('/metrics', async (req, res) => {
       p95LatencyMs: round(p95LatencyMs),
       tokenInputTotalEstimate: tokenInputTotal,
       tokenOutputTotalEstimate: tokenOutputTotal,
-      tokenTotalEstimate: tokenTotal,
-      avgTokensPerRunEstimate: totalRuns > 0 ? round(tokenTotal / totalRuns) : null,
+      tokenTotalEstimate: tokenTotal + judgeTokenTotal,
+      scenarioTokenTotalEstimate: tokenTotal,
+      judgeTokenInputTotalEstimate: judgeTokenInputTotal,
+      judgeTokenOutputTotalEstimate: judgeTokenOutputTotal,
+      judgeTokenTotalEstimate: judgeTokenTotal,
+      avgTokensPerRunEstimate: totalRuns > 0 ? round((tokenTotal + judgeTokenTotal) / totalRuns) : null,
+      avgScenarioTokensPerRunEstimate: totalRuns > 0 ? round(tokenTotal / totalRuns) : null,
+      avgJudgeTokensPerRunEstimate: totalRuns > 0 ? round(judgeTokenTotal / totalRuns) : null,
     },
     providers,
     failures,

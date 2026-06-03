@@ -21,3 +21,9 @@ export function formatLatency(ms: number): string {
   const secs = totalSec % 60;
   return secs === 0 ? `${mins}m` : `${mins}m ${secs}s`;
 }
+
+export function formatTokenCount(tokens: number): string {
+  if (tokens < 1_000) return `${tokens}`;
+  const thousands = tokens / 1_000;
+  return `${thousands >= 10 ? Math.round(thousands) : thousands.toFixed(1).replace(/\.0$/, '')}k`;
+}

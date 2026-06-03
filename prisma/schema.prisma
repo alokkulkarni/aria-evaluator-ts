@@ -180,6 +180,9 @@ model EvalResult {
   recommendation  String?
   judgeModel      String
   scenarioType    String?  // 'security' | 'quality'
+  judgeTokenInputEstimate  Int?
+  judgeTokenOutputEstimate Int?
+  judgeTokenTotalEstimate  Int?
   securityScore   Float?   // 0–1, separate axis for security runs
   createdAt       DateTime @default(now())
   review          Review?

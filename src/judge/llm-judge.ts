@@ -10,6 +10,7 @@ import {
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore } from '../types/evaluation.js';
 import type { Scenario } from '../types/scenario.js';
+import type { TokenEstimate } from '../lib/observability.js';
 import {
   SESSION_DIMENSIONS,
   TRACE_DIMENSIONS,
@@ -22,6 +23,21 @@ import {
 
 interface JudgeBatchResult {
   [dimensionId: string]: { score: number; reason: string; evidence?: string };
+}
+
+interface JudgeCallResult {
+  results: JudgeBatchResult;
+  usage: TokenEstimate;
+}
+
+function createEmptyTokenEstimate(): TokenEstimate {
+  return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+}
+
+function addTokenEstimate(target: TokenEstimate, usage: TokenEstimate): void {
+  target.inputTokens += usage.inputTokens;
+  target.outputTokens += usage.outputTokens;
+  target.totalTokens += usage.totalTokens;
 }
 
 /**
@@ -170,6 +186,7 @@ export class LLMJudge {
     const isSecurityScenario = attackType != null;
     const sessionDims = isSecurityScenario ? SECURITY_SESSION_DIMENSIONS : SESSION_DIMENSIONS;
     const traceDims   = isSecurityScenario ? SECURITY_TRACE_DIMENSIONS   : TRACE_DIMENSIONS;
+    const judgeUsage = createEmptyTokenEstimate();
 
     // Sanitize the transcript for judge calls: redact adversarial customer content
     // and mark guardrail-blocked agent turns. This prevents the judge's own
@@ -184,12 +201,14 @@ export class LLMJudge {
     // ── Batch 1: SESSION / SECURITY SESSION dimensions ─────────────────────
     const sessionLabel = isSecurityScenario ? 'SECURITY' : 'SESSION';
     process.stdout.write(`     [judge] ${sessionLabel} dims... `);
-    const sessionResults = await this.judgeBatch(
+    const sessionCall = await this.judgeBatch(
       sessionDims,
       fullContext.replace('{goal}', goal),
       goal,
       attackType,
     );
+    addTokenEstimate(judgeUsage, sessionCall.usage);
+    const sessionResults = sessionCall.results;
     for (const dim of sessionDims) {
       const r = sessionResults[dim.id] ?? { score: 0.5, reason: 'No response' };
       scores[dim.id] = {
@@ -225,12 +244,14 @@ export class LLMJudge {
 
         process.stdout.write(`     [judge] TRACE turn ${i + 1}/${ariaTurns.length}... `);
         const contextUpTo = formatConversationUpTo(judgeTranscript, turn.index);
-        const traceResults = await this.judgeTraceBatch(
+        const traceCall = await this.judgeTraceBatch(
           traceDims,
           contextUpTo,
           turn.content,
           attackType,
         );
+        addTokenEstimate(judgeUsage, traceCall.usage);
+        const traceResults = traceCall.results;
         for (const dim of traceDims) {
           const r = traceResults[dim.id] ?? { score: 0.5, reason: 'No response' };
           traceAccumulator[dim.id]!.push({ score: r.score, reason: r.reason, evidence: r.evidence, ariaTurn: turn.content });
@@ -268,11 +289,13 @@ export class LLMJudge {
     if (hasEscalationContext) {
       process.stdout.write('     [judge] ESCALATION dims... ');
       const escalationVars = buildEscalationVars(transcript, scenario);
-      const escalationResults = await this.judgeEscalationBatch(
+      const escalationCall = await this.judgeEscalationBatch(
         ESCALATION_DIMENSIONS,
         fullContext,
         escalationVars,
       );
+      addTokenEstimate(judgeUsage, escalationCall.usage);
+      const escalationResults = escalationCall.results;
       for (const dim of ESCALATION_DIMENSIONS) {
         const r = escalationResults[dim.id] ?? { score: 0.5, reason: 'No response' };
         scores[dim.id] = {
@@ -331,6 +354,9 @@ export class LLMJudge {
       summary,
       judgeModel: this.modelId,
       evaluatedAt: new Date().toISOString(),
+      judgeTokenInputEstimate: judgeUsage.inputTokens,
+      judgeTokenOutputEstimate: judgeUsage.outputTokens,
+      judgeTokenTotalEstimate: judgeUsage.totalTokens,
       scenarioType: isSecurityScenario ? 'security' : 'quality',
     };
   }
@@ -342,7 +368,7 @@ export class LLMJudge {
     context: string,
     goal: string,
     attackType?: string,
-  ): Promise<JudgeBatchResult> {
+  ): Promise<JudgeCallResult> {
     const dimList = dims
       .map(
         (d, i) =>
@@ -386,7 +412,7 @@ export class LLMJudge {
     context: string,
     assistantTurn: string,
     attackType?: string,
-  ): Promise<JudgeBatchResult> {
+  ): Promise<JudgeCallResult> {
     const dimList = dims
       .map(
         (d, i) =>
@@ -422,7 +448,7 @@ export class LLMJudge {
     dims: Dimension[],
     fullConversation: string,
     vars: Record<string, string>,
-  ): Promise<JudgeBatchResult> {
+  ): Promise<JudgeCallResult> {
     const dimList = dims
       .map(
         (d, i) =>
@@ -454,7 +480,7 @@ export class LLMJudge {
     return this.callBedrock(prompt);
   }
 
-  private async callBedrock(prompt: string): Promise<JudgeBatchResult> {
+  private async callBedrock(prompt: string): Promise<JudgeCallResult> {
     const messages: Message[] = [{ role: 'user', content: [{ text: prompt }] }];
 
     try {
@@ -472,25 +498,30 @@ export class LLMJudge {
           inferenceConfig: { maxTokens: 2000, temperature: 0.0 },
         }),
       );
+      const usage = {
+        inputTokens: resp.usage?.inputTokens ?? 0,
+        outputTokens: resp.usage?.outputTokens ?? 0,
+        totalTokens: resp.usage?.totalTokens ?? 0,
+      };
       const raw =
         (resp.output?.message?.content?.[0] as { text?: string } | undefined)?.text ?? '{}';
       // Extract JSON from possible markdown fences, then repair common model quirks
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return {};
+      if (!jsonMatch) return { results: {}, usage };
       try {
-        return JSON.parse(jsonMatch[0]) as JudgeBatchResult;
+        return { results: JSON.parse(jsonMatch[0]) as JudgeBatchResult, usage };
       } catch {
         try {
-          return JSON.parse(repairJson(jsonMatch[0])) as JudgeBatchResult;
+          return { results: JSON.parse(repairJson(jsonMatch[0])) as JudgeBatchResult, usage };
         } catch {
           // Log the raw snippet near the failure for diagnosis
           console.debug('  ⚠  repairJson failed on:', jsonMatch[0].substring(0, 300));
-          return {};
+          return { results: {}, usage };
         }
       }
     } catch (err) {
       console.error('  ⚠  Judge Bedrock call failed:', err);
-      return {};
+      return { results: {}, usage: createEmptyTokenEstimate() };
     }
   }
 }
