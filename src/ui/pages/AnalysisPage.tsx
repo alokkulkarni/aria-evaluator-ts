@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import { formatLatency } from '../lib/format.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -256,17 +257,17 @@ function ComparePanel({ result }: { result: { runs: RunDetail[] } }) {
               ))}
             </tr>
             <tr>
-              <td className="px-3 py-2 text-xs font-medium text-gray-600">Latency (ms)</td>
+              <td className="px-3 py-2 text-xs font-medium text-gray-600">Latency</td>
               {runs.map((r, i) => {
                 const lat = r.telemetry?.latencyMs ?? null;
                 const baseLat = base.telemetry?.latencyMs ?? null;
                 const delta = i > 0 && lat !== null && baseLat !== null ? lat - baseLat : null;
                 return (
                   <td key={r.id} className="px-3 py-2 text-xs">
-                    {lat !== null ? lat.toLocaleString() : '—'}
+                    {lat !== null ? formatLatency(lat) : '—'}
                     {delta !== null && (
                       <span className={`ml-1.5 text-[11px] ${deltaColor(-delta / 1000)}`}>
-                        ({delta > 0 ? '+' : ''}{delta.toLocaleString()})
+                        ({delta > 0 ? '+' : ''}{formatLatency(Math.abs(delta))})
                       </span>
                     )}
                   </td>

@@ -1,6 +1,7 @@
 // src/ui/pages/Dashboard.tsx
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import { formatLatency } from '../lib/format.js';
 
 interface Run {
   id: string;
@@ -110,13 +111,13 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
               <div className="rounded-md border border-slate-200 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Avg latency</p>
                 <p className="text-lg font-semibold text-slate-900">
-                  {metrics.totals.avgLatencyMs != null ? `${Math.round(metrics.totals.avgLatencyMs)} ms` : '—'}
+                  {metrics.totals.avgLatencyMs != null ? formatLatency(metrics.totals.avgLatencyMs) : '—'}
                 </p>
               </div>
               <div className="rounded-md border border-slate-200 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">P95 latency</p>
                 <p className="text-lg font-semibold text-slate-900">
-                  {metrics.totals.p95LatencyMs != null ? `${Math.round(metrics.totals.p95LatencyMs)} ms` : '—'}
+                  {metrics.totals.p95LatencyMs != null ? formatLatency(metrics.totals.p95LatencyMs) : '—'}
                 </p>
               </div>
               <div className="rounded-md border border-slate-200 p-3">
