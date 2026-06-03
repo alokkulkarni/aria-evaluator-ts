@@ -542,85 +542,127 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
 
         {/* ── Review form footer ── */}
         <div className="border-t border-slate-200 px-5 py-3 flex-shrink-0 bg-slate-50 space-y-2.5">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Your Review</div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Status */}
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
-              <select
-                className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={statusDraft}
-                onChange={(e) => setStatusDraft(e.target.value as ReviewStatus)}
-              >
-                <option value="in_review">In Review (not finalised)</option>
-                <option value="approved">Approved (AI correct)</option>
-                <option value="overridden">Overridden (human score)</option>
-                <option value="rejected">Rejected (exclude from calibration)</option>
-              </select>
+          {review && (review.status === 'approved' || review.status === 'overridden' || review.status === 'rejected') ? (
+            /* ── View-only footer for terminal states ── */
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Review</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-1">Status</p>
+                  <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${statusColor(review.status)}`}>
+                    {review.status.replace('_', ' ')}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-1">Score</p>
+                  <span className="text-sm font-mono font-semibold text-slate-700">
+                    {review.scoreOverride !== null ? review.scoreOverride.toFixed(1) : `${review.evalResult.overallScore.toFixed(1)} (AI)`}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-1">Reviewer</p>
+                  <span className="text-sm text-slate-700">{review.reviewer?.username ?? '—'}</span>
+                </div>
+              </div>
+              {review.notes && (
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-1">Notes</p>
+                  <p className="text-sm text-slate-700 bg-white border border-slate-100 rounded px-2.5 py-1.5">{review.notes}</p>
+                </div>
+              )}
+              <div className="flex justify-end pt-0.5">
+                <button
+                  onClick={onClose}
+                  className="px-5 py-1.5 text-sm font-medium bg-slate-700 text-white rounded-md hover:bg-slate-800"
+                >
+                  Close
+                </button>
+              </div>
             </div>
+          ) : (
+            /* ── Editable footer for pending / in_review ── */
+            <>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Your Review</div>
 
-            {/* Score override */}
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">
-                Score override <span className="text-slate-400 font-normal">(AI: {aiScore.toFixed(1)})</span>
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={10}
-                step={0.5}
-                placeholder="Leave empty to use AI score"
-                className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={scoreDraft}
-                onChange={(e) => setScoreDraft(e.target.value)}
-              />
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Status */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
+                  <select
+                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    value={statusDraft}
+                    onChange={(e) => setStatusDraft(e.target.value as ReviewStatus)}
+                  >
+                    <option value="in_review">In Review (not finalised)</option>
+                    <option value="approved">Approved (AI correct)</option>
+                    <option value="overridden">Overridden (human score)</option>
+                    <option value="rejected">Rejected (exclude from calibration)</option>
+                  </select>
+                </div>
 
-            {/* Verdict */}
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Verdict</label>
-              <select
-                className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={passDraft}
-                onChange={(e) => setPassDraft(e.target.value)}
-              >
-                <option value="">Use AI verdict</option>
-                <option value="pass">Pass</option>
-                <option value="fail">Fail</option>
-              </select>
-            </div>
-          </div>
+                {/* Score override */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Score override <span className="text-slate-400 font-normal">(AI: {aiScore.toFixed(1)})</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    placeholder="Leave empty to use AI score"
+                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    value={scoreDraft}
+                    onChange={(e) => setScoreDraft(e.target.value)}
+                  />
+                </div>
 
-          {/* Notes */}
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
-            <textarea
-              rows={2}
-              className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-              placeholder="Reviewer notes (optional)…"
-              value={notesDraft}
-              onChange={(e) => setNotesDraft(e.target.value)}
-            />
-          </div>
+                {/* Verdict */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Verdict</label>
+                  <select
+                    className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    value={passDraft}
+                    onChange={(e) => setPassDraft(e.target.value)}
+                  >
+                    <option value="">Use AI verdict</option>
+                    <option value="pass">Pass</option>
+                    <option value="fail">Fail</option>
+                  </select>
+                </div>
+              </div>
 
-          {saveError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">{saveError}</p>}
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
+                <textarea
+                  rows={2}
+                  className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                  placeholder="Reviewer notes (optional)…"
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                />
+              </div>
 
-          <div className="flex justify-end gap-2 pt-0.5">
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 text-sm text-slate-500 hover:text-slate-700 rounded-md border border-slate-200 hover:border-slate-300 bg-white"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => { void handleSave(); }}
-              disabled={saving}
-              className="px-4 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save Review'}
-            </button>
-          </div>
+              {saveError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">{saveError}</p>}
+
+              <div className="flex justify-end gap-2 pt-0.5">
+                <button
+                  onClick={onClose}
+                  className="px-4 py-1.5 text-sm text-slate-500 hover:text-slate-700 rounded-md border border-slate-200 hover:border-slate-300 bg-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { void handleSave(); }}
+                  disabled={saving}
+                  className="px-4 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Save Review'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
       </div>
