@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Local development Dockerfile — no platform pin, runs natively on host arch.
 FROM node:20-bookworm-slim AS build
 
@@ -5,7 +6,13 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY prisma ./prisma
-RUN npm ci && npx prisma generate
+
+# BuildKit cache mounts keep the npm download cache and Prisma engine binary
+# warm across builds.  Only the package manifests layer is invalidated when
+# dependencies change — saving 10-15 min of redundant network I/O per rebuild.
+RUN --mount=type=cache,id=aria-npm,target=/root/.npm \
+    --mount=type=cache,id=aria-prisma,target=/root/.cache/prisma \
+    npm ci --prefer-offline && npx prisma generate
 
 COPY . .
 RUN npm run build
@@ -13,8 +20,12 @@ RUN npm run build
 # ── Runtime stage (no platform pin for local dev) ───────────────────────────
 FROM node:20-bookworm-slim AS runtime
 
+# awscli is NOT installed for local deployments: the entrypoint only calls
+# `aws s3 sync` when AWS_S3_STATE_BUCKET is set, which is never the case for
+# local Docker runs.  Skipping it saves ~3-5 min of apt install time and
+# ~300 MB of Python/boto dependencies from the final image.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends awscli ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
