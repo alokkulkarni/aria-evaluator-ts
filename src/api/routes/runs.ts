@@ -105,8 +105,10 @@ function sanitizeEventPayload(
 }
 
 const VALID_RUN_STATUSES = new Set(['pending', 'running', 'completed', 'failed']);
-// Prisma 6 uses cuid2 which starts with any lowercase letter (not just 'c')
+// Scenario/entity IDs: Prisma 6 cuid2 — starts with any lowercase letter, 21–31 chars total
 const CUID_RE = /^[a-z][a-z0-9]{20,30}$/;
+// Run IDs: generated with Node.js crypto.randomUUID() — standard UUID v4 with dashes
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROVIDER_RE = /^[a-zA-Z0-9_-]{1,50}$/;
 
 function parseSingleQueryString(raw: unknown): string | undefined {
@@ -244,7 +246,7 @@ runsRouter.get('/compare', async (req, res) => {
     });
   }
 
-  if (!ids.every((id) => CUID_RE.test(id))) {
+  if (!ids.every((id) => UUID_RE.test(id))) {
     return res.status(400).json({ error: 'One or more run IDs have an invalid format' });
   }
 
