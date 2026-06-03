@@ -330,6 +330,7 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
       where: {
         scenarioId,
         createdAt: { gte: baseline.createdAt },
+        evalResult: { is: { judgeModel: baseline.judgeModel } },
       },
       orderBy: { createdAt: 'desc' },
       take: takeCount,
