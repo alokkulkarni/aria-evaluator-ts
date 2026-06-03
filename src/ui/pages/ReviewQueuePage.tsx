@@ -3,6 +3,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import type { Turn } from '../../types/transcript.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,6 +14,7 @@ interface EvalResultSummary {
   overallScore: number;
   passed: boolean;
   summary: string;
+  recommendation?: string | null;
   judgeModel: string;
   scenarioType?: string;
   dimensionScores: string; // JSON string
@@ -47,14 +49,8 @@ interface Review {
   run?: RunSummary | null;
 }
 
-interface Turn {
-  index: number;
-  role: string;
-  content: string;
-}
-
 interface ReviewDetail extends Review {
-  run?: RunSummary & { turns?: Turn[] };
+  run?: (RunSummary & { turns?: Turn[] }) | null;
 }
 
 interface CalibrationSummary {
@@ -195,12 +191,80 @@ interface ReviewDetailPanelProps {
   onUpdated: () => void;
 }
 
+// Detect scenario-injection markers: lines that are purely === label ===
+function isScenarioMarker(content: string): boolean {
+  return /^===\s*.+\s*===\s*$/.test(content.trim());
+}
+
+function extractMarkerLabel(content: string): string {
+  return content.trim().replace(/^===\s*/, '').replace(/\s*===\s*$/, '').replace(/_/g, ' ');
+}
+
+// A single conversation bubble
+function ConversationTurn({ turn }: { turn: Turn }) {
+  const trimmed = turn.content.trim();
+
+  if (isScenarioMarker(trimmed)) {
+    return (
+      <div className="flex justify-center my-2">
+        <span className="px-3 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium border border-slate-200">
+          📋 {extractMarkerLabel(trimmed)}
+        </span>
+      </div>
+    );
+  }
+
+  const isAgent = turn.role === 'agent';
+  return (
+    <div className={`flex ${isAgent ? 'justify-start' : 'justify-end'} gap-2`}>
+      {isAgent && (
+        <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+          A
+        </div>
+      )}
+      <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        isAgent
+          ? 'bg-blue-50 text-blue-900 rounded-tl-sm'
+          : 'bg-slate-100 text-slate-800 rounded-tr-sm'
+      }`}>
+        <p className="whitespace-pre-wrap break-words">{trimmed}</p>
+        {turn.durationMs !== undefined && turn.durationMs > 0 && (
+          <p className={`text-xs mt-1 ${isAgent ? 'text-blue-400' : 'text-slate-400'}`}>
+            {turn.durationMs < 1000 ? `${turn.durationMs}ms` : `${(turn.durationMs / 1000).toFixed(1)}s`}
+          </p>
+        )}
+      </div>
+      {!isAgent && (
+        <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+          C
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Score bar (0–10)
+function ScoreBar({ score }: { score: number }) {
+  const pct = Math.min(100, Math.max(0, (score / 10) * 100));
+  const color = score >= 8 ? 'bg-green-500' : score >= 6 ? 'bg-yellow-500' : 'bg-red-500';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-xs font-mono font-bold w-7 text-right ${scoreColor(score)}`}>{score}</span>
+    </div>
+  );
+}
+
 function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelProps) {
   const [review, setReview] = useState<ReviewDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [allDimsExpanded, setAllDimsExpanded] = useState(true);
+  const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
 
   const [statusDraft, setStatusDraft] = useState<ReviewStatus>('pending');
   const [scoreDraft, setScoreDraft] = useState<string>('');
@@ -210,13 +274,21 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
   useEffect(() => {
     void (async () => {
       try {
-        const data = await apiFetch(`/api/reviews/${reviewId}`) as { review: ReviewDetail; run?: RunSummary & { turns?: Turn[] } };
+        const data = await apiFetch(`/api/reviews/${reviewId}`) as {
+          review: ReviewDetail;
+          run?: RunSummary & { turns?: Turn[] };
+        };
         const r = { ...data.review, run: data.run ?? data.review.run };
         setReview(r);
         setStatusDraft(r.status);
         setScoreDraft(r.scoreOverride !== null ? String(r.scoreOverride) : '');
         setPassDraft(r.passedOverride !== null ? (r.passedOverride ? 'pass' : 'fail') : '');
         setNotesDraft(r.notes ?? '');
+        // Start all dimension cards expanded
+        try {
+          const dims = JSON.parse(r.evalResult.dimensionScores) as Record<string, unknown>;
+          setExpandedDims(new Set(Object.keys(dims)));
+        } catch { /* ignore */ }
       } catch (err) {
         setLoadError((err as Error).message);
       } finally {
@@ -255,6 +327,26 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
     }
   }, [review, statusDraft, scoreDraft, passDraft, notesDraft, onUpdated, onClose]);
 
+  function toggleDim(dimId: string) {
+    setExpandedDims((prev) => {
+      const next = new Set(prev);
+      if (next.has(dimId)) { next.delete(dimId); } else { next.add(dimId); }
+      // Sync master toggle based on resulting state
+      setAllDimsExpanded(next.size === dimIds.length);
+      return next;
+    });
+  }
+
+  function toggleAllDims(dimIds: string[]) {
+    if (allDimsExpanded) {
+      setExpandedDims(new Set());
+      setAllDimsExpanded(false);
+    } else {
+      setExpandedDims(new Set(dimIds));
+      setAllDimsExpanded(true);
+    }
+  }
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
@@ -275,90 +367,173 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
   }
 
   const aiScore = review.evalResult.overallScore;
-  const dimScores: Record<string, { score: number; justification: string; evidence?: string }> = (() => {
-    try { return JSON.parse(review.evalResult.dimensionScores) as Record<string, { score: number; justification: string; evidence?: string }>; }
+  type DimScore = { score: number; justification: string; evidence?: string };
+  const dimScores: Record<string, DimScore> = (() => {
+    try { return JSON.parse(review.evalResult.dimensionScores) as Record<string, DimScore>; }
     catch { return {}; }
   })();
+  const dimIds = Object.keys(dimScores);
+  const turns = review.run?.turns ?? [];
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-3">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col">
+
+        {/* ── Modal header ── */}
+        <div className="flex items-start justify-between px-5 py-3.5 border-b border-slate-100 flex-shrink-0">
           <div>
-            <h3 className="text-base font-semibold text-slate-800">
+            <h3 className="text-base font-semibold text-slate-800 leading-tight">
               {review.run?.scenarioName ?? 'Review'}
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Run {review.runId.slice(0, 8)}… · Queued {fmtDate(review.queuedAt)}
+              Run {review.runId.slice(0, 8)}…
+              {' · '}Queued {fmtDate(review.queuedAt)}
+              {' · '}Judge: <span className="font-mono">{review.evalResult.judgeModel}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            className="ml-4 text-slate-400 hover:text-slate-600 text-2xl leading-none mt-0.5"
+            aria-label="Close"
+          >
+            ×
+          </button>
         </div>
 
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* AI score overview */}
-          <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 flex items-start gap-4">
-            <div className="text-center">
-              <div className={`text-3xl font-bold ${scoreColor(aiScore)}`}>{aiScore.toFixed(1)}</div>
-              <div className="text-xs text-slate-400">/10 AI</div>
+        {/* ── Main body: two-column ── */}
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[55%_45%]">
+
+          {/* ── Left: Conversation ── */}
+          <div className="flex flex-col min-h-0 border-r border-slate-100">
+            <div className="px-4 py-2.5 border-b border-slate-100 flex-shrink-0">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Conversation
+                {turns.length > 0 && <span className="ml-1.5 text-slate-400 font-normal normal-case">({turns.length} turns)</span>}
+              </span>
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${review.evalResult.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                  {review.evalResult.passed ? 'PASS' : 'FAIL'}
-                </span>
-                {review.evalResult.scenarioType && (
-                  <span className="text-xs text-slate-500 capitalize">{review.evalResult.scenarioType}</span>
-                )}
-              </div>
-              <p className="text-sm text-slate-600">{review.evalResult.summary}</p>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {turns.length === 0 ? (
+                review.run === null || review.run === undefined ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                    <span className="text-3xl mb-2">🗑️</span>
+                    <p className="text-sm text-slate-500 font-medium">Transcript unavailable</p>
+                    <p className="text-xs text-slate-400 mt-1">The run associated with this review was deleted.</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic text-center py-10">No conversation turns recorded.</p>
+                )
+              ) : (
+                turns.map((t) => <ConversationTurn key={t.index} turn={t} />)
+              )}
             </div>
           </div>
 
-          {/* Dimension scores */}
-          {Object.keys(dimScores).length > 0 && (
-            <div>
-              <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Dimension Scores</div>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {Object.entries(dimScores).map(([dimId, ds]) => (
-                  <div key={dimId} className="flex items-center gap-2 text-sm">
-                    <span className={`font-mono font-bold w-8 text-right flex-shrink-0 ${scoreColor(ds.score)}`}>{ds.score}</span>
-                    <span className="text-slate-600 flex-1 truncate">{dimId.replace(/_/g, ' ')}</span>
-                    {ds.justification && (
-                      <span className="text-xs text-slate-400 truncate max-w-xs" title={ds.justification}>{ds.justification.slice(0, 60)}…</span>
+          {/* ── Right: AI Evaluation ── */}
+          <div className="flex flex-col min-h-0">
+            <div className="px-4 py-2.5 border-b border-slate-100 flex-shrink-0">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">AI Evaluation</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+
+              {/* Score header */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="text-center">
+                  <div className={`text-3xl font-bold leading-none ${scoreColor(aiScore)}`}>{aiScore.toFixed(1)}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">/10</div>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${review.evalResult.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {review.evalResult.passed ? '✓ PASS' : '✗ FAIL'}
+                    </span>
+                    {review.evalResult.scenarioType && (
+                      <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full capitalize">
+                        {review.evalResult.scenarioType}
+                      </span>
                     )}
                   </div>
-                ))}
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">{review.evalResult.summary}</p>
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Conversation turns */}
-          {review.run?.turns && review.run.turns.length > 0 && (
-            <div>
-              <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Conversation</div>
-              <div className="space-y-1 max-h-48 overflow-y-auto rounded-lg bg-slate-50 border border-slate-100 p-3">
-                {review.run.turns.map((t) => (
-                  <div key={t.index} className={`text-sm ${t.role === 'agent' ? 'text-blue-700' : 'text-slate-700'}`}>
-                    <span className="font-semibold capitalize">{t.role}: </span>
-                    {t.content}
+              {/* Recommendation / overall reasoning */}
+              {review.evalResult.recommendation && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-xs">🧠</span>
+                    <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">AI Reasoning</span>
                   </div>
-                ))}
-              </div>
+                  <p className="text-sm text-indigo-900 leading-relaxed whitespace-pre-wrap">
+                    {review.evalResult.recommendation}
+                  </p>
+                </div>
+              )}
+
+              {/* Dimension scores */}
+              {dimIds.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      Dimension Scores
+                    </span>
+                    <button
+                      onClick={() => toggleAllDims(dimIds)}
+                      className="text-xs text-slate-400 hover:text-slate-600"
+                    >
+                      {allDimsExpanded ? 'Collapse all' : 'Expand all'}
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {dimIds.map((dimId) => {
+                      const ds = dimScores[dimId]!;
+                      const isOpen = expandedDims.has(dimId);
+                      return (
+                        <div key={dimId} className="rounded-lg border border-slate-200 overflow-hidden">
+                          <button
+                            className="w-full flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-left transition-colors"
+                            onClick={() => toggleDim(dimId)}
+                          >
+                            <span className="text-xs">{isOpen ? '▾' : '▸'}</span>
+                            <span className="flex-1 text-sm font-medium text-slate-700 capitalize">
+                              {dimId.replace(/_/g, ' ')}
+                            </span>
+                            <div className="w-24 flex-shrink-0">
+                              <ScoreBar score={ds.score} />
+                            </div>
+                          </button>
+                          {isOpen && (
+                            <div className="px-3 py-2.5 space-y-2 bg-white">
+                              {ds.justification && (
+                                <p className="text-xs text-slate-700 leading-relaxed">{ds.justification}</p>
+                              )}
+                              {ds.evidence && (
+                                <div className="rounded bg-slate-50 border border-slate-200 px-2.5 py-2">
+                                  <div className="text-xs font-semibold text-slate-400 mb-1">Evidence</div>
+                                  <p className="text-xs text-slate-600 italic leading-relaxed whitespace-pre-wrap">{ds.evidence}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        </div>
 
-          {/* Review form */}
-          <div className="border-t border-slate-100 pt-4 space-y-3">
-            <div className="text-xs font-semibold text-slate-500 uppercase">Review</div>
+        {/* ── Review form footer ── */}
+        <div className="border-t border-slate-200 px-5 py-3 flex-shrink-0 bg-slate-50 space-y-2.5">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Your Review</div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Status */}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-slate-600 w-28 flex-shrink-0">Status</label>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
               <select
-                className="flex-1 border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                 value={statusDraft}
                 onChange={(e) => setStatusDraft(e.target.value as ReviewStatus)}
               >
@@ -371,26 +546,27 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
             </div>
 
             {/* Score override */}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-slate-600 w-28 flex-shrink-0">Score override</label>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Score override <span className="text-slate-400 font-normal">(AI: {aiScore.toFixed(1)})</span>
+              </label>
               <input
                 type="number"
                 min={0}
                 max={10}
                 step={0.5}
-                placeholder={`AI: ${aiScore.toFixed(1)}`}
-                className="w-28 border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                placeholder="Leave empty to use AI score"
+                className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                 value={scoreDraft}
                 onChange={(e) => setScoreDraft(e.target.value)}
               />
-              <span className="text-xs text-slate-400">0–10, leave empty to use AI score</span>
             </div>
 
-            {/* Pass/fail override */}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-slate-600 w-28 flex-shrink-0">Verdict</label>
+            {/* Verdict */}
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Verdict</label>
               <select
-                className="w-40 border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                 value={passDraft}
                 onChange={(e) => setPassDraft(e.target.value)}
               >
@@ -399,40 +575,39 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 <option value="fail">Fail</option>
               </select>
             </div>
+          </div>
 
-            {/* Notes */}
-            <div className="flex items-start gap-3">
-              <label className="text-sm font-medium text-slate-600 w-28 flex-shrink-0 pt-1.5">Notes</label>
-              <textarea
-                rows={3}
-                className="flex-1 border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y"
-                placeholder="Reviewer notes (optional)…"
-                value={notesDraft}
-                onChange={(e) => setNotesDraft(e.target.value)}
-              />
-            </div>
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
+            <textarea
+              rows={2}
+              className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+              placeholder="Reviewer notes (optional)…"
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+            />
+          </div>
 
-            {/* Issue #1: Show saveError inline, not modal */}
-            {saveError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{saveError}</p>}
+          {saveError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">{saveError}</p>}
+
+          <div className="flex justify-end gap-2 pt-0.5">
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 text-sm text-slate-500 hover:text-slate-700 rounded-md border border-slate-200 hover:border-slate-300 bg-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { void handleSave(); }}
+              disabled={saving}
+              className="px-4 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save Review'}
+            </button>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-sm text-slate-500 hover:text-slate-700 rounded-md border border-slate-200 hover:border-slate-300"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => { void handleSave(); }}
-            disabled={saving}
-            className="px-4 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save Review'}
-          </button>
-        </div>
       </div>
     </div>
   );
