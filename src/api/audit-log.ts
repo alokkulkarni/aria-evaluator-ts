@@ -12,7 +12,7 @@ interface AuditMetadata {
   [key: string]: unknown;
 }
 
-const SECRET_KEY_PATTERN = /(secret|token|key|password|bearer|auth)/i;
+const SECRET_KEY_PATTERN = /(secret|token|password|bearer|auth|apiKey|accessKey|privateKey|publicKey)/i;
 
 function redactMetadata(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => redactMetadata(item));
