@@ -107,8 +107,8 @@ app.use(express.json({ limit: '2mb' }));
 
 // ── API routes ─────────────────────────────────────────────────────────────────
 app.use('/api', attachAuthContext);
-app.use('/api', enforceTrustedOrigin);
 app.use('/api/auth', authRouter);
+app.use('/api', enforceTrustedOrigin);
 app.use('/api', requireAuth);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/runs', runsRouter);
