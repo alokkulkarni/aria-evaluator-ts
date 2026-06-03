@@ -6,12 +6,16 @@
 //   in_review → approved   (AI score confirmed; no override needed)
 //   in_review → overridden (human score differs from AI)
 //   in_review → rejected   (run excluded from calibration — e.g. bad data)
-//   Any terminal state → in_review is NOT allowed without an explicit re-queue.
+//   Terminal states (approved/overridden/rejected) may be reopened to in_review for correction.
+//
+// Calibration metrics include only approved + overridden reviews (rejected excluded).
+// Approved reviews are treated as perfect agreement (disagreement = 0).
+// Overridden reviews contribute their |aiScore - humanScore| to disagreement calculations.
 
 import { Router } from 'express';
 import { prisma } from '../../db/client.js';
 import { recordAuditEventSafe } from '../audit-log.js';
-import { getRequestAuth } from '../auth.js';
+import { getRequestAuth, requireAdminAuth } from '../auth.js';
 
 export const reviewsRouter = Router();
 
@@ -233,6 +237,13 @@ reviewsRouter.patch('/:id', async (req, res) => {
       }
     }
 
+    // Validate passedOverride type (Issue #3: runtime type validation before DB write)
+    if (body.passedOverride !== undefined && body.passedOverride !== null) {
+      if (typeof body.passedOverride !== 'boolean') {
+        return res.status(400).json({ error: 'passedOverride must be a boolean or null' });
+      }
+    }
+
     // Validate and normalize dimensionOverridesJson
     let dimensionOverridesJson: string | null | undefined = undefined;
     if (body.dimensionOverridesJson !== undefined) {
@@ -274,14 +285,15 @@ reviewsRouter.patch('/:id', async (req, res) => {
 });
 
 // ─── DELETE /api/reviews/:id ──────────────────────────────────────────────────
-// Hard-delete a review (e.g. erroneous queue entry). Admin action.
-reviewsRouter.delete('/:id', async (req, res) => {
+// Hard-delete a review (e.g. erroneous queue entry). Admin action only (Issue #2).
+reviewsRouter.delete('/:id', requireAdminAuth, async (req, res) => {
   try {
-    const existing = await prisma.review.findUnique({ where: { id: req.params['id']! } });
+    const reviewId = String(req.params['id']);
+    const existing = await prisma.review.findUnique({ where: { id: reviewId } });
     if (!existing) return res.status(404).json({ error: 'Review not found' });
 
-    await prisma.review.delete({ where: { id: req.params['id']! } });
-    await recordAuditEventSafe(req, 'review.delete', req.params['id']!, { runId: existing.runId });
+    await prisma.review.delete({ where: { id: reviewId } });
+    await recordAuditEventSafe(req, 'review.delete', reviewId, { runId: existing.runId });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -291,11 +303,13 @@ reviewsRouter.delete('/:id', async (req, res) => {
 // ─── GET /api/reviews/calibration/summary ─────────────────────────────────────
 // Aggregate calibration statistics: AI vs human score agreement.
 // Returns summary stats across all completed (approved/overridden) reviews.
+// Rejected reviews are excluded from calibration metrics (Issue #4).
 reviewsRouter.get('/calibration/summary', async (_req, res) => {
   try {
-    const completed = await prisma.review.findMany({
+    // Query only calibrated reviews (approved + overridden, not rejected) — Issue #4
+    const calibrated = await prisma.review.findMany({
       where: {
-        status: { in: ['approved', 'overridden', 'rejected'] },
+        status: { in: ['approved', 'overridden'] },
         evalResult: { run: { NOT: { status: 'deleted' } } },
       },
       select: {
@@ -324,32 +338,42 @@ reviewsRouter.get('/calibration/summary', async (_req, res) => {
       rejected: await prisma.review.count({ where: { status: 'rejected' } }),
     };
 
-    // Compute score disagreement stats for overridden reviews
-    const overridden = completed.filter((r) => r.status === 'overridden' && r.scoreOverride !== null);
+    // Issue #5: Compute score averages over all calibrated reviews (approved + overridden).
+    // Approved reviews are treated as perfect agreement (disagreement = 0).
     let avgAiScore: number | null = null;
     let avgHumanScore: number | null = null;
     let avgDisagreement: number | null = null;
     let agreementRate: number | null = null;
 
-    if (overridden.length > 0) {
-      const aiScores = overridden.map((r) => r.evalResult.overallScore);
-      const humanScores = overridden.map((r) => r.scoreOverride as number);
-      const disagreements = overridden.map((r, i) => Math.abs(aiScores[i]! - humanScores[i]!));
+    if (calibrated.length > 0) {
+      const approvedCount = calibrated.filter((r) => r.status === 'approved').length;
+      const overriddenWithScore = calibrated.filter((r) => r.status === 'overridden' && r.scoreOverride !== null);
 
+      // Average AI score over all calibrated
+      const aiScores = calibrated.map((r) => r.evalResult.overallScore);
       avgAiScore = aiScores.reduce((a, b) => a + b, 0) / aiScores.length;
+
+      // Average human score: approved use AI score (perfect agreement), overridden use scoreOverride
+      const humanScores = calibrated.map((r) =>
+        r.status === 'approved' ? r.evalResult.overallScore : (r.scoreOverride ?? r.evalResult.overallScore)
+      );
       avgHumanScore = humanScores.reduce((a, b) => a + b, 0) / humanScores.length;
+
+      // Average disagreement: approved = 0, overridden = |aiScore - humanScore|
+      const disagreements = calibrated.map((r) => {
+        if (r.status === 'approved') return 0;
+        return Math.abs(r.evalResult.overallScore - (r.scoreOverride ?? r.evalResult.overallScore));
+      });
       avgDisagreement = disagreements.reduce((a, b) => a + b, 0) / disagreements.length;
+
+      // Agreement rate: approved / total
+      agreementRate = approvedCount / calibrated.length;
     }
 
-    if (completed.length > 0) {
-      const agreedCount = completed.filter((r) => r.status === 'approved').length;
-      agreementRate = agreedCount / completed.length;
-    }
-
-    // Per-dimension disagreement (where dimension overrides exist)
+    // Per-dimension disagreement (where dimension overrides exist) — only overridden
     const dimensionStats: Record<string, { aiAvg: number; humanAvg: number; disagreementAvg: number; count: number }> = {};
-    for (const review of overridden) {
-      if (!review.dimensionOverridesJson) continue;
+    for (const review of calibrated) {
+      if (review.status !== 'overridden' || !review.dimensionOverridesJson) continue;
       let overrides: Record<string, { score: number; notes?: string }>;
       try {
         overrides = JSON.parse(review.dimensionOverridesJson) as Record<string, { score: number; notes?: string }>;
@@ -376,15 +400,16 @@ reviewsRouter.get('/calibration/summary', async (_req, res) => {
       }
     }
 
+    // Issue #6: Return separate calibratedCount (approved + overridden) and rejectedCount
     res.json({
       total,
       byStatus,
+      calibratedCount: calibrated.length,
+      rejectedCount: byStatus.rejected,
       agreementRate: agreementRate !== null ? Math.round(agreementRate * 100) / 100 : null,
       avgAiScore: avgAiScore !== null ? Math.round(avgAiScore * 10) / 10 : null,
       avgHumanScore: avgHumanScore !== null ? Math.round(avgHumanScore * 10) / 10 : null,
       avgDisagreement: avgDisagreement !== null ? Math.round(avgDisagreement * 10) / 10 : null,
-      overriddenCount: overridden.length,
-      completedCount: completed.length,
       dimensionStats,
     });
   } catch (err) {

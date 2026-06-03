@@ -199,7 +199,8 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
   const [review, setReview] = useState<ReviewDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [statusDraft, setStatusDraft] = useState<ReviewStatus>('pending');
   const [scoreDraft, setScoreDraft] = useState<string>('');
@@ -217,7 +218,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
         setPassDraft(r.passedOverride !== null ? (r.passedOverride ? 'pass' : 'fail') : '');
         setNotesDraft(r.notes ?? '');
       } catch (err) {
-        setError((err as Error).message);
+        setLoadError((err as Error).message);
       } finally {
         setLoading(false);
       }
@@ -227,11 +228,11 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
   const handleSave = useCallback(async () => {
     if (!review) return;
     setSaving(true);
-    setError(null);
+    setSaveError(null);
     try {
       const scoreNum = scoreDraft.trim() !== '' ? parseFloat(scoreDraft) : null;
       if (scoreNum !== null && (isNaN(scoreNum) || scoreNum < 0 || scoreNum > 10)) {
-        setError('Score override must be a number between 0 and 10');
+        setSaveError('Score override must be a number between 0 and 10');
         setSaving(false);
         return;
       }
@@ -248,7 +249,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
       onUpdated();
       onClose();
     } catch (err) {
-      setError((err as Error).message);
+      setSaveError((err as Error).message);
     } finally {
       setSaving(false);
     }
@@ -262,11 +263,11 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
     );
   }
 
-  if (!review || error) {
+  if (!review || loadError) {
     return (
       <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
         <div className="bg-white rounded-xl p-8">
-          <p className="text-red-600">{error ?? 'Failed to load review'}</p>
+          <p className="text-red-600">{loadError ?? 'Failed to load review'}</p>
           <button className="mt-3 text-sm text-slate-500 underline" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -410,9 +411,10 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                 onChange={(e) => setNotesDraft(e.target.value)}
               />
             </div>
-          </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+            {/* Issue #1: Show saveError inline, not modal */}
+            {saveError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{saveError}</p>}
+          </div>
         </div>
 
         {/* Footer */}
