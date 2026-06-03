@@ -115,6 +115,7 @@ model Run {
   runEvents    RunEvent[]
   evalResult   EvalResult?
   report       Report?
+  experimentRuns ExperimentRun[] @relation("experimentRuns")
   createdAt    DateTime  @default(now())
 }
 
@@ -274,13 +275,13 @@ model ExperimentRun {
   id           String   @id @default(cuid())
   experimentId String
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-  runId        String
+  runId        String   @unique  // global uniqueness: one run per experiment
+  run          Run      @relation("experimentRuns", fields: [runId], references: [id], onDelete: Cascade)
   legId        String
   leg          ExperimentLeg @relation(fields: [legId], references: [id], onDelete: Cascade)
   tagsJson     String?  // JSON: string[]
   createdAt    DateTime @default(now())
 
-  @@unique([runId, experimentId])
   @@index([experimentId])
   @@index([legId])
 }

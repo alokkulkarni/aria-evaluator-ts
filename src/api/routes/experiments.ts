@@ -271,40 +271,38 @@ experimentsRouter.post(
           .json({ error: 'Cannot assign runs to archived experiments' });
       }
 
-      // Check if run is already in this experiment
-      const existing = await prisma.experimentRun.findFirst({
-        where: {
-          runId,
-          experimentId: id,
-        },
-      });
-      if (existing) {
-        return res.status(409).json({
-          error: 'Run is already assigned to this experiment',
-        });
-      }
-
       // Assign run to leg
-      const experimentRun = await prisma.experimentRun.create({
-        data: {
-          experimentId: id,
+      // Note: runId has a global unique constraint, so only one experiment per run
+      try {
+        const experimentRun = await prisma.experimentRun.create({
+          data: {
+            experimentId: id,
+            runId,
+            legId,
+            tagsJson: tags ? JSON.stringify(tags) : null,
+          },
+        });
+
+        const auth = getRequestAuth(req);
+
+        // Audit log
+        await recordAuditEventSafe(req, 'experiment.run.assigned', id, {
           runId,
           legId,
-          tagsJson: tags ? JSON.stringify(tags) : null,
-        },
-      });
+          experimentName: experiment.name,
+          legName: leg.name,
+        });
 
-      const auth = getRequestAuth(req);
-
-      // Audit log
-      await recordAuditEventSafe(req, 'experiment.run.assigned', id, {
-        runId,
-        legId,
-        experimentName: experiment.name,
-        legName: leg.name,
-      });
-
-      return res.status(201).json(experimentRun);
+        return res.status(201).json(experimentRun);
+      } catch (error: any) {
+        // Handle Prisma unique constraint violation (P2002)
+        if (error?.code === 'P2002') {
+          return res.status(409).json({
+            error: 'Run is already assigned to another experiment',
+          });
+        }
+        throw error;
+      }
     } catch (error) {
       console.error('POST /api/experiments/:id/runs error:', error);
       return res.status(500).json({ error: 'Failed to assign run to experiment' });

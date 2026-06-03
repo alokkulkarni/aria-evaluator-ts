@@ -117,7 +117,7 @@ app.use('/api/scenarios', scenariosRouter);
 app.use('/api/runs', runsRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api', regressionRouter);
-app.use('/api', experimentsRouter);
+app.use('/api/experiments', experimentsRouter);
 app.use('/api/transcripts', transcriptsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/settings', settingsRouter);
