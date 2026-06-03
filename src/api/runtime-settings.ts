@@ -1,12 +1,23 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { appPaths } from '../runtime/paths.js';
+import {
+  DEFAULT_JUDGE_MAX_TOKENS,
+  DEFAULT_JUDGE_MODEL_ID,
+  DEFAULT_JUDGE_SYSTEM_PROMPT,
+  DEFAULT_JUDGE_TEMPERATURE,
+} from '../shared/judge-config.js';
 
 const SETTINGS_FILE = appPaths.runtimeSettingsFile;
 export const REDACTED_SECRET_VALUE = '***';
 
 export const EDITABLE_SETTING_KEYS = [
   'EVAL_PROVIDER_DEFAULT',
+  'JUDGE_MODEL_ID',
+  'JUDGE_CUSTOM_MODEL_ID',
+  'JUDGE_TEMPERATURE',
+  'JUDGE_MAX_TOKENS',
+  'JUDGE_SYSTEM_PROMPT',
 
   'CONNECT_INSTANCE_ID',
   'CONNECT_REGION',
@@ -153,6 +164,32 @@ export function getRuntimeSettingsEnv(): Record<string, string> {
     if (effective[key]) out[key] = effective[key];
   }
   return out;
+}
+
+export interface JudgeRuntimeConfig {
+  modelId: string;
+  temperature: number;
+  maxTokens: number;
+  systemPrompt: string;
+}
+
+function parseNumberSetting(raw: string | undefined, fallback: number): number {
+  if (raw == null || raw.trim() === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function getJudgeRuntimeConfig(): JudgeRuntimeConfig {
+  const effective = getEffectiveSettings();
+  const presetModelId = effective['JUDGE_MODEL_ID']?.trim() || DEFAULT_JUDGE_MODEL_ID;
+  const customModelId = effective['JUDGE_CUSTOM_MODEL_ID']?.trim() || '';
+  const modelId = customModelId || presetModelId;
+  return {
+    modelId,
+    temperature: parseNumberSetting(effective['JUDGE_TEMPERATURE'], Number(DEFAULT_JUDGE_TEMPERATURE)),
+    maxTokens: Math.max(1, Math.round(parseNumberSetting(effective['JUDGE_MAX_TOKENS'], Number(DEFAULT_JUDGE_MAX_TOKENS)))),
+    systemPrompt: effective['JUDGE_SYSTEM_PROMPT']?.trim() || DEFAULT_JUDGE_SYSTEM_PROMPT,
+  };
 }
 
 export function saveSettings(partial: Record<string, unknown>): Record<EditableSettingKey, string> {

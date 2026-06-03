@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import {
+  DEFAULT_JUDGE_MAX_TOKENS,
+  DEFAULT_JUDGE_MODEL_ID,
+  DEFAULT_JUDGE_SYSTEM_PROMPT,
+  DEFAULT_JUDGE_TEMPERATURE,
+  JUDGE_MODEL_GROUPS,
+  isKnownJudgeModel,
+} from '../../shared/judge-config.js';
 
 type SettingsMap = Record<string, string>;
 
@@ -20,6 +28,12 @@ interface ProviderSectionDef {
   fields: FieldDef[];
 }
 
+const JUDGE_MODEL_FIELD_KEY = 'JUDGE_MODEL_ID';
+const JUDGE_CUSTOM_MODEL_FIELD_KEY = 'JUDGE_CUSTOM_MODEL_ID';
+const JUDGE_TEMPERATURE_FIELD_KEY = 'JUDGE_TEMPERATURE';
+const JUDGE_MAX_TOKENS_FIELD_KEY = 'JUDGE_MAX_TOKENS';
+const JUDGE_SYSTEM_PROMPT_FIELD_KEY = 'JUDGE_SYSTEM_PROMPT';
+
 interface GeneralSectionDef {
   id: string;
   title: string;
@@ -38,6 +52,19 @@ const PROVIDER_OPTIONS = [
   { value: 'openapi',   label: 'OpenAPI' },
   { value: 'websocket', label: 'WebSocket Chat (ws/wss)' },
 ];
+
+function normalizeJudgeSettings(settings: SettingsMap): SettingsMap {
+  const next = { ...settings };
+  const modelId = next[JUDGE_MODEL_FIELD_KEY]?.trim() || DEFAULT_JUDGE_MODEL_ID;
+  next[JUDGE_MODEL_FIELD_KEY] = modelId;
+  next[JUDGE_TEMPERATURE_FIELD_KEY] = next[JUDGE_TEMPERATURE_FIELD_KEY]?.trim() || DEFAULT_JUDGE_TEMPERATURE;
+  next[JUDGE_MAX_TOKENS_FIELD_KEY] = next[JUDGE_MAX_TOKENS_FIELD_KEY]?.trim() || DEFAULT_JUDGE_MAX_TOKENS;
+  next[JUDGE_SYSTEM_PROMPT_FIELD_KEY] = next[JUDGE_SYSTEM_PROMPT_FIELD_KEY]?.trim() || DEFAULT_JUDGE_SYSTEM_PROMPT;
+  if (!next[JUDGE_CUSTOM_MODEL_FIELD_KEY] && !isKnownJudgeModel(modelId)) {
+    next[JUDGE_CUSTOM_MODEL_FIELD_KEY] = modelId;
+  }
+  return next;
+}
 
 // ── Provider sections ─────────────────────────────────────────────────────────
 
@@ -733,6 +760,116 @@ function ProviderSubSection({
   );
 }
 
+function JudgeLlmSection({
+  settings,
+  onUpdate,
+}: {
+  settings: SettingsMap;
+  onUpdate: (key: string, value: string) => void;
+}) {
+  const modelId = settings[JUDGE_MODEL_FIELD_KEY] ?? DEFAULT_JUDGE_MODEL_ID;
+  const customModelId = settings[JUDGE_CUSTOM_MODEL_FIELD_KEY] ?? (isKnownJudgeModel(modelId) ? '' : modelId);
+  const temperature = settings[JUDGE_TEMPERATURE_FIELD_KEY] ?? DEFAULT_JUDGE_TEMPERATURE;
+  const maxTokens = settings[JUDGE_MAX_TOKENS_FIELD_KEY] ?? DEFAULT_JUDGE_MAX_TOKENS;
+  const systemPrompt = settings[JUDGE_SYSTEM_PROMPT_FIELD_KEY] ?? DEFAULT_JUDGE_SYSTEM_PROMPT;
+
+  return (
+    <section className="card space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Judge LLM</p>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Model, temperature, and prompt</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Changes apply to the next run immediately. A custom model ID overrides the preset when filled.
+          </p>
+        </div>
+        <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white">
+          Bedrock
+        </span>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+            Preset model
+            <HintTooltip hint="Choose a common Amazon Bedrock text model. You can override it with a custom model ID below." />
+          </span>
+          <select
+            value={isKnownJudgeModel(modelId) ? modelId : DEFAULT_JUDGE_MODEL_ID}
+            onChange={(e) => {
+              onUpdate(JUDGE_MODEL_FIELD_KEY, e.target.value);
+              onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, '');
+            }}
+          >
+            {JUDGE_MODEL_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.options.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+            Custom model ID
+            <HintTooltip hint="Optional. If filled, this exact Bedrock model ID or inference profile is used instead of the preset." />
+          </span>
+          <input
+            type="text"
+            value={customModelId}
+            onChange={(e) => onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, e.target.value)}
+            placeholder="Leave blank to use the preset model"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+            Temperature
+            <HintTooltip hint="Lower values make the judge stricter and more deterministic. Defaults to 0." />
+          </span>
+          <input
+            type="number"
+            min="0"
+            max="2"
+            step="0.1"
+            value={temperature}
+            onChange={(e) => onUpdate(JUDGE_TEMPERATURE_FIELD_KEY, e.target.value)}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+            Max tokens
+            <HintTooltip hint="Maximum output tokens for each judge call. Defaults to 2000." />
+          </span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={maxTokens}
+            onChange={(e) => onUpdate(JUDGE_MAX_TOKENS_FIELD_KEY, e.target.value)}
+          />
+        </label>
+      </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+          System prompt
+          <HintTooltip hint="The judge system prompt is editable here and will be used on the next run without a restart." />
+        </span>
+        <textarea
+          rows={14}
+          value={systemPrompt}
+          onChange={(e) => onUpdate(JUDGE_SYSTEM_PROMPT_FIELD_KEY, e.target.value)}
+          className="min-h-[280px] font-mono text-xs leading-6"
+        />
+      </label>
+    </section>
+  );
+}
+
 // ── General section ───────────────────────────────────────────────────────────
 
 function GeneralSection({
@@ -797,7 +934,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     apiFetch('/api/settings')
-      .then((d: { settings: SettingsMap }) => setSettings(d.settings ?? {}))
+      .then((d: { settings: SettingsMap }) => setSettings(normalizeJudgeSettings(d.settings ?? {})))
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false));
   }, []);
@@ -815,7 +952,7 @@ export function SettingsPage() {
         method: 'PUT',
         body: JSON.stringify({ settings }),
       }) as { settings: SettingsMap };
-      setSettings(d.settings ?? settings);
+      setSettings(normalizeJudgeSettings(d.settings ?? settings));
       setMessage('Settings saved. New runs will use these values immediately.');
     } catch (err) {
       setError((err as Error).message);
@@ -840,6 +977,8 @@ export function SettingsPage() {
           </p>
         </div>
       </section>
+
+      <JudgeLlmSection settings={settings} onUpdate={updateValue} />
 
       {/* Provider Defaults */}
       <div className="card">

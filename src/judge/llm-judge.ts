@@ -11,6 +11,7 @@ import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore } from '../types/evaluation.js';
 import type { Scenario } from '../types/scenario.js';
 import type { TokenEstimate } from '../lib/observability.js';
+import { getJudgeRuntimeConfig } from '../api/runtime-settings.js';
 import {
   SESSION_DIMENSIONS,
   TRACE_DIMENSIONS,
@@ -162,11 +163,19 @@ function buildEscalationVars(
 
 export class LLMJudge {
   private readonly client: BedrockRuntimeClient;
+  private readonly modelId: string;
+  private readonly temperature: number;
+  private readonly maxTokens: number;
+  private readonly systemPrompt: string;
 
   constructor(
-    private readonly modelId: string = process.env['JUDGE_MODEL_ID'] ?? 'eu.anthropic.claude-sonnet-4-6',
+    config = getJudgeRuntimeConfig(),
     region: string = process.env['BEDROCK_REGION'] ?? 'eu-west-2',
   ) {
+    this.modelId = config.modelId;
+    this.temperature = config.temperature;
+    this.maxTokens = config.maxTokens;
+    this.systemPrompt = config.systemPrompt;
     this.client = new BedrockRuntimeClient({ region });
   }
 
@@ -489,13 +498,9 @@ export class LLMJudge {
           modelId: this.modelId,
           messages,
           system: [{
-            text:
-              'You are a strict JSON API. Always respond with valid RFC 8259 JSON only — ' +
-              'no markdown, no prose, no code fences. ' +
-              'Escape all double-quote characters inside string values with \\". ' +
-              'Do not use literal newlines or tabs inside string values.',
+            text: this.systemPrompt,
           }],
-          inferenceConfig: { maxTokens: 2000, temperature: 0.0 },
+          inferenceConfig: { maxTokens: this.maxTokens, temperature: this.temperature },
         }),
       );
       const usage = {
