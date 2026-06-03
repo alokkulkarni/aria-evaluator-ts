@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
 import {
   DEFAULT_JUDGE_MAX_TOKENS,
@@ -36,6 +36,14 @@ const JUDGE_USE_CUSTOM_MODEL_FIELD_KEY = 'JUDGE_USE_CUSTOM_MODEL_ID';
 const JUDGE_TEMPERATURE_FIELD_KEY = 'JUDGE_TEMPERATURE';
 const JUDGE_MAX_TOKENS_FIELD_KEY = 'JUDGE_MAX_TOKENS';
 const JUDGE_SYSTEM_PROMPT_FIELD_KEY = 'JUDGE_SYSTEM_PROMPT';
+const JUDGE_SETTING_KEYS = [
+  JUDGE_MODEL_FIELD_KEY,
+  JUDGE_CUSTOM_MODEL_FIELD_KEY,
+  JUDGE_USE_CUSTOM_MODEL_FIELD_KEY,
+  JUDGE_TEMPERATURE_FIELD_KEY,
+  JUDGE_MAX_TOKENS_FIELD_KEY,
+  JUDGE_SYSTEM_PROMPT_FIELD_KEY,
+] as const;
 
 interface GeneralSectionDef {
   id: string;
@@ -70,6 +78,12 @@ function normalizeJudgeSettings(settings: SettingsMap): SettingsMap {
     next[JUDGE_USE_CUSTOM_MODEL_FIELD_KEY] = customModel ? 'true' : 'false';
   }
   return next;
+}
+
+function getJudgeSettingsSignature(settings: SettingsMap): string {
+  return JUDGE_SETTING_KEYS
+    .map((key) => `${key}=${settings[key] ?? ''}`)
+    .join('\u001f');
 }
 
 // ── Provider sections ─────────────────────────────────────────────────────────
@@ -1005,6 +1019,8 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const savedJudgeSettingsSignatureRef = useRef<string>('');
+  const loadedJudgeSettingsSignatureRef = useRef<string>('');
 
   useEffect(() => {
     apiFetch('/api/settings')
@@ -1013,27 +1029,56 @@ export function SettingsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    const signature = getJudgeSettingsSignature(settings);
+    loadedJudgeSettingsSignatureRef.current ||= signature;
+    savedJudgeSettingsSignatureRef.current ||= signature;
+  }, [loading, settings]);
+
   function updateValue(key: string, value: string): void {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function save(): Promise<void> {
+  async function save(nextSettings: SettingsMap = settings, showConfirmation = true): Promise<void> {
     setSaving(true);
     setError(null);
-    setMessage(null);
+    if (showConfirmation) setMessage(null);
     try {
       const d = await apiFetch('/api/settings', {
         method: 'PUT',
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({ settings: nextSettings }),
       }) as { settings: SettingsMap };
-      setSettings(normalizeJudgeSettings(d.settings ?? settings));
-      setMessage('Settings saved. New runs will use these values immediately.');
+      const normalized = normalizeJudgeSettings(d.settings ?? nextSettings);
+      setSettings(normalized);
+      const signature = getJudgeSettingsSignature(normalized);
+      savedJudgeSettingsSignatureRef.current = signature;
+      loadedJudgeSettingsSignatureRef.current = signature;
+      if (showConfirmation) {
+        setMessage('Settings saved. New runs will use these values immediately.');
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSaving(false);
     }
   }
+
+  const judgeSettingsSignature = useMemo(() => getJudgeSettingsSignature(settings), [settings]);
+
+  useEffect(() => {
+    if (loading || saving) return;
+    if (!loadedJudgeSettingsSignatureRef.current) return;
+    if (judgeSettingsSignature === savedJudgeSettingsSignatureRef.current) return;
+
+    const timeout = window.setTimeout(() => {
+      if (judgeSettingsSignature !== savedJudgeSettingsSignatureRef.current) {
+        void save(settings, false);
+      }
+    }, 750);
+
+    return () => window.clearTimeout(timeout);
+  }, [judgeSettingsSignature, loading, saving, settings]);
 
   if (loading) {
     return <div className="text-slate-400 text-sm">Loading settings…</div>;
@@ -1108,7 +1153,7 @@ export function SettingsPage() {
       {/* Save */}
       <div className="flex items-center gap-3 pt-1">
         <button
-          onClick={() => { void save(); }}
+          onClick={() => { void save(settings, true); }}
           disabled={saving}
           className="btn-primary disabled:opacity-50"
         >
