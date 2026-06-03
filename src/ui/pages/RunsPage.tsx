@@ -1065,6 +1065,8 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [artifactModal, setArtifactModal] = useState<ArtifactModalState | null>(null);
+  const [queueingRunId, setQueueingRunId] = useState<string | null>(null);
+  const [queueMessage, setQueueMessage] = useState<{ runId: string; text: string; ok: boolean } | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -1194,6 +1196,25 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
     }
   }
 
+  async function queueForReview(runId: string): Promise<void> {
+    setQueueingRunId(runId);
+    setQueueMessage(null);
+    try {
+      await apiFetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId }),
+      });
+      setQueueMessage({ runId, text: 'Queued for review', ok: true });
+    } catch (err) {
+      const message = (err as Error).message;
+      const isDuplicate = message.toLowerCase().includes('already exists');
+      setQueueMessage({ runId, text: isDuplicate ? 'Already in review queue' : message, ok: isDuplicate });
+    } finally {
+      setQueueingRunId(null);
+    }
+  }
+
   async function deleteRun(runId: string): Promise<void> {
     const ok = window.confirm('Delete this run from the portal view?');
     if (!ok) return;
@@ -1309,17 +1330,32 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
 
                 {selected.evalResult && (
                   <div className="bg-slate-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-sm font-semibold text-slate-700">
-                        {selected.evalResult.passed ? '✅ PASS' : '❌ FAIL'} — {selected.evalResult.overallScore.toFixed(1)}/10
-                      </p>
-                      {selected.evalResult.scenarioType === 'security' && (
-                        <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Security Test</span>
-                      )}
-                      {selected.evalResult.scenarioType === 'mixed' && (
-                        <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Contains Security Tests</span>
-                      )}
+                    <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-slate-700">
+                          {selected.evalResult.passed ? '✅ PASS' : '❌ FAIL'} — {selected.evalResult.overallScore.toFixed(1)}/10
+                        </p>
+                        {selected.evalResult.scenarioType === 'security' && (
+                          <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Security Test</span>
+                        )}
+                        {selected.evalResult.scenarioType === 'mixed' && (
+                          <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Contains Security Tests</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => { void queueForReview(selected.id); }}
+                        disabled={queueingRunId === selected.id}
+                        className="text-xs px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-40"
+                        title="Add to judge calibration review queue"
+                      >
+                        {queueingRunId === selected.id ? '⏳ Queuing…' : '🔍 Queue for Review'}
+                      </button>
                     </div>
+                    {queueMessage?.runId === selected.id && (
+                      <p className={`text-xs mt-1 ${queueMessage.ok ? 'text-green-600' : 'text-red-500'}`}>
+                        {queueMessage.text}
+                      </p>
+                    )}
                     <p className="text-sm text-slate-600">{selected.evalResult.summary}</p>
                   </div>
                 )}
