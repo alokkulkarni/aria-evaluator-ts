@@ -234,14 +234,17 @@ runsRouter.get('/compare', async (req, res) => {
   if (ids.length > 10) {
     return res.status(400).json({ error: 'At most 10 run IDs allowed' });
   }
-  if (!ids.every((id) => CUID_RE.test(id))) {
-    return res.status(400).json({ error: 'One or more run IDs have an invalid format' });
+
+  const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
+  if (duplicateIds.length > 0) {
+    const uniqueDuplicates = Array.from(new Set(duplicateIds));
+    return res.status(400).json({
+      error: `Duplicate run IDs are not allowed: ${uniqueDuplicates.join(', ')}`,
+    });
   }
 
-  // Reject duplicate IDs upfront to avoid confusing "not found" 404s
-  const uniqueIds = new Set(ids);
-  if (uniqueIds.size !== ids.length) {
-    return res.status(400).json({ error: 'Duplicate run IDs are not allowed' });
+  if (!ids.every((id) => CUID_RE.test(id))) {
+    return res.status(400).json({ error: 'One or more run IDs have an invalid format' });
   }
 
   try {

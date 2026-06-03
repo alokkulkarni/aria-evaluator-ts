@@ -27,6 +27,7 @@ model User {
   reviews      Review[]
   baselines    Baseline[]
   experiments  Experiment[]
+  schedules    Schedule[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -78,6 +79,7 @@ model Scenario {
   runs        Run[]
   baselines   Baseline[]
   experiments Experiment[]
+  schedules   Schedule[]
 
   @@index([sourceRef])
   @@index([lifecycleStatus])
@@ -116,6 +118,7 @@ model Run {
   evalResult   EvalResult?
   report       Report?
   experimentRuns ExperimentRun[] @relation("experimentRuns")
+  scheduleRuns ScheduleRun[] @relation("scheduleRuns")
   telemetry    RunTelemetry?
   securityAttack SecurityAttack?
   createdAt    DateTime  @default(now())
@@ -344,4 +347,62 @@ model Report {
   htmlPath  String   // canonical artifact ref, e.g. reports/report_2026-06-02T21-30-00.html
   jsonPath  String   // canonical artifact ref, e.g. reports/report_2026-06-02T21-30-00.json
   createdAt DateTime @default(now())
+}
+
+// ─── Schedules ────────────────────────────────────────────────────────────────
+model Schedule {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  description       String?
+  status            String   @default("active") // active|paused|archived
+  createdBy         String
+  user              User     @relation(fields: [createdBy], references: [id])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+
+  // Scheduling config
+  frequency         String   // hourly|daily|weekly|monthly
+  cronExpression    String?  // optional cron for power users
+  dayOfWeek         Int?     // 0-6 for weekly (0=Sunday)
+  hour              Int      // 0-23
+  minute            Int      // 0-59
+  timezone          String   @default("America/New_York") // IANA timezone
+
+  // Run config
+  scenarioId        String?  // FK Scenario.id, NULL = all active
+  scenario          Scenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  scenarioFile      String?  // path#index alternative
+  provider          String   @default("connect")
+  channel           String   @default("chat") // chat|voice
+  customMetadata    String?  // JSON: arbitrary config
+
+  // Execution tracking
+  lastRunAt         DateTime?
+  nextRunAt         DateTime // computed: now + frequency
+  lastStatus        String?  // pending|completed|failed
+  failureCount      Int      @default(0)
+  maxFailures       Int      @default(5)
+
+  scheduleRuns      ScheduleRun[]
+
+  @@index([createdBy, status])
+  @@index([nextRunAt, status])
+  @@index([status])
+}
+
+model ScheduleRun {
+  id        String   @id @default(cuid())
+  scheduleId String
+  schedule  Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  runId     String
+  run       Run      @relation("scheduleRuns", fields: [runId], references: [id], onDelete: Cascade)
+  triggeredAt DateTime @default(now())
+  status    String   @default("queued") // queued|running|completed|failed
+  completedAt DateTime?
+  errorMessage String?
+  createdAt DateTime @default(now())
+
+  @@index([scheduleId, triggeredAt])
+  @@index([runId])
 }

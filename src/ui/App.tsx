@@ -8,9 +8,10 @@ import { ReportsPage } from './pages/ReportsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { AnalysisPage } from './pages/AnalysisPage.js';
+import { SchedulesPage } from './pages/SchedulesPage.js';
 import { apiFetch } from './lib/api.js';
 
-type Page = 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'settings';
+type Page = 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings';
 interface AuthenticatedUser {
   id: string;
   username: string;
@@ -44,6 +45,7 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'runs',         label: 'Runs',          icon: '▶️'  },
   { id: 'review-queue', label: 'Review Queue',  icon: '🔍' },
   { id: 'analysis',     label: 'Analysis',      icon: '🔬' },
+  { id: 'schedules',    label: 'Schedules',     icon: '⏱'  },
   { id: 'transcripts',  label: 'Transcripts',   icon: '💬' },
   { id: 'reports',      label: 'Reports',       icon: '📊' },
   { id: 'settings',     label: 'Settings',      icon: '⚙️' },
@@ -52,7 +54,7 @@ const NAV: { id: Page; label: string; icon: string }[] = [
 function getInitialPage(): Page {
   if (typeof window === 'undefined') return 'dashboard';
   const page = new URLSearchParams(window.location.search).get('page');
-  if (page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'settings') {
+  if (page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'schedules' || page === 'settings') {
     return page;
   }
   return 'dashboard';
@@ -138,6 +140,7 @@ export default function App() {
         {page === 'runs'         && <RunsPage autoOpenModal={openRunModal} onModalAutoOpened={() => setOpenRunModal(false)} />}
         {page === 'review-queue' && <ReviewQueuePage />}
         {page === 'analysis'     && <AnalysisPage />}
+        {page === 'schedules'    && <SchedulesPage />}
         {page === 'transcripts'  && <TranscriptsPage initialFilename={initialTranscriptFile} />}
         {page === 'reports'      && <ReportsPage />}
         {page === 'settings'     && <SettingsPage />}

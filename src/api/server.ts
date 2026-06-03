@@ -24,6 +24,8 @@ import { openapiRouter } from './routes/openapi.js';
 import { regressionRouter } from './routes/regression.js';
 import { experimentsRouter } from './routes/experiments.js';
 import { observabilityRouter } from './routes/observability.js';
+import { schedulesRouter } from './routes/schedules.js';
+import { startScheduleExecutor, stopScheduleExecutor } from '../jobs/schedule-executor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env['API_PORT'] ?? '3001', 10);
@@ -116,6 +118,7 @@ app.use('/api', enforceTrustedOrigin);
 app.use('/api', requireAuth);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/runs', runsRouter);
+app.use('/api/schedules', schedulesRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api', observabilityRouter);
 app.use('/api', regressionRouter);
@@ -151,6 +154,7 @@ if (process.env['NODE_ENV'] !== 'test') {
     }
     await initDb();
     await startRunJobWorker();
+    await startScheduleExecutor();
 
     const server = createServer(app);
     server.listen(PORT, () => {
