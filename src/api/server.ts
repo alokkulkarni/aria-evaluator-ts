@@ -21,6 +21,7 @@ import { transcriptsRouter } from './routes/transcripts.js';
 import { reportsRouter } from './routes/reports.js';
 import { settingsRouter } from './routes/settings.js';
 import { openapiRouter } from './routes/openapi.js';
+import { regressionRouter } from './routes/regression.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env['API_PORT'] ?? '3001', 10);
@@ -114,6 +115,7 @@ app.use('/api', requireAuth);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/runs', runsRouter);
 app.use('/api/reviews', reviewsRouter);
+app.use('/api', regressionRouter);
 app.use('/api/transcripts', transcriptsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/settings', settingsRouter);

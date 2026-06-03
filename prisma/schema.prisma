@@ -25,6 +25,7 @@ model User {
   sessions     AuthSession[]
   auditLogs    AuditLog[]
   reviews      Review[]
+  baselines    Baseline[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -74,6 +75,7 @@ model Scenario {
   updatedAt   DateTime @updatedAt
   revisions   ScenarioRevision[]
   runs        Run[]
+  baselines   Baseline[]
 
   @@index([sourceRef])
   @@index([lifecycleStatus])
@@ -195,6 +197,41 @@ model Review {
   @@index([runId])
   @@index([status, queuedAt])
   @@index([reviewedBy])
+}
+
+// ─── Regression Analysis ──────────────────────────────────────────────────────
+model Baseline {
+  id                     String   @id @default(cuid())
+  name                   String
+  scenarioId             String
+  scenario               Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  
+  // Metrics captured at baseline time
+  totalRuns              Int
+  passRate               Float
+  avgScore               Float
+  avgLatencyMs           Int
+  
+  // Dimension-level metrics (captured at baseline time)
+  dimensionIdsJson       String                  // string[] = which dimensions were included
+  dimensionMetricsJson   String                  // Record<dimId, {avg: number, stddev: number}>
+  
+  // Config snapshot
+  judgeModel             String
+  judgeVersion           Int
+  
+  // Regression thresholds (configurable)
+  thresholdOverridesJson String?                 // {passRateDrop: 5, scoreDrop: 0.5, latencyIncrease: 20}
+  
+  createdAt              DateTime @default(now())
+  createdBy              String?
+  user                   User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  notes                  String?
+  
+  @@index([scenarioId])
+  @@index([createdAt])
+  @@index([judgeModel])
+  @@index([createdBy])
 }
 
 // ─── Report ───────────────────────────────────────────────────────────────────
