@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../db/client.js';
 import { percentile, TOKEN_ESTIMATOR_VERSION } from '../../lib/observability.js';
+import { getScheduleExecutorStatus } from '../../jobs/schedule-executor.js';
 
 export const observabilityRouter = Router();
 
@@ -49,6 +50,8 @@ observabilityRouter.get('/health', async (_req, res) => {
   }
 
   const memory = process.memoryUsage();
+  const schedulerStatus = getScheduleExecutorStatus();
+  
   const payload = {
     status: dbHealthy ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
@@ -61,6 +64,13 @@ observabilityRouter.get('/health', async (_req, res) => {
       queued: queuedJobs,
       running: runningJobs,
       failedLast24h: failedJobs24h,
+    },
+    scheduler: {
+      running: schedulerStatus.isRunning,
+      schedulesActive: schedulerStatus.schedulesActive,
+      pollIntervalMs: schedulerStatus.pollIntervalMs,
+      lastPollAt: schedulerStatus.lastPollAt?.toISOString() ?? null,
+      nextPollAt: schedulerStatus.nextPollAt.toISOString(),
     },
     process: {
       rssMb: round(memory.rss / (1024 * 1024), 1),
@@ -169,6 +179,24 @@ observabilityRouter.get('/metrics', async (req, res) => {
     .map(([failureClass, count]) => ({ failureClass, count }))
     .sort((a, b) => b.count - a.count);
 
+  // Get schedule statistics
+  const [activeSchedules, pausedSchedules, archivedSchedules] = await Promise.all([
+    prisma.schedule.count({ where: { status: 'active', deletedAt: null } }),
+    prisma.schedule.count({ where: { status: 'paused', deletedAt: null } }),
+    prisma.schedule.count({ where: { status: 'archived', deletedAt: null } }),
+  ]);
+
+  const last24h = new Date(Date.now() - (24 * 60 * 60 * 1000));
+  const scheduledRunsLast24h = await prisma.scheduleRun.count({
+    where: { triggeredAt: { gte: last24h } },
+  });
+  const failedScheduledRunsLast24h = await prisma.scheduleRun.count({
+    where: {
+      triggeredAt: { gte: last24h },
+      status: 'failed',
+    },
+  });
+
   return res.json({
     window: {
       hours,
@@ -189,6 +217,14 @@ observabilityRouter.get('/metrics', async (req, res) => {
     },
     providers,
     failures,
+    schedules: {
+      activeCount: activeSchedules,
+      pausedCount: pausedSchedules,
+      archivedCount: archivedSchedules,
+      totalRunsLast24h: scheduledRunsLast24h,
+      failedRunsLast24h: failedScheduledRunsLast24h,
+      failureRateLast24h: scheduledRunsLast24h > 0 ? round((failedScheduledRunsLast24h / scheduledRunsLast24h) * 100) : 0,
+    },
     tokenEstimator: {
       version: TOKEN_ESTIMATOR_VERSION,
       method: 'chars_div_4_estimate',
