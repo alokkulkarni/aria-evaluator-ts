@@ -26,6 +26,7 @@ model User {
   auditLogs    AuditLog[]
   reviews      Review[]
   baselines    Baseline[]
+  experiments  Experiment[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -76,6 +77,7 @@ model Scenario {
   revisions   ScenarioRevision[]
   runs        Run[]
   baselines   Baseline[]
+  experiments Experiment[]
 
   @@index([sourceRef])
   @@index([lifecycleStatus])
@@ -113,6 +115,7 @@ model Run {
   runEvents    RunEvent[]
   evalResult   EvalResult?
   report       Report?
+  experimentRuns ExperimentRun[] @relation("experimentRuns")
   createdAt    DateTime  @default(now())
 }
 
@@ -232,6 +235,55 @@ model Baseline {
   @@index([createdAt])
   @@index([judgeModel])
   @@index([createdBy])
+}
+
+// ─── Experiments ──────────────────────────────────────────────────────────────
+model Experiment {
+  id          String   @id @default(cuid())
+  name        String
+  scenarioId  String
+  scenario    Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  description String?
+  status      String   @default("planning") // planning|running|completed|archived
+  createdBy   String?
+  user        User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  legs        ExperimentLeg[]
+  experimentRuns ExperimentRun[]
+
+  @@index([scenarioId])
+  @@index([status])
+  @@index([createdBy])
+}
+
+model ExperimentLeg {
+  id             String   @id @default(cuid())
+  experimentId   String
+  experiment     Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  name           String
+  configJson     String   // JSON: {judgeModel, judgeVersion, overrides?, ...}
+  description    String?
+  targetRunCount Int?
+  createdAt      DateTime @default(now())
+  experimentRuns ExperimentRun[]
+
+  @@index([experimentId])
+}
+
+model ExperimentRun {
+  id           String   @id @default(cuid())
+  experimentId String
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  runId        String   @unique  // global uniqueness: one run per experiment
+  run          Run      @relation("experimentRuns", fields: [runId], references: [id], onDelete: Cascade)
+  legId        String
+  leg          ExperimentLeg @relation(fields: [legId], references: [id], onDelete: Cascade)
+  tagsJson     String?  // JSON: string[]
+  createdAt    DateTime @default(now())
+
+  @@index([experimentId])
+  @@index([legId])
 }
 
 // ─── Report ───────────────────────────────────────────────────────────────────
