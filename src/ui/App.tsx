@@ -20,7 +20,7 @@ interface AuthenticatedUser {
 
 function LogoIcon() {
   return (
-    <svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <svg width="32" height="32" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       {/* Hexagon shield */}
       <path d="M19 2L35 11V27L19 36L3 27V11L19 2Z" fill="#1E40AF" stroke="#93C5FD" strokeWidth="1.5"/>
       {/* Neural triangle — top node */}
@@ -95,41 +95,53 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="bg-[#0D2A66] text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center gap-3">
+
+          {/* Brand — logo + name, no subtitle to keep header single-row */}
+          <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
             <span className="flex-shrink-0"><LogoIcon /></span>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight">ARIA Evaluator</h1>
-              <p className="text-xs text-blue-200">Agentic AI Evaluation Platform</p>
-            </div>
+            <span className="text-sm font-bold tracking-tight whitespace-nowrap">ARIA Evaluator</span>
           </div>
-          <nav className="flex gap-1">
+
+          {/* Nav — centred, scrollable on very narrow viewports */}
+          <nav className="flex-1 flex items-center justify-center overflow-x-auto gap-0.5 px-2 scrollbar-none">
             {NAV.map((n) => (
               <button
                 key={n.id}
                 onClick={() => setPage(n.id)}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
                   page === n.id
                     ? 'bg-white/20 text-white'
-                    : 'text-blue-100 hover:bg-white/10 hover:text-white'
+                    : 'text-blue-200 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                <span className="mr-1.5">{n.icon}</span>
+                <span className="text-sm leading-none">{n.icon}</span>
                 {n.label}
               </button>
             ))}
           </nav>
-          <div className="ml-4 flex items-center gap-3">
-            <span className="text-xs text-blue-100">
-              {user.username} ({user.role})
-            </span>
+
+          {/* User section — avatar initials + username + sign-out */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1.5">
+              <span
+                className="w-7 h-7 rounded-full bg-blue-500/40 flex items-center justify-center text-xs font-semibold uppercase select-none"
+                title={`${user.username} (${user.role})`}
+              >
+                {user.username.charAt(0)}
+              </span>
+              <span className="hidden lg:block text-xs text-blue-200 max-w-[96px] truncate" title={user.username}>
+                {user.username}
+              </span>
+            </div>
             <button
-              className="rounded-md border border-white/30 px-2.5 py-1 text-xs font-medium text-blue-100 hover:bg-white/10"
+              className="rounded border border-white/25 px-2.5 py-1 text-xs font-medium text-blue-100 hover:bg-white/10 hover:text-white transition-colors whitespace-nowrap"
               onClick={() => { void handleLogout(); }}
             >
               Sign out
             </button>
           </div>
+
         </div>
       </header>
 
