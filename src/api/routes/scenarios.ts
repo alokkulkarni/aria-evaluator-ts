@@ -58,8 +58,7 @@ function resolveScenarioFilePath(input: string): { filePath: string; fullPath: s
 
   const fullPath = resolve(SCENARIOS_DIR, filePath);
   const rel = relative(SCENARIOS_DIR, fullPath);
-  if (rel.startsWith('..') || isAbsolute(rel)) return null;
-
+  if (rel === '..' || rel.startsWith('../') || rel.startsWith('..\\') || isAbsolute(rel)) return null;
   return { filePath, fullPath };
 }
 
