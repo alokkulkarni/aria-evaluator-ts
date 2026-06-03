@@ -16,7 +16,7 @@ export async function initDb(): Promise<void> {
   initPromise = (async () => {
     await prisma.$connect();
     await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL');
-    await prisma.$executeRawUnsafe(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
+    await prisma.$queryRawUnsafe(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
   })();
 
   return initPromise;
