@@ -28,6 +28,11 @@ import {
   waitForRunEventQueue,
 } from './run-events.js';
 import { appendRunLogLine, resetRunLog } from './run-logs.js';
+import {
+  TOKEN_ESTIMATOR_VERSION,
+  classifyFailure,
+  estimateTokensFromTurns,
+} from '../lib/observability.js';
 
 type ClaimedRunJob = Prisma.JobGetPayload<{ include: { run: true } }>;
 
@@ -438,6 +443,15 @@ async function finalizeJob(
     }
   });
 
+  try {
+    await persistRunTelemetry(job, completedAt, effectiveStatus, effectiveError);
+  } catch (err) {
+    const message = `⚠ Unable to persist telemetry: ${(err as Error).message}`;
+    appendRunLogLine(job.runId, message);
+    await publishRunEventSafe(job.runId, 'log', { message });
+    console.error(`Failed to persist run telemetry for ${job.runId}: ${(err as Error).message}`);
+  }
+
   if (effectiveStatus === 'failed') {
     const message = `=== Run failed: ${effectiveError ?? 'Run failed'} ===`;
     appendRunLogLine(job.runId, message);
@@ -461,6 +475,59 @@ async function finalizeJob(
     reportJsonPath: reportJsonRef,
     reportHtmlPath: reportHtmlRef,
     message,
+  });
+}
+
+async function persistRunTelemetry(
+  job: ClaimedRunJob,
+  completedAt: Date,
+  status: 'completed' | 'failed',
+  errorMessage: string | null,
+): Promise<void> {
+  const payload = parseRunJobPayload(job.payloadJson);
+  const turns = await prisma.turn.findMany({
+    where: { runId: job.runId },
+    select: { role: true, content: true },
+  });
+  const tokenEstimate = estimateTokensFromTurns(
+    turns
+      .filter((turn): turn is { role: 'customer' | 'agent'; content: string } =>
+        turn.role === 'customer' || turn.role === 'agent')
+      .map((turn) => ({ role: turn.role, content: turn.content })),
+  );
+
+  const latencyMs = job.startedAt
+    ? Math.max(0, completedAt.getTime() - job.startedAt.getTime())
+    : null;
+  const failureClass = status === 'failed' ? classifyFailure(errorMessage) : null;
+
+  await prisma.runTelemetry.upsert({
+    where: { runId: job.runId },
+    update: {
+      provider: payload.provider,
+      channel: payload.channel,
+      status,
+      latencyMs,
+      tokenInputEstimate: tokenEstimate.inputTokens,
+      tokenOutputEstimate: tokenEstimate.outputTokens,
+      tokenTotalEstimate: tokenEstimate.totalTokens,
+      failureClass,
+      estimatorVersion: TOKEN_ESTIMATOR_VERSION,
+      completedAt,
+    },
+    create: {
+      runId: job.runId,
+      provider: payload.provider,
+      channel: payload.channel,
+      status,
+      latencyMs,
+      tokenInputEstimate: tokenEstimate.inputTokens,
+      tokenOutputEstimate: tokenEstimate.outputTokens,
+      tokenTotalEstimate: tokenEstimate.totalTokens,
+      failureClass,
+      estimatorVersion: TOKEN_ESTIMATOR_VERSION,
+      completedAt,
+    },
   });
 }
 
