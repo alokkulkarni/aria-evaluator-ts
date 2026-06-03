@@ -186,6 +186,66 @@ function normalizePassword(rawPassword: string | undefined): string | null {
   return value;
 }
 
+function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
+  if (!raw) return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') return true;
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') return false;
+  return fallback;
+}
+
+export async function ensureDefaultAdminAccount(): Promise<void> {
+  const enabled = parseBooleanEnv(
+    process.env['AUTH_DEFAULT_ADMIN_ENABLED'],
+    process.env['NODE_ENV'] !== 'production',
+  );
+  if (!enabled) return;
+
+  const existingUsers = await prisma.user.count();
+  if (existingUsers > 0) return;
+
+  const requestedUsername = process.env['AUTH_DEFAULT_ADMIN_USERNAME']?.trim() ?? 'admin';
+  const username = normalizeUsername(requestedUsername);
+  if (!username) {
+    throw new Error('AUTH_DEFAULT_ADMIN_USERNAME is invalid (allowed: 3-64 chars, letters/numbers/_.-)');
+  }
+
+  const providedPassword = process.env['AUTH_DEFAULT_ADMIN_PASSWORD']?.trim() ?? '';
+  const generatedPassword = providedPassword || randomBytes(18).toString('base64url');
+  const password = normalizePassword(generatedPassword);
+  if (!password) {
+    throw new Error(`AUTH_DEFAULT_ADMIN_PASSWORD must be at least ${PASSWORD_MIN_LENGTH} characters`);
+  }
+
+  const createdUser = await prisma.$transaction(async (tx) => {
+    const count = await tx.user.count();
+    if (count > 0) return null;
+
+    await tx.bootstrapState.upsert({
+      where: { id: 1 },
+      update: {},
+      create: { id: 1 },
+    });
+
+    return tx.user.create({
+      data: {
+        username,
+        passwordHash: hashPassword(password),
+        role: 'admin',
+      },
+      select: { id: true, username: true, role: true },
+    });
+  });
+
+  if (!createdUser) return;
+
+  console.warn('\n⚠ Auto-created default admin account');
+  console.warn(`   Username: ${createdUser.username}`);
+  console.warn(`   Password: ${password}`);
+  console.warn('   Override with AUTH_DEFAULT_ADMIN_USERNAME / AUTH_DEFAULT_ADMIN_PASSWORD');
+  console.warn('   Disable with AUTH_DEFAULT_ADMIN_ENABLED=false\n');
+}
+
 function sweepExpiredRateLimits(): void {
   const now = Date.now();
   for (const [key, bucket] of loginRateLimits.entries()) {

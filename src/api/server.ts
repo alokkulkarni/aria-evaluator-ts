@@ -13,7 +13,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { initDb } from '../db/client.js';
 import { startRunJobWorker } from '../jobs/run-jobs.js';
 import { appPaths, ensureManagedStateDirs, getStateLayoutWarnings } from '../runtime/paths.js';
-import { attachAuthContext, authRouter, requireAuth } from './auth.js';
+import { attachAuthContext, authRouter, requireAuth, ensureDefaultAdminAccount } from './auth.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { runsRouter } from './routes/runs.js';
 import { reviewsRouter } from './routes/reviews.js';
@@ -153,6 +153,7 @@ if (process.env['NODE_ENV'] !== 'test') {
       console.warn(`⚠ ${warning}`);
     }
     await initDb();
+    await ensureDefaultAdminAccount();
     await startRunJobWorker();
     await startScheduleExecutor();
 
