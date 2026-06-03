@@ -651,22 +651,30 @@ export function AnalysisPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Analysis Workspace</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Filter, compare, and explore runs side-by-side</p>
+      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Analysis workspace</p>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Filter, compare, and explore runs</h2>
+          <p className="text-sm leading-6 text-slate-200/80">A cleaner workspace for side-by-side inspection, comparisons, and failure analysis.</p>
         </div>
-      </div>
+      </section>
 
       {/* ── Filter Bar ──────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex flex-wrap gap-3 items-end">
+      <div className="card">
+        <div className="mb-4 flex items-center justify-between">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+            <h3 className="text-sm font-semibold text-slate-900">Run filters</h3>
+            <p className="text-xs text-slate-500">Use any combination to narrow the analysis set.</p>
+          </div>
+          <span className="text-xs uppercase tracking-[0.24em] text-slate-400">Aligned controls</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
+          <div className="xl:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Status</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-              className="border rounded px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="h-11"
             >
               <option value="">All</option>
               <option value="completed">Completed</option>
@@ -676,12 +684,12 @@ export function AnalysisPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Channel</label>
+          <div className="xl:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Channel</label>
             <select
               value={filters.channel}
               onChange={(e) => setFilters((f) => ({ ...f, channel: e.target.value }))}
-              className="border rounded px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="h-11"
             >
               <option value="">All</option>
               <option value="chat">Chat</option>
@@ -689,23 +697,23 @@ export function AnalysisPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Provider</label>
+          <div className="xl:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Provider</label>
             <input
               type="text"
               placeholder="e.g. connect"
               value={filters.provider}
               onChange={(e) => setFilters((f) => ({ ...f, provider: e.target.value }))}
-              className="border rounded px-2 py-1.5 text-sm text-gray-800 w-28 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="h-11"
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Attack Category</label>
+          <div className="xl:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Attack Category</label>
             <select
               value={filters.attackCategory}
               onChange={(e) => setFilters((f) => ({ ...f, attackCategory: e.target.value }))}
-              className="border rounded px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="h-11"
             >
               <option value="">All</option>
               <option value="injection">Injection</option>
@@ -716,38 +724,38 @@ export function AnalysisPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Since</label>
+          <div className="xl:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Since</label>
             <input
               type="date"
               value={filters.since}
               onChange={(e) => setFilters((f) => ({ ...f, since: e.target.value }))}
-              className="border rounded px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="h-11"
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Until</label>
+          <div className="xl:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Until</label>
             <input
               type="date"
               value={filters.until}
               onChange={(e) => setFilters((f) => ({ ...f, until: e.target.value }))}
-              className="border rounded px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="h-11"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-end gap-2 xl:col-span-12 xl:justify-end">
             <button
               onClick={applyFilters}
               disabled={loading}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="btn-primary h-11 px-4 disabled:opacity-50"
             >
               Apply Filters
             </button>
             <button
               onClick={resetFilters}
               disabled={loading}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="btn-secondary h-11 px-4 disabled:opacity-50"
             >
               Reset
             </button>
@@ -759,39 +767,39 @@ export function AnalysisPage() {
       <div className={`grid gap-4 ${compareResult ? 'grid-cols-[1fr_1fr]' : 'grid-cols-1'}`}>
 
         {/* Run list */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="card overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-800">Runs</span>
-              <span className="text-xs text-gray-400">({total} total)</span>
+              <span className="text-sm font-semibold text-slate-900">Runs</span>
+              <span className="text-xs text-slate-400">({total} total)</span>
               {selectedIds.size > 0 && (
-                <span className="text-xs text-blue-600 font-medium">{selectedIds.size} selected</span>
+                <span className="text-xs font-medium text-blue-700">{selectedIds.size} selected</span>
               )}
             </div>
             <button
               onClick={() => { void handleCompare(); }}
               disabled={selectedIds.size < 2 || compareLoading}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-primary h-10 px-4 text-xs disabled:cursor-not-allowed disabled:opacity-40"
             >
               {compareLoading ? 'Loading…' : `Compare ${selectedIds.size > 0 ? `(${selectedIds.size})` : ''}`}
             </button>
           </div>
 
           {error && (
-            <div className="px-4 py-2 bg-red-50 text-red-700 text-xs border-b border-red-100">
+            <div className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">
               Error: {error}
             </div>
           )}
 
           {compareError && (
-            <div className="px-4 py-2 bg-red-50 text-red-700 text-xs border-b border-red-100">
+            <div className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">
               Compare error: {compareError}
             </div>
           )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-slate-50">
                 <tr className="text-xs text-gray-500 uppercase tracking-wide">
                   <th className="px-3 py-2 w-8"></th>
                   <th className="px-3 py-2 text-left font-medium">ID</th>
@@ -844,12 +852,12 @@ export function AnalysisPage() {
 
         {/* Comparison panel */}
         {compareResult && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-auto">
+          <div className="card p-4 overflow-auto">
             <div className="flex justify-between items-start mb-3">
-              <span className="text-sm font-semibold text-gray-800">Side-by-Side Comparison</span>
+              <span className="text-sm font-semibold text-slate-900">Side-by-Side Comparison</span>
               <button
                 onClick={() => { setCompareResult(null); setSelectedIds(new Set()); }}
-                className="text-xs text-gray-400 hover:text-gray-600"
+                className="text-xs text-slate-400 hover:text-slate-600"
               >
                 ✕ Clear
               </button>
@@ -860,13 +868,13 @@ export function AnalysisPage() {
       </div>
 
       {/* ── Failure Clusters ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="card">
         {failureLoading ? (
-          <p className="text-sm text-gray-400">Loading failure clusters…</p>
+          <p className="text-sm text-slate-400">Loading failure clusters…</p>
         ) : failureSummary ? (
           <FailureClustersPanel summary={failureSummary} />
         ) : (
-          <p className="text-sm text-gray-400">Failure cluster data unavailable</p>
+          <p className="text-sm text-slate-400">Failure cluster data unavailable</p>
         )}
       </div>
     </div>
