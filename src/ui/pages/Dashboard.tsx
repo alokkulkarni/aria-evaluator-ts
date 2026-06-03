@@ -76,51 +76,59 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
-        <p className="text-slate-500 mt-1">Agent quality evaluation overview</p>
-      </div>
+      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+        <div data-tour-target="dashboard-hero" className="max-w-3xl space-y-3">
+          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Enterprise evaluation hub</p>
+          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h2>
+          <p className="text-sm leading-6 text-slate-200/80">Agent quality evaluation overview</p>
+        </div>
 
-      {/* ── Summary Cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="mt-6 flex flex-wrap gap-2 text-xs text-slate-100/90">
+          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Total runs {total}</span>
+          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Passed {passed}</span>
+          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Failed {failed}</span>
+          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Live observability</span>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-tour-target="dashboard-summary">
         <StatCard label="Avg Score" value={String(avgScore)} sub="/10" color="blue" />
         <StatCard label="Total Runs" value={String(total)} color="slate" />
         <StatCard label="Passed" value={String(passed)} color="green" />
         <StatCard label="Failed" value={String(failed)} color="red" />
       </div>
 
-      {/* ── Observability (24h) ── */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
+      <div className="card" data-tour-target="dashboard-observability">
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="font-semibold text-slate-900">Observability (last 24h)</h3>
         </div>
 
         {metricsLoading ? (
-          <div className="text-slate-400 text-sm py-8 text-center">Loading telemetry…</div>
+          <div className="py-8 text-center text-sm text-slate-400">Loading telemetry…</div>
         ) : !metrics ? (
-          <div className="text-slate-400 text-sm py-8 text-center">Telemetry unavailable.</div>
+          <div className="py-8 text-center text-sm text-slate-400">Telemetry unavailable.</div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="rounded-md border border-slate-200 p-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Failure rate</p>
                 <p className="text-lg font-semibold text-slate-900">
                   {metrics.totals.failureRatePercent?.toFixed(1) ?? '—'}%
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 p-3">
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Avg latency</p>
                 <p className="text-lg font-semibold text-slate-900">
                   {metrics.totals.avgLatencyMs != null ? formatLatency(metrics.totals.avgLatencyMs) : '—'}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 p-3">
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">P95 latency</p>
                 <p className="text-lg font-semibold text-slate-900">
                   {metrics.totals.p95LatencyMs != null ? formatLatency(metrics.totals.p95LatencyMs) : '—'}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 p-3">
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Estimated tokens</p>
                 <p className="text-lg font-semibold text-slate-900">
                   {metrics.totals.tokenTotalEstimate.toLocaleString()}
@@ -128,12 +136,12 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
               </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <h4 className="text-sm font-semibold text-slate-700 mb-2">Provider breakdown</h4>
+                <h4 className="mb-2 text-sm font-semibold text-slate-700">Provider breakdown</h4>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                    <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
                       <th className="pb-2 font-medium">Provider</th>
                       <th className="pb-2 font-medium">Runs</th>
                       <th className="pb-2 font-medium">Failed</th>
@@ -152,13 +160,13 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
               </div>
 
               <div>
-                <h4 className="text-sm font-semibold text-slate-700 mb-2">Failure classes</h4>
+                <h4 className="mb-2 text-sm font-semibold text-slate-700">Failure classes</h4>
                 {metrics.failures.length === 0 ? (
-                  <div className="text-slate-400 text-sm py-4">No failures in this window.</div>
+                  <div className="py-4 text-sm text-slate-400">No failures in this window.</div>
                 ) : (
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                      <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
                         <th className="pb-2 font-medium">Class</th>
                         <th className="pb-2 font-medium">Count</th>
                       </tr>
@@ -179,28 +187,27 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
         )}
       </div>
 
-      {/* ── Recent Runs ── */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
+      <div className="card" data-tour-target="dashboard-recent-runs">
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="font-semibold text-slate-900">Recent Runs</h3>
-          <button onClick={() => onNavigate('runs')} className="text-sm text-blue-600 hover:underline">
+          <button onClick={() => onNavigate('runs')} className="text-sm font-medium text-blue-700 hover:underline">
             View all →
           </button>
         </div>
 
         {loading ? (
-          <div className="text-slate-400 text-sm py-8 text-center">Loading…</div>
+          <div className="py-8 text-center text-sm text-slate-400">Loading…</div>
         ) : recent.length === 0 ? (
-          <div className="text-slate-400 text-sm py-8 text-center">
+          <div className="py-8 text-center text-sm text-slate-400">
             No runs yet.{' '}
-            <button onClick={() => onNewRun ? onNewRun() : onNavigate('runs')} className="text-blue-600 hover:underline">
+            <button onClick={() => onNewRun ? onNewRun() : onNavigate('runs')} className="font-medium text-blue-700 hover:underline">
               Start one →
             </button>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
+              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
                 <th className="pb-2 font-medium">Scenario</th>
                 <th className="pb-2 font-medium">Channel</th>
                 <th className="pb-2 font-medium">Status</th>
@@ -224,9 +231,9 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                     {r.evalResult ? (
                       <div className="flex items-center gap-1.5">
                         {r.evalResult.scenarioType === 'security' && (
-                          <span title="Security test" className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-semibold">🛡 Security</span>
+                          <span title="Security test" className="rounded px-1.5 py-0.5 text-xs font-semibold text-purple-700 ring-1 ring-purple-200 bg-purple-50">🛡 Security</span>
                         )}
-                        <span className={r.evalResult.passed ? 'text-green-700 font-semibold' : 'text-red-600 font-semibold'}>
+                        <span className={r.evalResult.passed ? 'font-semibold text-green-700' : 'font-semibold text-red-600'}>
                           {r.evalResult.overallScore.toFixed(1)}/10
                         </span>
                       </div>
@@ -240,19 +247,27 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
         )}
       </div>
 
-      {/* ── Quick Actions ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: '📋 Browse Scenarios', page: 'scenarios' as const, newRun: false },
-          { label: '▶️ New Run',           page: 'runs'      as const, newRun: true  },
-          { label: '💬 View Transcripts',  page: 'transcripts' as const, newRun: false },
-          { label: '📊 View Reports',      page: 'reports'   as const, newRun: false },
-        ].map((a) => (
-          <button key={a.label} onClick={() => a.newRun && onNewRun ? onNewRun() : onNavigate(a.page)}
-            className="card text-center text-sm font-medium text-slate-700 hover:bg-slate-50 hover:shadow transition-shadow cursor-pointer">
-            {a.label}
-          </button>
-        ))}
+      <div className="card" data-tour-target="dashboard-actions">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-semibold text-slate-900">Quick Actions</h3>
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Fast paths</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[
+            { label: '📋 Browse Scenarios', page: 'scenarios' as const, newRun: false },
+            { label: '▶️ New Run', page: 'runs' as const, newRun: true },
+            { label: '💬 View Transcripts', page: 'transcripts' as const, newRun: false },
+            { label: '📊 View Reports', page: 'reports' as const, newRun: false },
+          ].map((a) => (
+            <button
+              key={a.label}
+              onClick={() => a.newRun && onNewRun ? onNewRun() : onNavigate(a.page)}
+              className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-4 text-center text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -264,8 +279,8 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
   };
   return (
     <div className="card">
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-3xl font-bold mt-1 ${colors[color] ?? 'text-slate-800'}`}>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={`mt-1 text-3xl font-bold ${colors[color] ?? 'text-slate-800'}`}>
         {value}{sub && <span className="text-base font-normal text-slate-400">{sub}</span>}
       </p>
     </div>

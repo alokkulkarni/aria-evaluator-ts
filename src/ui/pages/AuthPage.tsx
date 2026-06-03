@@ -99,83 +99,123 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100">
-        <div className="text-slate-500 text-sm animate-pulse">Checking session…</div>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_28%),linear-gradient(135deg,#f8fbff_0%,#eef4ff_100%)] px-4 py-8">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl items-center justify-center rounded-3xl border border-slate-200/70 bg-white/70 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur">
+          <div className="text-sm text-slate-500 animate-pulse">Checking session…</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">
-          {bootstrapRequired ? 'Bootstrap Admin Account' : 'Sign In'}
-        </h1>
-        <p className="mt-2 text-sm text-slate-500">
-          {bootstrapRequired
-            ? 'Create the first admin user to unlock the evaluator.'
-            : 'Use your admin credentials to access ARIA Evaluator.'}
-        </p>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_28%),linear-gradient(135deg,#f8fbff_0%,#eef4ff_100%)] px-4 py-8">
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur lg:grid-cols-2">
+        <div className="flex flex-col justify-between bg-[linear-gradient(160deg,#0b1f4d_0%,#102b66_55%,#0f172a_100%)] p-8 text-white sm:p-10">
+          <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10">
+                <span className="text-lg">⚡</span>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">ARIA Evaluator</p>
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight">Enterprise-grade evaluation workspace</h1>
+              </div>
+            </div>
 
-        <div className="mt-5 space-y-3">
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Username</span>
-            <input
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-            />
-          </label>
+            <p className="max-w-md text-sm leading-6 text-slate-200/80">
+              Monitor runs, review agent quality, and share reports with a polished dashboard built for teams that need confidence at a glance.
+            </p>
+          </div>
 
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Password</span>
-            <input
-              type="password"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={bootstrapRequired ? 'new-password' : 'current-password'}
-            />
-          </label>
-
-          {bootstrapRequired && (
-            <>
-              <label className="block">
-                <span className="text-xs font-medium text-slate-600">Confirm Password</span>
-                <input
-                  type="password"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              {bootstrapTokenRequired && (
-                <label className="block">
-                  <span className="text-xs font-medium text-slate-600">Bootstrap Token</span>
-                  <input
-                    type="password"
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    value={bootstrapToken}
-                    onChange={(e) => setBootstrapToken(e.target.value)}
-                    autoComplete="off"
-                  />
-                </label>
-              )}
-            </>
-          )}
+          <div className="grid gap-3 pt-10 sm:grid-cols-3">
+            {[
+              ['Secure access', 'Session-aware authentication and admin bootstrap flow.'],
+              ['Operational clarity', 'Runs, transcripts, reports, and observability in one place.'],
+              ['Executive-ready', 'A cleaner interface for stakeholder demos and day-to-day use.'],
+            ].map(([title, body]) => (
+              <div key={title} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm font-semibold text-white">{title}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-200/75">{body}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+        <div className="flex items-center p-6 sm:p-8 lg:p-10">
+          <div className="w-full">
+            <div className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-700">Welcome back</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+                {bootstrapRequired ? 'Bootstrap Admin Account' : 'Sign In'}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {bootstrapRequired
+                  ? 'Create the first admin user to unlock the evaluator.'
+                  : 'Use your admin credentials to access ARIA Evaluator.'}
+              </p>
+            </div>
 
-        <button
-          className="mt-5 w-full rounded-md bg-[#0D2A66] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={() => { void submit(); }}
-          disabled={submitting}
-        >
-          {submitting ? 'Please wait…' : submitLabel}
-        </button>
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs font-medium text-slate-600">Username</span>
+                <input
+                  className="mt-1"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-medium text-slate-600">Password</span>
+                <input
+                  type="password"
+                  className="mt-1"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete={bootstrapRequired ? 'new-password' : 'current-password'}
+                />
+              </label>
+
+              {bootstrapRequired && (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-600">Confirm Password</span>
+                    <input
+                      type="password"
+                      className="mt-1"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                  {bootstrapTokenRequired && (
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">Bootstrap Token</span>
+                      <input
+                        type="password"
+                        className="mt-1"
+                        value={bootstrapToken}
+                        onChange={(e) => setBootstrapToken(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+
+            {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+
+            <button
+              className="btn-primary mt-6 w-full justify-center rounded-xl px-4 py-3 text-sm font-semibold"
+              onClick={() => { void submit(); }}
+              disabled={submitting}
+            >
+              {submitting ? 'Please wait…' : submitLabel}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
