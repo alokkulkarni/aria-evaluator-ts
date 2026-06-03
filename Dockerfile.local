@@ -1,18 +1,13 @@
-# syntax=docker/dockerfile:1
 # Local development Dockerfile — no platform pin, runs natively on host arch.
 FROM node:20-bookworm-slim AS build
 
 WORKDIR /app
 
+# Copy dependency manifests before source so Docker layer caching skips
+# npm ci on rebuilds where only source files changed (not dependencies).
 COPY package*.json ./
 COPY prisma ./prisma
-
-# BuildKit cache mounts keep the npm download cache and Prisma engine binary
-# warm across builds.  Only the package manifests layer is invalidated when
-# dependencies change — saving 10-15 min of redundant network I/O per rebuild.
-RUN --mount=type=cache,id=aria-npm,target=/root/.npm \
-    --mount=type=cache,id=aria-prisma,target=/root/.cache/prisma \
-    npm ci --prefer-offline && npx prisma generate
+RUN npm ci && npx prisma generate
 
 COPY . .
 RUN npm run build

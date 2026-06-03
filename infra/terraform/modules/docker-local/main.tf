@@ -113,17 +113,9 @@ resource "docker_image" "app" {
     dockerfile = var.app_dockerfile
     # Tag the built image so it is addressable by name:tag locally.
     tag = [var.app_image_name]
-
-    # Enable BuildKit inline cache so Docker can reuse layer metadata on the
-    # next build.  Dockerfile.local uses --mount=type=cache cache mounts which
-    # require BuildKit; ensure DOCKER_BUILDKIT=1 is exported in your shell
-    # (Docker Desktop on macOS enables this automatically since v22).
-    build_args = {
-      BUILDKIT_INLINE_CACHE = "1"
-    }
   }
 
-  # Rebuild when the Dockerfile or dependency manifest changes.
+  # Rebuild when the Dockerfile or npm dependency manifest changes.
   # For a full source rebuild (e.g. after src/ changes), either:
   #   a) change app_image_name to a new tag, or
   #   b) run: terraform taint module.docker_local.docker_image.app && terraform apply
