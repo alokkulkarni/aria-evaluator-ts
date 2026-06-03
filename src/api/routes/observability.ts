@@ -106,6 +106,7 @@ observabilityRouter.get('/metrics', async (req, res) => {
       tokenOutputEstimate: true,
       tokenTotalEstimate: true,
       failureClass: true,
+      attackCategory: true,
     },
   });
 
@@ -135,6 +136,11 @@ observabilityRouter.get('/metrics', async (req, res) => {
     tokenTotal: number;
   }>();
   const failureBuckets = new Map<string, number>();
+  const attackBuckets = new Map<string, {
+    count: number;
+    avgConfidence: number;
+    severityBuckets: Map<string, number>;
+  }>();
 
   for (const row of telemetry) {
     const provider = row.provider || 'unknown';
@@ -159,6 +165,17 @@ observabilityRouter.get('/metrics', async (req, res) => {
     if (row.status === 'failed') {
       const failureClass = row.failureClass ?? 'unknown';
       failureBuckets.set(failureClass, (failureBuckets.get(failureClass) ?? 0) + 1);
+    }
+
+    // Aggregate security attacks by category
+    if (row.attackCategory) {
+      const existing = attackBuckets.get(row.attackCategory) ?? {
+        count: 0,
+        avgConfidence: 0,
+        severityBuckets: new Map<string, number>(),
+      };
+      existing.count += 1;
+      attackBuckets.set(row.attackCategory, existing);
     }
   }
 
@@ -197,6 +214,14 @@ observabilityRouter.get('/metrics', async (req, res) => {
     },
   });
 
+  const attacks = Array.from(attackBuckets.entries())
+    .map(([category, bucket]) => ({
+      category,
+      count: bucket.count,
+      percentOfRuns: totalRuns > 0 ? round((bucket.count / totalRuns) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
   return res.json({
     window: {
       hours,
@@ -225,6 +250,7 @@ observabilityRouter.get('/metrics', async (req, res) => {
       failedRunsLast24h: failedScheduledRunsLast24h,
       failureRateLast24h: scheduledRunsLast24h > 0 ? round((failedScheduledRunsLast24h / scheduledRunsLast24h) * 100) : 0,
     },
+    attacks,
     tokenEstimator: {
       version: TOKEN_ESTIMATOR_VERSION,
       method: 'chars_div_4_estimate',
@@ -232,4 +258,3 @@ observabilityRouter.get('/metrics', async (req, res) => {
     },
   });
 });
-

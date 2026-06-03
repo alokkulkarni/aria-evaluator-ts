@@ -120,6 +120,7 @@ model Run {
   experimentRuns ExperimentRun[] @relation("experimentRuns")
   scheduleRuns ScheduleRun[] @relation("scheduleRuns")
   telemetry    RunTelemetry?
+  securityAttack SecurityAttack?
   createdAt    DateTime  @default(now())
 }
 
@@ -179,6 +180,7 @@ model EvalResult {
   recommendation  String?
   judgeModel      String
   scenarioType    String?  // 'security' | 'quality'
+  securityScore   Float?   // 0–1, separate axis for security runs
   createdAt       DateTime @default(now())
   review          Review?
 }
@@ -304,6 +306,7 @@ model RunTelemetry {
   tokenTotalEstimate Int?
   failureClass       String?
   estimatorVersion   Int      @default(1)
+  attackCategory     String?  // 'injection'|'evasion'|'exfil'|'policy'|'other' (denorm from SecurityAttack)
   completedAt        DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -312,6 +315,28 @@ model RunTelemetry {
   @@index([provider, createdAt])
   @@index([failureClass, createdAt])
   @@index([status, createdAt])
+  @@index([attackCategory, createdAt])
+}
+
+// ─── Security Attacks ────────────────────────────────────────────────────────────
+model SecurityAttack {
+  id          String  @id @default(cuid())
+  runId       String  @unique
+  run         Run     @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  category    String  // 'injection'|'evasion'|'exfil'|'policy'|'other'
+  severity    String  // 'low'|'medium'|'high'|'critical'
+  confidence  Float   @default(0.5) // 0–1: heuristic confidence or judge-assigned
+  inferred    Boolean @default(true) // true=heuristic, false=explicit in scenario YAML
+
+  target      String? // e.g. "system_prompt", "input_validation", null if broad attack
+  notes       String? // high-level description (NOT payloads, NOT PII)
+
+  createdAt   DateTime @default(now())
+
+  @@index([category])
+  @@index([severity])
+  @@index([createdAt])
 }
 
 // ─── Report ───────────────────────────────────────────────────────────────────

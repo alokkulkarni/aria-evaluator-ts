@@ -156,6 +156,14 @@ runsRouter.get('/', async (req, res) => {
     return res.status(400).json({ error: 'invalid scenarioId format' });
   }
 
+  const attackCategory = parseSingleQueryString(req.query['attackCategory']);
+  const VALID_ATTACK_CATEGORIES = new Set(['injection', 'policy', 'evasion', 'exfil', 'other']);
+  if (attackCategory !== undefined && !VALID_ATTACK_CATEGORIES.has(attackCategory)) {
+    return res.status(400).json({
+      error: 'attackCategory must be one of: injection, policy, evasion, exfil, other',
+    });
+  }
+
   const limitRaw = parseSingleQueryString(req.query['limit']);
   let limit = 100;
   if (limitRaw !== undefined) {
@@ -191,6 +199,7 @@ runsRouter.get('/', async (req, res) => {
         : {}),
       ...(scenarioId !== undefined ? { scenarioId } : {}),
       ...(provider !== undefined ? { telemetry: { is: { provider } } } : {}),
+      ...(attackCategory !== undefined ? { telemetry: { is: { attackCategory } } } : {}),
     };
 
     const [runs, total] = await Promise.all([
@@ -201,7 +210,8 @@ runsRouter.get('/', async (req, res) => {
         skip: offset,
         include: {
           evalResult: true,
-          telemetry: { select: { provider: true, latencyMs: true, failureClass: true } },
+          telemetry: { select: { provider: true, latencyMs: true, failureClass: true, attackCategory: true } },
+          securityAttack: { select: { category: true, severity: true, confidence: true } },
         },
       }),
       prisma.run.count({ where }),
