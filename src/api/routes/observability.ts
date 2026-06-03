@@ -7,7 +7,12 @@ export const observabilityRouter = Router();
 const apiStartedAtMs = Date.now();
 
 function parseHours(raw: unknown): number | null {
-  if (typeof raw !== 'string' || raw.trim() === '') return 24;
+  // Array (e.g. ?hours=1&hours=2) is a client error — reject it
+  if (Array.isArray(raw)) return null;
+  // Omitted entirely → default to 24
+  if (raw === undefined) return 24;
+  // Any other non-string → reject
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
   const value = Number.parseInt(raw, 10);
   if (!Number.isFinite(value) || value < 1 || value > 168) return null;
   return value;
@@ -97,7 +102,7 @@ observabilityRouter.get('/metrics', async (req, res) => {
   const totalRuns = telemetry.length;
   const completedRuns = telemetry.filter((row) => row.status === 'completed').length;
   const failedRuns = telemetry.filter((row) => row.status === 'failed').length;
-  const failureRatePercent = totalRuns > 0 ? (failedRuns / totalRuns) * 100 : 0;
+  const failureRatePercent = totalRuns > 0 ? (failedRuns / totalRuns) * 100 : null;
 
   const latencies = telemetry
     .map((row) => row.latencyMs)
