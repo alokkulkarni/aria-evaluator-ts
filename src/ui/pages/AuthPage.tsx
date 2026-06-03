@@ -16,10 +16,13 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
   const [loading, setLoading] = useState(true);
   const [bootstrapRequired, setBootstrapRequired] = useState(false);
   const [bootstrapTokenRequired, setBootstrapTokenRequired] = useState(false);
+  const [passwordChangeRequired, setPasswordChangeRequired] = useState(false);
   const [bootstrapToken, setBootstrapToken] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,9 +31,18 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
       try {
         const session = await apiFetch('/api/auth/session') as {
           authenticated: boolean;
+          requirePasswordChange?: boolean;
           user?: AuthenticatedUser;
         };
         if (session.authenticated && session.user) {
+          if (session.requirePasswordChange) {
+            setPasswordChangeRequired(true);
+            setUsername(session.user.username);
+            setBootstrapRequired(false);
+            setBootstrapTokenRequired(false);
+            setLoading(false);
+            return;
+          }
           onAuthenticated(session.user);
           return;
         }
@@ -58,10 +70,30 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
     void load();
   }, [onAuthenticated]);
 
-  const submitLabel = bootstrapRequired ? 'Create Admin Account' : 'Sign In';
+  const submitLabel = passwordChangeRequired ? 'Change Password' : (bootstrapRequired ? 'Create Admin Account' : 'Sign In');
 
   async function submit(): Promise<void> {
     setError(null);
+
+    if (passwordChangeRequired) {
+      if (!username.trim()) {
+        setError('Username is required.');
+        return;
+      }
+      if (!password) {
+        setError('Current password is required.');
+        return;
+      }
+      if (!newPassword) {
+        setError('New password is required.');
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        setError('New passwords do not match.');
+        return;
+      }
+    }
+
     if (!username.trim()) {
       setError('Username is required.');
       return;
@@ -81,15 +113,33 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
 
     setSubmitting(true);
     try {
-      const endpoint = bootstrapRequired ? '/api/auth/bootstrap' : '/api/auth/login';
-      const response = await apiFetch(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({
-          username,
-          password,
-          ...(bootstrapRequired ? { bootstrapToken } : {}),
-        }),
-      }) as { user: AuthenticatedUser };
+      const response = passwordChangeRequired
+        ? await apiFetch('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            currentPassword: password,
+            newPassword,
+          }),
+        }) as { user: AuthenticatedUser }
+        : await apiFetch(bootstrapRequired ? '/api/auth/bootstrap' : '/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username,
+            password,
+            ...(bootstrapRequired ? { bootstrapToken } : {}),
+          }),
+        }) as { user: AuthenticatedUser; requirePasswordChange?: boolean };
+
+      if (!passwordChangeRequired && response.requirePasswordChange) {
+        setPasswordChangeRequired(true);
+        setBootstrapRequired(false);
+        setBootstrapTokenRequired(false);
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setError(null);
+        return;
+      }
+
       onAuthenticated(response.user);
     } catch (err) {
       setError((err as Error).message);
@@ -145,10 +195,12 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
             <div className="mb-6">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-700">Welcome back</p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-900">
-                {bootstrapRequired ? 'Bootstrap Admin Account' : 'Sign In'}
+                {passwordChangeRequired ? 'Rotate Admin Password' : (bootstrapRequired ? 'Bootstrap Admin Account' : 'Sign In')}
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                {bootstrapRequired
+                {passwordChangeRequired
+                  ? 'Use the temporary password once, then set a new permanent admin password.'
+                  : bootstrapRequired
                   ? 'Create the first admin user to unlock the evaluator.'
                   : 'Use your admin credentials to access ARIA Evaluator.'}
               </p>
@@ -166,17 +218,40 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
               </label>
 
               <label className="block">
-                <span className="text-xs font-medium text-slate-600">Password</span>
+                <span className="text-xs font-medium text-slate-600">{passwordChangeRequired ? 'Current Password' : 'Password'}</span>
                 <input
                   type="password"
                   className="mt-1"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  autoComplete={bootstrapRequired ? 'new-password' : 'current-password'}
+                  autoComplete={passwordChangeRequired ? 'current-password' : (bootstrapRequired ? 'new-password' : 'current-password')}
                 />
               </label>
 
-              {bootstrapRequired && (
+              {passwordChangeRequired ? (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-600">New Password</span>
+                    <input
+                      type="password"
+                      className="mt-1"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-600">Confirm New Password</span>
+                    <input
+                      type="password"
+                      className="mt-1"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                </>
+              ) : bootstrapRequired && (
                 <>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-600">Confirm Password</span>

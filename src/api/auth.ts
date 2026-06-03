@@ -12,6 +12,8 @@ const SESSION_TTL_HOURS = Number.isNaN(parsedSessionTtlHours) ? 168 : Math.max(1
 const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const PASSWORD_MIN_LENGTH = 12;
 const USERNAME_PATTERN = /^[A-Za-z0-9_.-]{3,64}$/;
+const PASSWORD_HASH_VERSION = 'v1';
+const TEMP_PASSWORD_HASH_VERSION = 'v1tmp';
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 5;
@@ -29,6 +31,7 @@ export interface AuthContext {
   username: string;
   role: string;
   sessionId: string;
+  requirePasswordChange: boolean;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -39,6 +42,8 @@ interface LoginBody {
   username?: string;
   password?: string;
   bootstrapToken?: string;
+  currentPassword?: string;
+  newPassword?: string;
 }
 
 export const authRouter = Router();
@@ -89,23 +94,29 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-function hashPassword(password: string, salt?: string): string {
+function hashPassword(password: string, salt?: string, options?: { temporary?: boolean }): string {
   const effectiveSalt = salt ?? randomBytes(16).toString('hex');
   const digest = scryptSync(password, effectiveSalt, 64).toString('hex');
-  return `v1$${effectiveSalt}$${digest}`;
+  const version = options?.temporary ? TEMP_PASSWORD_HASH_VERSION : PASSWORD_HASH_VERSION;
+  return `${version}$${effectiveSalt}$${digest}`;
 }
 
 function verifyPassword(storedHash: string, candidatePassword: string): boolean {
   const [version, salt, expectedHash] = storedHash.split('$');
-  if (version !== 'v1' || !salt || !expectedHash) return false;
+  if ((version !== PASSWORD_HASH_VERSION && version !== TEMP_PASSWORD_HASH_VERSION) || !salt || !expectedHash) return false;
 
-  const computedHash = hashPassword(candidatePassword, salt).split('$')[2];
+  const computedHash = hashPassword(candidatePassword, salt, { temporary: version === TEMP_PASSWORD_HASH_VERSION }).split('$')[2];
   if (!computedHash) return false;
 
   const expectedBuffer = Buffer.from(expectedHash, 'hex');
   const computedBuffer = Buffer.from(computedHash, 'hex');
   if (expectedBuffer.length !== computedBuffer.length) return false;
   return timingSafeEqual(expectedBuffer, computedBuffer);
+}
+
+function isTemporaryPasswordHash(storedHash: string): boolean {
+  const [version] = storedHash.split('$');
+  return version === TEMP_PASSWORD_HASH_VERSION;
 }
 
 function serializeCookie(name: string, value: string, options: {
@@ -206,9 +217,32 @@ export async function ensureDefaultAdminAccount(): Promise<void> {
     return;
   }
 
-  const existingUsers = await prisma.user.count();
-  if (existingUsers > 0) {
-    console.log(`ℹ Default admin auto-bootstrap skipped (${existingUsers} existing user(s)).`);
+  const providedPassword = process.env['AUTH_DEFAULT_ADMIN_PASSWORD']?.trim() ?? '';
+  const existingUsers = await prisma.user.findMany({
+    select: { id: true, username: true, role: true, passwordHash: true },
+  });
+  if (existingUsers.length > 0) {
+    const temporaryAdmin = existingUsers.find((user) => user.role === 'admin' && isTemporaryPasswordHash(user.passwordHash));
+    if (temporaryAdmin) {
+      const rotatedPassword = normalizePassword(providedPassword || randomBytes(18).toString('base64url'));
+      if (!rotatedPassword) {
+        throw new Error(`AUTH_DEFAULT_ADMIN_PASSWORD must be at least ${PASSWORD_MIN_LENGTH} characters`);
+      }
+      await prisma.user.update({
+        where: { id: temporaryAdmin.id },
+        data: { passwordHash: hashPassword(rotatedPassword, undefined, { temporary: true }) },
+      });
+
+      console.warn('\n⚠ Temporary admin password rotated');
+      console.warn(`   Username: ${temporaryAdmin.username}`);
+      console.warn(`   Password: ${rotatedPassword}`);
+      console.warn('   Sign in once and set a permanent password.');
+      console.warn('   Override with AUTH_DEFAULT_ADMIN_USERNAME / AUTH_DEFAULT_ADMIN_PASSWORD');
+      console.warn('   Disable with AUTH_DEFAULT_ADMIN_ENABLED=false\n');
+      return;
+    }
+
+    console.log(`ℹ Default admin auto-bootstrap skipped (${existingUsers.length} existing user(s)).`);
     return;
   }
 
@@ -218,9 +252,7 @@ export async function ensureDefaultAdminAccount(): Promise<void> {
     throw new Error('AUTH_DEFAULT_ADMIN_USERNAME is invalid (allowed: 3-64 chars, letters/numbers/_.-)');
   }
 
-  const providedPassword = process.env['AUTH_DEFAULT_ADMIN_PASSWORD']?.trim() ?? '';
-  const generatedPassword = providedPassword || randomBytes(18).toString('base64url');
-  const password = normalizePassword(generatedPassword);
+  const password = normalizePassword(providedPassword || randomBytes(18).toString('base64url'));
   if (!password) {
     throw new Error(`AUTH_DEFAULT_ADMIN_PASSWORD must be at least ${PASSWORD_MIN_LENGTH} characters`);
   }
@@ -238,7 +270,7 @@ export async function ensureDefaultAdminAccount(): Promise<void> {
     return tx.user.create({
       data: {
         username,
-        passwordHash: hashPassword(password),
+        passwordHash: hashPassword(password, undefined, { temporary: true }),
         role: 'admin',
       },
       select: { id: true, username: true, role: true },
@@ -253,6 +285,7 @@ export async function ensureDefaultAdminAccount(): Promise<void> {
   console.warn('\n⚠ Auto-created default admin account');
   console.warn(`   Username: ${createdUser.username}`);
   console.warn(`   Password: ${password}`);
+  console.warn('   This temporary password must be changed after first sign-in.');
   console.warn('   Override with AUTH_DEFAULT_ADMIN_USERNAME / AUTH_DEFAULT_ADMIN_PASSWORD');
   console.warn('   Disable with AUTH_DEFAULT_ADMIN_ENABLED=false\n');
 }
@@ -411,6 +444,7 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       username: session.user.username,
       role: session.user.role,
       sessionId: session.id,
+      requirePasswordChange: isTemporaryPasswordHash(session.user.passwordHash),
     };
 
     const shouldRefreshLastSeen = !session.lastSeenAt
@@ -504,6 +538,7 @@ authRouter.post('/bootstrap', async (req, res) => {
       username: createdUser.username,
       role: createdUser.role,
       sessionId: session.sessionId,
+      requirePasswordChange: false,
     };
     await recordAuditEventSafe(req, 'auth.bootstrap', createdUser.id, {
       username: createdUser.username,
@@ -512,6 +547,7 @@ authRouter.post('/bootstrap', async (req, res) => {
 
     res.status(201).json({
       ok: true,
+      requirePasswordChange: false,
       user: createdUser,
     });
   } catch (err) {
@@ -554,6 +590,7 @@ authRouter.post('/login', async (req, res) => {
 
     clearRateLimit(ipRateKey);
     clearRateLimit(userRateKey);
+    const requirePasswordChange = isTemporaryPasswordHash(user.passwordHash);
 
     const session = await createSessionForUser(user.id);
     await prisma.user.update({
@@ -567,6 +604,7 @@ authRouter.post('/login', async (req, res) => {
       username: user.username,
       role: user.role,
       sessionId: session.sessionId,
+      requirePasswordChange,
     };
     await recordAuditEventSafe(req, 'auth.login', user.id, {
       username: user.username,
@@ -575,6 +613,77 @@ authRouter.post('/login', async (req, res) => {
 
     res.json({
       ok: true,
+      requirePasswordChange,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+authRouter.post('/change-password', async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { currentPassword: rawCurrentPassword, newPassword: rawNewPassword } = req.body as LoginBody;
+    const currentPassword = rawCurrentPassword ?? '';
+    const newPassword = normalizePassword(rawNewPassword);
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: `New password must be at least ${PASSWORD_MIN_LENGTH} characters` });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: { id: true, username: true, role: true, passwordHash: true },
+    });
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    if (!verifyPassword(user.passwordHash, currentPassword)) {
+      res.status(401).json({ error: 'Current password is incorrect' });
+      return;
+    }
+    if (verifyPassword(user.passwordHash, newPassword)) {
+      res.status(400).json({ error: 'New password must be different from the current password' });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: hashPassword(newPassword),
+        lastLoginAt: new Date(),
+      },
+    });
+    await prisma.authSession.deleteMany({
+      where: {
+        userId: user.id,
+        id: { not: auth.sessionId },
+      },
+    });
+    await recordAuditEventSafe(req, 'auth.password_changed', user.id, {
+      username: user.username,
+      role: user.role,
+      forcedRotation: auth.requirePasswordChange,
+    });
+
+    (req as AuthenticatedRequest).auth = {
+      ...auth,
+      requirePasswordChange: false,
+    };
+    res.json({
+      ok: true,
+      requirePasswordChange: false,
       user: {
         id: user.id,
         username: user.username,
@@ -614,6 +723,7 @@ authRouter.get('/session', (req, res) => {
   }
   res.json({
     authenticated: true,
+    requirePasswordChange: auth.requirePasswordChange,
     user: {
       id: auth.userId,
       username: auth.username,
