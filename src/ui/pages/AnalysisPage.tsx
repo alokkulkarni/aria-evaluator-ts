@@ -7,6 +7,13 @@ interface RunTelemetrySummary {
   provider: string;
   latencyMs: number | null;
   failureClass: string | null;
+  attackCategory?: string | null;
+}
+
+interface SecurityAttackSummary {
+  category: string;
+  severity: string;
+  confidence: number;
 }
 
 interface EvalResultSummary {
@@ -23,6 +30,7 @@ interface RunSummary {
   createdAt: string;
   evalResult: EvalResultSummary | null;
   telemetry: RunTelemetrySummary | null;
+  securityAttack?: SecurityAttackSummary | null;
 }
 
 interface DimensionScore {
@@ -59,11 +67,19 @@ interface FilterState {
   status: string;
   channel: string;
   provider: string;
+  attackCategory: string;
   since: string;
   until: string;
 }
 
-const DEFAULT_FILTERS: FilterState = { status: '', channel: '', provider: '', since: '', until: '' };
+const DEFAULT_FILTERS: FilterState = {
+  status: '',
+  channel: '',
+  provider: '',
+  attackCategory: '',
+  since: '',
+  until: '',
+};
 const PAGE_SIZE = 50;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -146,6 +162,23 @@ function RunRow({
       </td>
       <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">{fmtDate(run.createdAt)}</td>
       <td className="px-3 py-2 text-xs text-gray-400">{run.telemetry?.provider ?? '—'}</td>
+      <td className="px-3 py-2 text-xs">
+        {run.securityAttack ? (
+          <div className="flex flex-col gap-1">
+            <span className="inline-flex items-center rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-800">
+              🔐 {run.securityAttack.category}
+            </span>
+            <span className="text-gray-600">
+              Severity: <span className="font-semibold">{run.securityAttack.severity}</span>
+            </span>
+            <span className="text-gray-600">
+              Confidence: <span className="font-semibold">{(run.securityAttack.confidence * 100).toFixed(0)}%</span>
+            </span>
+          </div>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
+      </td>
     </tr>
   );
 }
@@ -379,6 +412,7 @@ export function AnalysisPage() {
     if (f.status)  params.set('status', f.status);
     if (f.channel) params.set('channel', f.channel);
     if (f.provider) params.set('provider', f.provider);
+    if (f.attackCategory) params.set('attackCategory', f.attackCategory);
     if (f.since)   params.set('since', f.since);
     if (f.until)   params.set('until', f.until);
     try {
@@ -515,6 +549,22 @@ export function AnalysisPage() {
           </div>
 
           <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Attack Category</label>
+            <select
+              value={filters.attackCategory}
+              onChange={(e) => setFilters((f) => ({ ...f, attackCategory: e.target.value }))}
+              className="border rounded px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              <option value="">All</option>
+              <option value="injection">Injection</option>
+              <option value="policy">Policy</option>
+              <option value="evasion">Evasion</option>
+              <option value="exfil">Exfil</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Since</label>
             <input
               type="date"
@@ -600,12 +650,13 @@ export function AnalysisPage() {
                   <th className="px-3 py-2 text-left font-medium">Result</th>
                   <th className="px-3 py-2 text-left font-medium">Created</th>
                   <th className="px-3 py-2 text-left font-medium">Provider</th>
+                  <th className="px-3 py-2 text-left font-medium">Security</th>
                 </tr>
               </thead>
               <tbody>
                 {runs.length === 0 && !loading && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400 italic">
                       No runs match these filters
                     </td>
                   </tr>
