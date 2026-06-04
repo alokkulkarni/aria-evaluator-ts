@@ -11,43 +11,118 @@ export interface ModelAvailability {
   label: string;
 }
 
-export const DEFAULT_JUDGE_MODEL_ID = 'anthropic.claude-sonnet-4-6';
+export const DEFAULT_JUDGE_MODEL_ID = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
 export const DEFAULT_JUDGE_TEMPERATURE = '0';
 export const DEFAULT_JUDGE_MAX_TOKENS = '2000';
 
-// Model registry: maps model ID to available regions
-// Cross-region models are marked with 'cross-region' flag
-// Same-region models use bare ID format, cross-region uses {region}.{vendor}.{model}
-const MODEL_REGISTRY: Record<string, { label: string; regions: string[]; vendor: string }> = {
-  // Anthropic - widely available
-  'anthropic.claude-sonnet-4-6': { label: 'Claude Sonnet 4.6', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-sonnet-4-5-20250929-v1:0': { label: 'Claude Sonnet 4.5', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-3-7-sonnet-20250219-v1:0': { label: 'Claude 3.7 Sonnet', regions: ['eu-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-3-sonnet-20240229-v1:0': { label: 'Claude 3 Sonnet', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-opus-4-8': { label: 'Claude Opus 4.8', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-opus-4-7': { label: 'Claude Opus 4.7', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-opus-4-5-20251101-v1:0': { label: 'Claude Opus 4.5', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-haiku-4-5-20251001-v1:0': { label: 'Claude Haiku 4.5', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-3-haiku-20240307-v1:0': { label: 'Claude 3 Haiku', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
+// Geo prefix mapping: AWS region → short geo code used in cross-region inference profile IDs
+const REGION_TO_GEO: Record<string, string> = {
+  'us-east-1':      'us',
+  'us-east-2':      'us',
+  'us-west-2':      'us',
+  'eu-west-1':      'eu',
+  'eu-west-2':      'eu',
+  'eu-west-3':      'eu',
+  'eu-central-1':   'eu',
+  'eu-north-1':     'eu',
+  'ap-northeast-1': 'ap',
+  'ap-northeast-2': 'ap',
+  'ap-southeast-1': 'ap',
+  'ap-southeast-2': 'ap',
+  'ap-south-1':     'ap',
+};
 
-  // Amazon Nova
-  'amazon.nova-pro-v1:0': { label: 'Nova Pro', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'amazon' },
-  'amazon.nova-lite-v1:0': { label: 'Nova Lite', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'amazon' },
-  'amazon.nova-micro-v1:0': { label: 'Nova Micro', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'amazon' },
+// Geo short codes that appear as inference profile prefixes
+const GEO_CODES = new Set(Object.values(REGION_TO_GEO));
 
-  // Meta Llama - not available in ap-northeast-1
-  'meta.llama3-70b-instruct-v1:0': { label: 'Llama 3 70B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'meta' },
-  'meta.llama3-8b-instruct-v1:0': { label: 'Llama 3 8B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'meta' },
+/**
+ * Returns the cross-region inference profile ID for a model and region.
+ * e.g. anthropic.claude-haiku-4-5-20251001-v1:0 + eu-west-2 → eu.anthropic.claude-haiku-4-5-20251001-v1:0
+ */
+function toInferenceProfileId(bareModelId: string, region: string): string {
+  const geo = REGION_TO_GEO[region];
+  if (!geo) return bareModelId; // unknown region — return as-is
+  return `${geo}.${bareModelId}`;
+}
 
-  // Mistral
-  'mistral.mistral-large-2402-v1:0': { label: 'Mistral Large 2402', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'mistral' },
-  'mistral.mistral-large-3-675b-instruct': { label: 'Mistral Large 3 675B', regions: ['us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'mistral' },
-  'mistral.mixtral-8x7b-instruct-v0:1': { label: 'Mixtral 8x7B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'mistral' },
-  'mistral.mistral-7b-instruct-v0:2': { label: 'Mistral 7B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'mistral' },
+/**
+ * Model registry. Each entry uses the BARE model ID as the key.
+ *
+ * inferenceProfile: true  → model REQUIRES a cross-region inference profile ID
+ *                             (newer Anthropic 3.5+/4.x and Amazon Nova)
+ * inferenceProfile: false → model works with the bare ID (on-demand throughput)
+ *                             (older Anthropic 3.0, Meta Llama, Mistral, DeepSeek)
+ */
+const MODEL_REGISTRY: Record<string, {
+  label: string;
+  regions: string[];
+  vendor: string;
+  inferenceProfile: boolean;
+}> = {
+  // ── Anthropic (3.5+ and 4.x require cross-region inference profiles) ──────
+  'anthropic.claude-sonnet-4-5-20250929-v1:0': {
+    label: 'Claude Sonnet 4.5', vendor: 'anthropic', inferenceProfile: true,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
+  'anthropic.claude-3-7-sonnet-20250219-v1:0': {
+    label: 'Claude 3.7 Sonnet', vendor: 'anthropic', inferenceProfile: true,
+    regions: ['eu-west-2', 'ap-northeast-1'],
+  },
+  'anthropic.claude-opus-4-5-20251101-v1:0': {
+    label: 'Claude Opus 4.5', vendor: 'anthropic', inferenceProfile: true,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
+  'anthropic.claude-haiku-4-5-20251001-v1:0': {
+    label: 'Claude Haiku 4.5', vendor: 'anthropic', inferenceProfile: true,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
+  // Legacy on-demand models (bare ID works fine)
+  'anthropic.claude-3-sonnet-20240229-v1:0': {
+    label: 'Claude 3 Sonnet', vendor: 'anthropic', inferenceProfile: false,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
+  'anthropic.claude-3-haiku-20240307-v1:0': {
+    label: 'Claude 3 Haiku', vendor: 'anthropic', inferenceProfile: false,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
 
-  // DeepSeek
-  'deepseek.v3-v1:0': { label: 'DeepSeek V3', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'deepseek' },
-  'deepseek.v3.2': { label: 'DeepSeek V3.2', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'deepseek' },
+  // ── Amazon Nova (require cross-region inference profiles) ─────────────────
+  'amazon.nova-pro-v1:0': {
+    label: 'Nova Pro', vendor: 'amazon', inferenceProfile: true,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
+  'amazon.nova-lite-v1:0': {
+    label: 'Nova Lite', vendor: 'amazon', inferenceProfile: true,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
+  'amazon.nova-micro-v1:0': {
+    label: 'Nova Micro', vendor: 'amazon', inferenceProfile: true,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
+  },
+
+  // ── Meta Llama (on-demand bare ID, not in ap-northeast-1) ─────────────────
+  'meta.llama3-70b-instruct-v1:0': {
+    label: 'Llama 3 70B Instruct', vendor: 'meta', inferenceProfile: false,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2'],
+  },
+  'meta.llama3-8b-instruct-v1:0': {
+    label: 'Llama 3 8B Instruct', vendor: 'meta', inferenceProfile: false,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2'],
+  },
+
+  // ── Mistral (on-demand bare IDs) ──────────────────────────────────────────
+  'mistral.mistral-large-2402-v1:0': {
+    label: 'Mistral Large', vendor: 'mistral', inferenceProfile: false,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2'],
+  },
+  'mistral.mixtral-8x7b-instruct-v0:1': {
+    label: 'Mixtral 8x7B Instruct', vendor: 'mistral', inferenceProfile: false,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2'],
+  },
+  'mistral.mistral-7b-instruct-v0:2': {
+    label: 'Mistral 7B Instruct', vendor: 'mistral', inferenceProfile: false,
+    regions: ['eu-west-2', 'us-east-1', 'us-west-2'],
+  },
 };
 
 // Get models available for a specific region
@@ -58,10 +133,10 @@ export function getModelsForRegion(region: string): JudgeModelGroup[] {
     if (!regions.includes(region)) continue;
 
     if (!groups[vendor]) groups[vendor] = [];
+    // Store bare model IDs in settings; formatModelIdForRegion() applies prefix at call time
     groups[vendor].push({ value: modelId, label });
   }
 
-  // Map vendor names to display labels
   const vendorLabels: Record<string, string> = {
     anthropic: 'Anthropic',
     amazon: 'Amazon',
@@ -76,40 +151,46 @@ export function getModelsForRegion(region: string): JudgeModelGroup[] {
   }));
 }
 
-// Format model ID for a specific region (adds prefix if cross-region)
+/**
+ * Convert a bare model ID to the correct Bedrock API ID for the given region.
+ *
+ * - If the model requires an inference profile → returns {geo}.{bareModelId}
+ * - Otherwise                                  → returns bareModelId unchanged
+ *
+ * Always strip any existing prefix first so this is idempotent.
+ */
 export function formatModelIdForRegion(modelId: string, region: string): string {
-  const modelInfo = MODEL_REGISTRY[modelId];
-  if (!modelInfo) return modelId;
+  const bareId = extractBareModelId(modelId);
+  const modelInfo = MODEL_REGISTRY[bareId];
+  if (!modelInfo) return bareId; // unknown model — return bare ID and let Bedrock decide
 
-  // If same region, use bare model ID
-  if (modelInfo.regions.includes(region)) {
-    return modelId;
+  if (modelInfo.inferenceProfile) {
+    return toInferenceProfileId(bareId, region);
   }
-
-  // If cross-region, add region prefix
-  return `${region}.${modelId}`;
+  return bareId;
 }
 
-// Check if a model ID is valid (either bare or region-prefixed)
+// Check if a model ID is valid (either bare or geo-prefixed)
 export function isValidModelId(modelId: string, region: string): boolean {
-  // Check bare format
-  if (MODEL_REGISTRY[modelId] && MODEL_REGISTRY[modelId].regions.includes(region)) {
-    return true;
-  }
-
-  // Check region-prefixed format (e.g., "us-east-1.anthropic.claude-...")
-  const regionPrefix = `${region}.`;
-  if (modelId.startsWith(regionPrefix)) {
-    const bareModelId = modelId.substring(regionPrefix.length);
-    return !!MODEL_REGISTRY[bareModelId];
-  }
-
-  return false;
+  const bareId = extractBareModelId(modelId);
+  const info = MODEL_REGISTRY[bareId];
+  if (!info) return false;
+  return info.regions.includes(region);
 }
 
-// Extract bare model ID from potentially region-prefixed ID
+/**
+ * Strip any geo prefix (eu., us., ap.) or legacy full-region prefix
+ * (us-east-1., eu-west-2., …) to obtain the bare model ID.
+ */
 export function extractBareModelId(modelId: string): string {
-  for (const region of ['us-east-1', 'us-west-2', 'eu-west-1', 'eu-west-2', 'ap-northeast-1', 'ap-southeast-1']) {
+  // Strip geo short-code prefix (e.g. "eu.", "us.", "ap.")
+  for (const geo of GEO_CODES) {
+    if (modelId.startsWith(`${geo}.`)) {
+      return modelId.substring(`${geo}.`.length);
+    }
+  }
+  // Strip legacy full-region prefix (e.g. "eu-west-2.anthropic....")
+  for (const region of Object.keys(REGION_TO_GEO)) {
     if (modelId.startsWith(`${region}.`)) {
       return modelId.substring(`${region}.`.length);
     }
