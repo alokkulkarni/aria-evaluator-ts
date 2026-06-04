@@ -804,9 +804,11 @@ function ProviderSubSection({
 function JudgeLlmSection({
   settings,
   onUpdate,
+  judgeModelGroups,
 }: {
   settings: SettingsMap;
   onUpdate: (key: string, value: string) => void;
+  judgeModelGroups: typeof JUDGE_MODEL_GROUPS;
 }) {
   const [open, setOpen] = useState(true);
   const modelId = settings[JUDGE_MODEL_FIELD_KEY] ?? DEFAULT_JUDGE_MODEL_ID;
@@ -1131,7 +1133,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <JudgeLlmSection settings={settings} onUpdate={updateValue} />
+      <JudgeLlmSection settings={settings} onUpdate={updateValue} judgeModelGroups={judgeModelGroups} />
 
       {/* Providers group */}
       <div className="card p-0 overflow-hidden">
