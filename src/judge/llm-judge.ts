@@ -526,7 +526,11 @@ export class LLMJudge {
         }
       }
     } catch (err) {
-      console.error('  ⚠  Judge Bedrock call failed:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      // Concise error line → captured by run-executor → shown in run terminal (UI)
+      process.stdout.write(`  ⚠  Judge Bedrock call failed: ${message}\n`);
+      // Also write to stderr → forwarded to container logs by run-executor
+      process.stderr.write(`  ⚠  Judge Bedrock call failed: ${message}\n`);
       return { results: {}, usage: createEmptyTokenEstimate() };
     }
   }

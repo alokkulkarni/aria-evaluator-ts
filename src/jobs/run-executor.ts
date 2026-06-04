@@ -163,6 +163,11 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
       if (!trimmed) return;
       publishLogEvent(trimmed);
 
+      // Forward warning/error lines to container logs so they're visible in Docker and cloud runtimes
+      if (trimmed.includes('⚠') || trimmed.includes('✗')) {
+        process.stderr.write(`[run:${runId.slice(0, 8)}] ${trimmed}\n`);
+      }
+
       if (trimmed.includes('Done.')) {
         sawDoneBanner = true;
         if (doneGraceTimer) clearTimeout(doneGraceTimer);
@@ -188,6 +193,8 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
       if (!trimmed) return;
       publishLogEvent(trimmed);
       stderrTail = `${stderrTail}\n${trimmed}`.slice(-8_000);
+      // Always forward stderr lines to container logs (these are unexpected process errors)
+      process.stderr.write(`[run:${runId.slice(0, 8)}] ${trimmed}\n`);
     };
 
     child.stdout.on('data', (chunk: Buffer) => flushBufferedLines(chunk, outCarry, onLogLine));
