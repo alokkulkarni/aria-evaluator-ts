@@ -3,10 +3,12 @@ import { apiFetch } from '../lib/api.js';
 import {
   DEFAULT_JUDGE_MAX_TOKENS,
   DEFAULT_JUDGE_MODEL_ID,
+  DEFAULT_JUDGE_REGION,
   DEFAULT_JUDGE_SYSTEM_PROMPT,
   DEFAULT_JUDGE_TEMPERATURE,
   JUDGE_GUARDRAILS,
   JUDGE_MODEL_GROUPS,
+  JUDGE_SUPPORTED_REGIONS,
   LEGACY_JUDGE_SYSTEM_PROMPTS,
   isKnownJudgeModel,
 } from '../../shared/judge-config.js';
@@ -54,6 +56,7 @@ const JUDGE_USE_CUSTOM_MODEL_FIELD_KEY = 'JUDGE_USE_CUSTOM_MODEL_ID';
 const JUDGE_TEMPERATURE_FIELD_KEY = 'JUDGE_TEMPERATURE';
 const JUDGE_MAX_TOKENS_FIELD_KEY = 'JUDGE_MAX_TOKENS';
 const JUDGE_SYSTEM_PROMPT_FIELD_KEY = 'JUDGE_SYSTEM_PROMPT';
+const JUDGE_REGION_FIELD_KEY = 'JUDGE_BEDROCK_REGION';
 const JUDGE_SETTING_KEYS = [
   JUDGE_MODEL_FIELD_KEY,
   JUDGE_CUSTOM_MODEL_FIELD_KEY,
@@ -61,6 +64,7 @@ const JUDGE_SETTING_KEYS = [
   JUDGE_TEMPERATURE_FIELD_KEY,
   JUDGE_MAX_TOKENS_FIELD_KEY,
   JUDGE_SYSTEM_PROMPT_FIELD_KEY,
+  JUDGE_REGION_FIELD_KEY,
 ] as const;
 
 interface GeneralSectionDef {
@@ -805,10 +809,12 @@ function JudgeLlmSection({
   settings,
   onUpdate,
   judgeModelGroups,
+  onRegionChange,
 }: {
   settings: SettingsMap;
   onUpdate: (key: string, value: string) => void;
   judgeModelGroups: typeof JUDGE_MODEL_GROUPS;
+  onRegionChange: (region: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const modelId = settings[JUDGE_MODEL_FIELD_KEY] ?? DEFAULT_JUDGE_MODEL_ID;
@@ -817,6 +823,7 @@ function JudgeLlmSection({
   const temperature = settings[JUDGE_TEMPERATURE_FIELD_KEY] ?? DEFAULT_JUDGE_TEMPERATURE;
   const maxTokens = settings[JUDGE_MAX_TOKENS_FIELD_KEY] ?? DEFAULT_JUDGE_MAX_TOKENS;
   const systemPrompt = settings[JUDGE_SYSTEM_PROMPT_FIELD_KEY] ?? DEFAULT_JUDGE_SYSTEM_PROMPT;
+  const region = settings[JUDGE_REGION_FIELD_KEY] ?? DEFAULT_JUDGE_REGION;
   const activeModel = useCustomModel && customModelId ? customModelId : modelId;
 
   return (
@@ -845,6 +852,27 @@ function JudgeLlmSection({
 
       {open ? (
         <>
+          {/* AWS Region — shown first so model list updates to match */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                AWS Region
+                <HintTooltip hint="The AWS region where Bedrock is called for Judge. Changing this updates the available model list and applies the correct inference profile prefix at runtime." />
+              </span>
+              <select
+                value={region}
+                onChange={(e) => {
+                  onUpdate(JUDGE_REGION_FIELD_KEY, e.target.value);
+                  onRegionChange(e.target.value);
+                }}
+              >
+                {JUDGE_SUPPORTED_REGIONS.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
@@ -1065,6 +1093,14 @@ export function SettingsPage() {
       });
   }, []);
 
+  function fetchJudgeModelsForRegion(region: string): void {
+    apiFetch(`/api/settings/judge-models?region=${encodeURIComponent(region)}`)
+      .then((d: { region: string; models: any[] }) => {
+        setJudgeModelGroups(d.models ?? JUDGE_MODEL_GROUPS);
+      })
+      .catch(() => setJudgeModelGroups(JUDGE_MODEL_GROUPS));
+  }
+
   useEffect(() => {
     if (loading) return;
     const signature = getJudgeSettingsSignature(settings);
@@ -1133,7 +1169,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <JudgeLlmSection settings={settings} onUpdate={updateValue} judgeModelGroups={judgeModelGroups} />
+      <JudgeLlmSection settings={settings} onUpdate={updateValue} judgeModelGroups={judgeModelGroups} onRegionChange={fetchJudgeModelsForRegion} />
 
       {/* Providers group */}
       <div className="card p-0 overflow-hidden">

@@ -21,17 +21,22 @@ settingsRouter.get('/', (_req, res) => {
   }
 });
 
-settingsRouter.get('/judge-models', (_req, res) => {
+settingsRouter.get('/judge-models', (req, res) => {
   try {
     const effective = getEffectiveSettings();
-    const region = (process.env['BEDROCK_REGION'] ?? effective['AWS_REGION'] ?? 'eu-west-2').trim();
+    // Allow explicit ?region= override from UI (for live region switching before save)
+    const queryRegion = typeof req.query['region'] === 'string' ? req.query['region'].trim() : '';
+    const region = (
+      queryRegion ||
+      effective['JUDGE_BEDROCK_REGION']?.trim() ||
+      process.env['BEDROCK_REGION'] ||
+      effective['AWS_REGION'] ||
+      'eu-west-2'
+    ).trim();
     console.log(`[API] /judge-models endpoint - region: ${region}`);
     const models = getModelsForRegion(region);
     console.log(`[API] /judge-models - returning ${models.length} model groups for region ${region}`);
-    res.json({
-      region,
-      models,
-    });
+    res.json({ region, models });
   } catch (err) {
     console.error('[API] /judge-models error:', err);
     res.status(500).json({ error: (err as Error).message });
