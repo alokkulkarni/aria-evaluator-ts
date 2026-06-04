@@ -1045,16 +1045,22 @@ export function SettingsPage() {
   const loadedJudgeSettingsSignatureRef = useRef<string>('');
 
   useEffect(() => {
-    Promise.all([
-      apiFetch('/api/settings'),
-      apiFetch('/api/settings/judge-models'),
-    ])
-      .then(([settingsData, modelsData]: [{ settings: SettingsMap }, { region: string; models: any[] }]) => {
-        setSettings(normalizeJudgeSettings(settingsData.settings ?? {}));
-        setJudgeModelGroups(modelsData.models ?? JUDGE_MODEL_GROUPS);
+    apiFetch('/api/settings')
+      .then((d: { settings: SettingsMap }) => {
+        setSettings(normalizeJudgeSettings(d.settings ?? {}));
       })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false));
+
+    // Fetch judge models separately with fallback
+    apiFetch('/api/settings/judge-models')
+      .then((d: { region: string; models: any[] }) => {
+        setJudgeModelGroups(d.models ?? JUDGE_MODEL_GROUPS);
+      })
+      .catch(() => {
+        // Silently fall back to default models if endpoint fails
+        setJudgeModelGroups(JUDGE_MODEL_GROUPS);
+      });
   }, []);
 
   useEffect(() => {

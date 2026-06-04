@@ -25,12 +25,15 @@ settingsRouter.get('/judge-models', (_req, res) => {
   try {
     const effective = getEffectiveSettings();
     const region = (process.env['BEDROCK_REGION'] ?? effective['AWS_REGION'] ?? 'eu-west-2').trim();
+    console.log(`[API] /judge-models endpoint - region: ${region}`);
     const models = getModelsForRegion(region);
+    console.log(`[API] /judge-models - returning ${models.length} model groups for region ${region}`);
     res.json({
       region,
       models,
     });
   } catch (err) {
+    console.error('[API] /judge-models error:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });
