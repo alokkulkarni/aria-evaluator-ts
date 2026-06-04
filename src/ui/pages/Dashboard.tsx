@@ -152,16 +152,11 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Judge tokens</p>
                 <p className="text-lg font-semibold text-slate-900">
-                  {metrics.totals.judgeTokenTotalEstimate > 0 ? formatTokenCount(metrics.totals.judgeTokenTotalEstimate) : '—'}
+                  {formatTokenCount(metrics.totals.judgeTokenTotalEstimate)}
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  Scenario turns: {metrics.totals.scenarioTokenTotalEstimate > 0
-                    ? formatTokenCount(metrics.totals.scenarioTokenTotalEstimate)
-                    : '—'}
+                  Scenario turns: {formatTokenCount(metrics.totals.scenarioTokenTotalEstimate)}
                 </p>
-                {metrics.totals.judgeTokenTotalEstimate === 0 && metrics.totals.scenarioTokenTotalEstimate > 0 && (
-                  <p className="mt-1 text-[10px] text-amber-600">Judge usage appears on new runs.</p>
-                )}
               </div>
             </div>
 
@@ -279,10 +274,10 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                     ) : '—'}
                   </td>
                   <td className="py-2.5">
-                    {r.evalResult?.judgeTokenTotalEstimate != null || r.telemetry?.tokenTotalEstimate != null ? (
+                    {(r.evalResult != null) || r.telemetry?.tokenTotalEstimate != null ? (
                       <div className="space-y-0.5">
                         <p className="text-xs font-semibold text-slate-800">
-                          Judge {r.evalResult?.judgeTokenTotalEstimate != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate) : '—'}
+                          Judge {r.evalResult != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate ?? 0) : '—'}
                         </p>
                         <p className="text-[11px] text-slate-500">
                           Scenario {r.telemetry?.tokenTotalEstimate != null ? formatTokenCount(r.telemetry.tokenTotalEstimate) : '—'}

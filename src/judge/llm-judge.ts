@@ -493,6 +493,7 @@ export class LLMJudge {
     const messages: Message[] = [{ role: 'user', content: [{ text: prompt }] }];
 
     try {
+      console.log(`[Judge] Using model: ${this.modelId} (temp: ${this.temperature}, maxTokens: ${this.maxTokens})`);
       const resp = await this.client.send(
         new ConverseCommand({
           modelId: this.modelId,

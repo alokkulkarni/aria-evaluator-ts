@@ -6,6 +6,8 @@ import {
   DEFAULT_JUDGE_MODEL_ID,
   DEFAULT_JUDGE_SYSTEM_PROMPT,
   DEFAULT_JUDGE_TEMPERATURE,
+  JUDGE_MODEL_GROUPS,
+  isKnownJudgeModel,
 } from '../shared/judge-config.js';
 
 const SETTINGS_FILE = appPaths.runtimeSettingsFile;
@@ -187,6 +189,7 @@ export function getJudgeRuntimeConfig(): JudgeRuntimeConfig {
   const useCustom = (effective['JUDGE_USE_CUSTOM_MODEL_ID']?.trim().toLowerCase() ?? '') === 'true'
     || (!effective['JUDGE_USE_CUSTOM_MODEL_ID'] && customModelId !== '');
   const modelId = useCustom && customModelId ? customModelId : presetModelId;
+  console.log(`[Settings] Judge config - preset: ${presetModelId}, custom: ${customModelId}, useCustom: ${useCustom}, final: ${modelId}`);
   return {
     modelId,
     temperature: parseNumberSetting(effective['JUDGE_TEMPERATURE'], Number(DEFAULT_JUDGE_TEMPERATURE)),
@@ -198,6 +201,16 @@ export function getJudgeRuntimeConfig(): JudgeRuntimeConfig {
 export function saveSettings(partial: Record<string, unknown>): Record<EditableSettingKey, string> {
   const current = readOverrides();
   const next = { ...current };
+  
+  // Validate JUDGE_MODEL_ID if being changed
+  if ('JUDGE_MODEL_ID' in partial) {
+    const raw = partial['JUDGE_MODEL_ID'];
+    const modelId = typeof raw === 'string' ? raw.trim() : '';
+    if (modelId && !isKnownJudgeModel(modelId)) {
+      throw new Error(`Invalid judge model ID: ${modelId}. Model must be from the available list.`);
+    }
+  }
+  
   for (const key of EDITABLE_SETTING_KEYS) {
     if (!(key in partial)) continue;
     const raw = partial[key];

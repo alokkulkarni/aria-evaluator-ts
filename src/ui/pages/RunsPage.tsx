@@ -1410,10 +1410,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                         </span>
                       )}
                     </div>
-                    {r.evalResult?.judgeTokenTotalEstimate != null || r.telemetry?.tokenTotalEstimate != null ? (
+                    {(r.evalResult != null) || r.telemetry?.tokenTotalEstimate != null ? (
                       <div className="text-right">
                         <p className="text-[11px] font-semibold text-slate-800">
-                          Judge {r.evalResult?.judgeTokenTotalEstimate != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate) : '—'}
+                          Judge {r.evalResult != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate ?? 0) : '—'}
                         </p>
                         <p className="text-[10px] text-slate-500">
                           Scenario {r.telemetry?.tokenTotalEstimate != null ? formatTokenCount(r.telemetry.tokenTotalEstimate) : '—'}
@@ -1507,10 +1507,10 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                       </p>
                     )}
                     <p className="text-sm text-slate-600">{selected.evalResult.summary}</p>
-                    {(selected.evalResult.judgeTokenTotalEstimate != null || selected.telemetry?.tokenTotalEstimate != null) && (
+                    {(selected.evalResult != null || selected.telemetry?.tokenTotalEstimate != null) && (
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
                         <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
-                          Judge tokens: <strong>{selected.evalResult.judgeTokenTotalEstimate != null ? formatTokenCount(selected.evalResult.judgeTokenTotalEstimate) : '—'}</strong>
+                          Judge tokens: <strong>{formatTokenCount(selected.evalResult.judgeTokenTotalEstimate ?? 0)}</strong>
                         </span>
                         <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
                           Scenario tokens: <strong>{selected.telemetry?.tokenTotalEstimate != null ? formatTokenCount(selected.telemetry.tokenTotalEstimate) : '—'}</strong>

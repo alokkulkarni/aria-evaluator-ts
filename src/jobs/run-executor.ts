@@ -375,9 +375,9 @@ async function ingestRunArtifacts(
           summary,
           judgeModel: report.results[0]?.judgeModel ?? 'unknown',
           scenarioType: runScenarioType,
-          judgeTokenInputEstimate: judgeTokenInputEstimate || null,
-          judgeTokenOutputEstimate: judgeTokenOutputEstimate || null,
-          judgeTokenTotalEstimate: judgeTokenTotalEstimate || null,
+          judgeTokenInputEstimate: judgeTokenInputEstimate ?? null,
+          judgeTokenOutputEstimate: judgeTokenOutputEstimate ?? null,
+          judgeTokenTotalEstimate: judgeTokenTotalEstimate ?? null,
         },
         create: {
           runId,
@@ -387,9 +387,9 @@ async function ingestRunArtifacts(
           summary,
           judgeModel: report.results[0]?.judgeModel ?? 'unknown',
           scenarioType: runScenarioType,
-          judgeTokenInputEstimate: judgeTokenInputEstimate || null,
-          judgeTokenOutputEstimate: judgeTokenOutputEstimate || null,
-          judgeTokenTotalEstimate: judgeTokenTotalEstimate || null,
+          judgeTokenInputEstimate: judgeTokenInputEstimate ?? null,
+          judgeTokenOutputEstimate: judgeTokenOutputEstimate ?? null,
+          judgeTokenTotalEstimate: judgeTokenTotalEstimate ?? null,
         },
       });
     } catch (err) {
