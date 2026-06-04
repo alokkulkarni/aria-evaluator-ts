@@ -13,7 +13,7 @@ export interface ModelAvailability {
 
 export const DEFAULT_JUDGE_MODEL_ID = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
 export const DEFAULT_JUDGE_TEMPERATURE = '0';
-export const DEFAULT_JUDGE_MAX_TOKENS = '2000';
+export const DEFAULT_JUDGE_MAX_TOKENS = '1200';
 export const DEFAULT_JUDGE_REGION = 'eu-west-2';
 
 // Regions shown in the UI region selector (those with models in MODEL_REGISTRY)
