@@ -8,6 +8,10 @@ import {
   DEFAULT_JUDGE_TEMPERATURE,
   JUDGE_MODEL_GROUPS,
   isKnownJudgeModel,
+  formatModelIdForRegion,
+  isValidModelId,
+  extractBareModelId,
+  getModelsForRegion,
 } from '../shared/judge-config.js';
 
 const SETTINGS_FILE = appPaths.runtimeSettingsFile;
@@ -184,12 +188,25 @@ function parseNumberSetting(raw: string | undefined, fallback: number): number {
 
 export function getJudgeRuntimeConfig(): JudgeRuntimeConfig {
   const effective = getEffectiveSettings();
-  const presetModelId = effective['JUDGE_MODEL_ID']?.trim() || DEFAULT_JUDGE_MODEL_ID;
-  const customModelId = effective['JUDGE_CUSTOM_MODEL_ID']?.trim() || '';
+  const region = (process.env['BEDROCK_REGION'] ?? effective['AWS_REGION'] ?? 'eu-west-2').trim();
+  
+  // Get bare model ID from settings (could be bare or region-prefixed)
+  let presetModelId = effective['JUDGE_MODEL_ID']?.trim() || DEFAULT_JUDGE_MODEL_ID;
+  presetModelId = extractBareModelId(presetModelId);
+  
+  let customModelId = effective['JUDGE_CUSTOM_MODEL_ID']?.trim() || '';
+  customModelId = extractBareModelId(customModelId);
+  
   const useCustom = (effective['JUDGE_USE_CUSTOM_MODEL_ID']?.trim().toLowerCase() ?? '') === 'true'
     || (!effective['JUDGE_USE_CUSTOM_MODEL_ID'] && customModelId !== '');
-  const modelId = useCustom && customModelId ? customModelId : presetModelId;
-  console.log(`[Settings] Judge config - preset: ${presetModelId}, custom: ${customModelId}, useCustom: ${useCustom}, final: ${modelId}`);
+  
+  // Use the appropriate model ID
+  let bareModelId = useCustom && customModelId ? customModelId : presetModelId;
+  
+  // Format for the region (adds prefix if cross-region)
+  const modelId = formatModelIdForRegion(bareModelId, region);
+  
+  console.log(`[Settings] Judge config - region: ${region}, preset: ${presetModelId}, custom: ${customModelId}, useCustom: ${useCustom}, final: ${modelId}`);
   return {
     modelId,
     temperature: parseNumberSetting(effective['JUDGE_TEMPERATURE'], Number(DEFAULT_JUDGE_TEMPERATURE)),

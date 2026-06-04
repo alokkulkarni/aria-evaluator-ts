@@ -3,8 +3,10 @@ import {
   EDITABLE_SETTING_KEYS,
   getVisibleSettings,
   saveSettings,
+  getEffectiveSettings,
 } from '../runtime-settings.js';
 import { recordAuditEventSafe } from '../audit-log.js';
+import { getModelsForRegion } from '../../shared/judge-config.js';
 
 export const settingsRouter = Router();
 
@@ -13,6 +15,20 @@ settingsRouter.get('/', (_req, res) => {
     res.json({
       settings: getVisibleSettings(),
       editableKeys: EDITABLE_SETTING_KEYS,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+settingsRouter.get('/judge-models', (_req, res) => {
+  try {
+    const effective = getEffectiveSettings();
+    const region = (process.env['BEDROCK_REGION'] ?? effective['AWS_REGION'] ?? 'eu-west-2').trim();
+    const models = getModelsForRegion(region);
+    res.json({
+      region,
+      models,
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

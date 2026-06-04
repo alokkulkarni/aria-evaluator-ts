@@ -856,7 +856,7 @@ function JudgeLlmSection({
                   onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, '');
                 }}
               >
-                {JUDGE_MODEL_GROUPS.map((group) => (
+                {judgeModelGroups.map((group) => (
                   <optgroup key={group.label} label={group.label}>
                     {group.options.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
@@ -1040,12 +1040,19 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [judgeModelGroups, setJudgeModelGroups] = useState(JUDGE_MODEL_GROUPS);
   const savedJudgeSettingsSignatureRef = useRef<string>('');
   const loadedJudgeSettingsSignatureRef = useRef<string>('');
 
   useEffect(() => {
-    apiFetch('/api/settings')
-      .then((d: { settings: SettingsMap }) => setSettings(normalizeJudgeSettings(d.settings ?? {})))
+    Promise.all([
+      apiFetch('/api/settings'),
+      apiFetch('/api/settings/judge-models'),
+    ])
+      .then(([settingsData, modelsData]: [{ settings: SettingsMap }, { region: string; models: any[] }]) => {
+        setSettings(normalizeJudgeSettings(settingsData.settings ?? {}));
+        setJudgeModelGroups(modelsData.models ?? JUDGE_MODEL_GROUPS);
+      })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false));
   }, []);
