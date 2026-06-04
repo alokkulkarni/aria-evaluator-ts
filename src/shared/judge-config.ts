@@ -19,25 +19,35 @@ export const DEFAULT_JUDGE_MAX_TOKENS = '2000';
 // Cross-region models are marked with 'cross-region' flag
 // Same-region models use bare ID format, cross-region uses {region}.{vendor}.{model}
 const MODEL_REGISTRY: Record<string, { label: string; regions: string[]; vendor: string }> = {
-  'anthropic.claude-sonnet-4-6': { label: 'Claude Sonnet 4.6', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'anthropic' },
+  // Anthropic - widely available
+  'anthropic.claude-sonnet-4-6': { label: 'Claude Sonnet 4.6', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
   'anthropic.claude-sonnet-4-5-20250929-v1:0': { label: 'Claude Sonnet 4.5', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
   'anthropic.claude-3-7-sonnet-20250219-v1:0': { label: 'Claude 3.7 Sonnet', regions: ['eu-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-3-sonnet-20240229-v1:0': { label: 'Claude 3 Sonnet', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'anthropic' },
-  'anthropic.claude-opus-4-8': { label: 'Claude Opus 4.8', regions: ['ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-opus-4-7': { label: 'Claude Opus 4.7', regions: ['eu-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-opus-4-5-20251101-v1:0': { label: 'Claude Opus 4.5', regions: ['eu-west-2'], vendor: 'anthropic' },
+  'anthropic.claude-3-sonnet-20240229-v1:0': { label: 'Claude 3 Sonnet', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
+  'anthropic.claude-opus-4-8': { label: 'Claude Opus 4.8', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
+  'anthropic.claude-opus-4-7': { label: 'Claude Opus 4.7', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
+  'anthropic.claude-opus-4-5-20251101-v1:0': { label: 'Claude Opus 4.5', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
   'anthropic.claude-haiku-4-5-20251001-v1:0': { label: 'Claude Haiku 4.5', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
-  'anthropic.claude-3-haiku-20240307-v1:0': { label: 'Claude 3 Haiku', regions: ['eu-west-2'], vendor: 'anthropic' },
-  'amazon.nova-pro-v1:0': { label: 'Nova Pro', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'amazon' },
-  'amazon.nova-lite-v1:0': { label: 'Nova Lite', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'amazon' },
-  'amazon.nova-micro-v1:0': { label: 'Nova Micro', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'amazon' },
+  'anthropic.claude-3-haiku-20240307-v1:0': { label: 'Claude 3 Haiku', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'anthropic' },
+
+  // Amazon Nova
+  'amazon.nova-pro-v1:0': { label: 'Nova Pro', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'amazon' },
+  'amazon.nova-lite-v1:0': { label: 'Nova Lite', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'amazon' },
+  'amazon.nova-micro-v1:0': { label: 'Nova Micro', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'amazon' },
+
+  // Meta Llama - not available in ap-northeast-1
   'meta.llama3-70b-instruct-v1:0': { label: 'Llama 3 70B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'meta' },
   'meta.llama3-8b-instruct-v1:0': { label: 'Llama 3 8B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'meta' },
-  'mistral.mistral-large-2402-v1:0': { label: 'Mistral Large', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'mistral' },
+
+  // Mistral
+  'mistral.mistral-large-2402-v1:0': { label: 'Mistral Large 2402', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'mistral' },
+  'mistral.mistral-large-3-675b-instruct': { label: 'Mistral Large 3 675B', regions: ['us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'mistral' },
   'mistral.mixtral-8x7b-instruct-v0:1': { label: 'Mixtral 8x7B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'mistral' },
   'mistral.mistral-7b-instruct-v0:2': { label: 'Mistral 7B Instruct', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'mistral' },
-  'deepseek.v3-v1:0': { label: 'DeepSeek V3', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'deepseek' },
-  'deepseek.v3.2': { label: 'DeepSeek V3.2', regions: ['eu-west-2', 'us-east-1', 'us-west-2'], vendor: 'deepseek' },
+
+  // DeepSeek
+  'deepseek.v3-v1:0': { label: 'DeepSeek V3', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'deepseek' },
+  'deepseek.v3.2': { label: 'DeepSeek V3.2', regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'], vendor: 'deepseek' },
 };
 
 // Get models available for a specific region
