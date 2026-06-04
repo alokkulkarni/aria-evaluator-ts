@@ -14,6 +14,15 @@ export interface ModelAvailability {
 export const DEFAULT_JUDGE_MODEL_ID = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
 export const DEFAULT_JUDGE_TEMPERATURE = '0';
 export const DEFAULT_JUDGE_MAX_TOKENS = '2000';
+export const DEFAULT_JUDGE_REGION = 'eu-west-2';
+
+// Regions shown in the UI region selector (those with models in MODEL_REGISTRY)
+export const JUDGE_SUPPORTED_REGIONS: Array<{ value: string; label: string }> = [
+  { value: 'eu-west-2',      label: 'EU West 2 (London)' },
+  { value: 'us-east-1',      label: 'US East 1 (N. Virginia)' },
+  { value: 'us-west-2',      label: 'US West 2 (Oregon)' },
+  { value: 'ap-northeast-1', label: 'AP Northeast 1 (Tokyo)' },
+];
 
 // Geo prefix mapping: AWS region → short geo code used in cross-region inference profile IDs
 const REGION_TO_GEO: Record<string, string> = {

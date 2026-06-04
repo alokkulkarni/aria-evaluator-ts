@@ -25,6 +25,7 @@ export const EDITABLE_SETTING_KEYS = [
   'JUDGE_TEMPERATURE',
   'JUDGE_MAX_TOKENS',
   'JUDGE_SYSTEM_PROMPT',
+  'JUDGE_BEDROCK_REGION',
 
   'CONNECT_INSTANCE_ID',
   'CONNECT_REGION',
@@ -188,7 +189,12 @@ function parseNumberSetting(raw: string | undefined, fallback: number): number {
 
 export function getJudgeRuntimeConfig(): JudgeRuntimeConfig {
   const effective = getEffectiveSettings();
-  const region = (process.env['BEDROCK_REGION'] ?? effective['AWS_REGION'] ?? 'eu-west-2').trim();
+  const region = (
+    effective['JUDGE_BEDROCK_REGION']?.trim() ||
+    process.env['BEDROCK_REGION'] ||
+    effective['AWS_REGION'] ||
+    'eu-west-2'
+  ).trim();
   
   // Get bare model ID from settings (could be bare or region-prefixed)
   let presetModelId = effective['JUDGE_MODEL_ID']?.trim() || DEFAULT_JUDGE_MODEL_ID;
