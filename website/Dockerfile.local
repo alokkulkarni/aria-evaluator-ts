@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1
+#
+# Dockerfile.local — optimised for local development on the host machine.
+#
+# Key differences from the production Dockerfile:
+#   • No --platform pin — builds native arm64 on Apple Silicon (M1/M2/M3)
+#     and native amd64 on Intel/AMD, avoiding Rosetta emulation overhead.
+#   • BuildKit --mount=type=cache for node_modules — dramatically speeds up
+#     repeated builds after source-only changes.
+#   • Telemetry disabled at build time.
+#
+# Usage (Terraform manages this automatically):
+#   DOCKER_BUILDKIT=1 docker build -t aria-website:local \
+#     -f Dockerfile.local .
+#
+# To force a fresh rebuild via Terraform:
+#   terraform taint 'module.docker_local_website.null_resource.build_app_image'
+#   terraform apply
+
+FROM node:20-alpine AS base
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY package*.json ./
+# BuildKit cache mount keeps the npm cache on the host between builds.
+# Subsequent builds after package.json changes skip re-downloading unchanged packages.
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+# Cache the .next/cache between builds so incremental compilation is fast.
+RUN --mount=type=cache,target=/app/.next/cache \
+    npm run build
+
+# ── Runtime ───────────────────────────────────────────────────────────────────
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+CMD ["node", "server.js"]

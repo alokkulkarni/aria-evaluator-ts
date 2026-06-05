@@ -1,0 +1,74 @@
+# ── ARIA Website — Local Docker deployment ────────────────────────────────────
+#
+# Copy this file to terraform.tfvars, fill in your values, then run:
+#
+#   cd infra/terraform/environments/website-local
+#   terraform init
+#   terraform apply
+#
+# The website will be available at http://localhost:3000
+#
+# ── After source-code changes ─────────────────────────────────────────────────
+# Changing Dockerfile.local or package-lock.json auto-triggers a rebuild on the
+# next `terraform apply`.
+#
+# For all other source changes (src/, app/, components/, etc.):
+#   terraform taint 'module.docker_local_website.null_resource.build_app_image'
+#   terraform apply
+#
+# Or, bump force_rebuild to any new value and re-apply:
+#   force_rebuild = "2"
+#
+# ── Teardown ──────────────────────────────────────────────────────────────────
+#   terraform destroy
+# ─────────────────────────────────────────────────────────────────────────────
+
+app_name    = "aria-website"
+environment = "local"
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+app_image_name = "aria-website:local"
+app_dockerfile = "Dockerfile.local"   # Use Dockerfile for production-style build
+
+# Build context is auto-detected as <repo root>/website/.
+# Override only if your checkout is in a non-standard location:
+#   website_dir = "/absolute/path/to/aria-evaluator-ts/website"
+website_dir = ""
+
+# Bump this to force a full rebuild without touching Dockerfile or package-lock.json:
+force_rebuild = "1"
+
+# ── Ports ─────────────────────────────────────────────────────────────────────
+host_port      = 3000   # http://localhost:3000
+container_port = 3000
+
+# ── NextAuth ──────────────────────────────────────────────────────────────────
+# Generate a secret:  openssl rand -base64 32
+# NEVER commit the real value — keep it in terraform.tfvars (git-ignored)
+nextauth_secret = "REPLACE_WITH_openssl_rand_-base64_32"
+
+# ── OAuth providers (optional) ────────────────────────────────────────────────
+# Leave empty to use only the built-in Credentials provider (stub login).
+# Create OAuth apps at:
+#   GitHub:  https://github.com/settings/developers
+#   Google:  https://console.cloud.google.com/apis/credentials
+#
+# For local dev, set Callback URLs to:
+#   GitHub:  http://localhost:3000/api/auth/callback/github
+#   Google:  http://localhost:3000/api/auth/callback/google
+
+google_client_id     = ""
+google_client_secret = ""
+github_client_id     = ""
+github_client_secret = ""
+
+# ── Control plane (leave empty for local UI-only development) ─────────────────
+# When the control plane is running locally, set to its URL:
+#   control_plane_url = "http://host.docker.internal:4000"
+control_plane_url = ""
+
+# ── Extra environment variables ───────────────────────────────────────────────
+extra_environment_vars = [
+  # Example — enable verbose NextAuth logging:
+  # { name = "NEXTAUTH_DEBUG", value = "true" },
+]
