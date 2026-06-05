@@ -239,7 +239,7 @@ Auto-suspend is a core cost-control feature. Every tenant instance emits a heart
 #### Instance lifecycle state machine
 
 ```javascript
-  [provision complete]
+[provision complete]
                       |
                       v
 +-------+        +---------+        +---------+
@@ -323,9 +323,9 @@ User logs in to main website:
 
 | Usage pattern | Monthly cost (512 CPU/1GB) |
 | --- | --- |
-| Running 24/7 | \\\\\\~$12.60 |
-| Running 8h/day | \\\\\\~$4.20 |
-| 4h/day active (auto-suspend) | \\\\\\~$1.68 |
+| Running 24/7 | \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\~$12.60 |
+| Running 8h/day | \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\~$4.20 |
+| 4h/day active (auto-suspend) | \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\~$1.68 |
 | Auto-suspend recovers | 60–85% of idle compute cost |
 
 ---
@@ -1295,12 +1295,24 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 ## 13. Infrastructure Topology
 
 ```javascript
-+-- AWS Account (platform)
++-- AWS Management Account (billing/consolidated only — no workloads)
+|
++-- AWS Security Account (delegated admin — Phase 5+)
+|   +-- GuardDuty delegated admin (future)
+|   +-- Security Hub delegated admin (future)
+|   +-- CloudTrail organisation trail (future)
+|   +-- Config aggregator (future)
+|
++-- AWS Platform Account (control plane — current single-account MVP)
 |   +-- us-east-1 (platform home region)
 |   |   +-- Cognito User Pool
 |   |   +-- ACM: *.ariaeval.io (CloudFront certs)
 |   |
 |   +-- eu-west-2 (control plane home region)
+|   |   +-- GuardDuty detector + S3 findings bucket (saas-platform/security.tf)
+|   |   +-- Security Hub: FSBP v1.0.0 + CIS v1.4.0
+|   |   +-- SNS topic: security-alerts → operator email
+|   |   +-- EventBridge: GuardDuty HIGH/CRITICAL + Security Hub HIGH/CRITICAL → SNS
 |   |   +-- API Gateway + Lambda (control plane)
 |   |   +-- DynamoDB tables
 |   |   +-- SQS FIFO queue
@@ -1320,10 +1332,10 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 |
 +-- Per-tenant stacks (one per customer, in their chosen region)
     +-- eu-west-2
-    |   +-- Tenant A (Acme Corp): VPC + ECS + ALB + CF + EFS + S3 + IAM
-    |   +-- Tenant B (BetaCo):    VPC + ECS + ALB + CF + EFS + S3 + IAM
+    |   +-- Tenant A (Acme Corp): VPC + ECS + ALB + CF + EFS + S3 + IAM + WAF + CF Function
+    |   +-- Tenant B (BetaCo):    VPC + ECS + ALB + CF + EFS + S3 + IAM + WAF + CF Function
     +-- us-east-1
-        +-- Tenant C (GammaTech): VPC + ECS + ALB + CF + EFS + S3 + IAM
+        +-- Tenant C (GammaTech): VPC + ECS + ALB + CF + EFS + S3 + IAM + WAF + CF Function
 ```
 
 ---
@@ -1342,6 +1354,10 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 | DynamoDB injection | All writes go through typed SDK calls; no raw string construction |
 | Cognito token forgery | Standard JWT RS256 verification; public key fetched from Cognito JWKS endpoint |
 | Idle data exposure | Auto-suspend stops ECS task; EFS data persists but is inaccessible without running task + IAM role |
+| **WAF blocking gap (fixed)** | `AWSManagedRulesCommonRuleSet` was in count-only mode — corrected to `override_action { none {} }` (full block). IP Reputation list added at priority 1. New rule priority order: 1=IpReputation, 2=CommonRuleSet, 3=KnownBadInputs, 4=RateLimitPerIp |
+| **Direct CloudFront URL access** | CloudFront Function (`auth_redirect.js`) deployed on all behaviors (except `/health`, `/auth/*`, `/api/auth/*`). Checks for `__Host-aria_session` OR `aria_session` cookie. Missing session → 302 to `https://ariaeval.io/sign-in?return=<encoded>`. Function only created when `saas_mode = true` (disabled in dev). |
+| **Platform threat detection** | AWS GuardDuty enabled (S3 data events + EBS malware scan). Security Hub enabled with FSBP v1.0.0 + CIS v1.4.0 + GuardDuty integration. EventBridge routes HIGH/CRITICAL findings to SNS alert topic. Findings exported to encrypted S3 bucket (90-day retention, KMS CMK with key rotation). |
+| **Account structure isolation** | MVP: single platform account. Phase 5: AWS Organizations with dedicated Security account as GuardDuty/Security Hub delegated admin + CloudTrail organisation trail. Management account holds billing only — zero workloads. |
 
 ---
 
@@ -1352,7 +1368,7 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 | Task | Description |
 | --- | --- |
 | 1.1 | Cognito User Pool + App Client |
-| 1.2 | DynamoDB tables: aria\\\\\\_tenants (with new fields), aria\\\\\\_users, aria\\\\\\_usage, aria\\\\\\_sso\\\\\\_tokens, aria\\\\\\_events |
+| 1.2 | DynamoDB tables: aria\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_tenants (with new fields), aria\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_users, aria\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_usage, aria\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_sso\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_tokens, aria\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_events |
 | 1.3 | Control plane API: auth endpoints (register, confirm, login, refresh, forgot/reset) |
 | 1.4 | Control plane API: tenant endpoints (me, provision/status, suspend, resume) |
 | 1.5 | Control plane API: user management endpoints |
@@ -1360,7 +1376,10 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 | 1.7 | SSO token issuer (RS256 key pair in Secrets Manager) |
 | 1.8 | SQS FIFO queue + provisioning job schema |
 | 1.9 | EventBridge + SuspendCheckLambda — full state machine (RUNNING -> SUSPENDING -> SUSPENDED) |
-| 1.10 | Free plan enforcement: `is_internal` flag, pricing\\_track field, tier limit constants |
+| 1.10 | Free plan enforcement: `is_internal` flag, pricing\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_track field, tier limit constants |
+| 1.11 | GuardDuty module: detector + S3 findings bucket (KMS, 90-day lifecycle) + publishing destination + Security Hub FSBP v1.0.0 + CIS v1.4.0 + EventBridge HIGH/CRITICAL findings → SNS alert topic (`environments/saas-platform/security.tf`) |
+| 1.12 | WAF fix: `AWSManagedRulesCommonRuleSet` changed from `count` (log-only) to `override_action { none {} }` (block); `AWSManagedRulesAmazonIpReputationList` added at priority 1; rule priorities renumbered 1–4 |
+| 1.13 | CloudFront auth redirect Function (`auth_redirect.js.tpl`): checks `__Host-aria_session` / `aria_session` cookie; unauthenticated requests → 302 to `${main_website_url}/sign-in?return=<encoded>`; exempt: `/health`, `/auth/*`, `/api/auth/*`; only deployed when `saas_mode = true` |
 
 ### Phase 2 — ARIA Instance Modifications (Weeks 2–3)
 
@@ -1385,7 +1404,7 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 | 3.3 | `observability.tf` in tenant-module: CloudWatch log group, dashboard, alarms, SNS topic — all tagged |
 | 3.4 | Dashboard template (`dashboard.json.tpl`): ECS CPU/memory, ALB metrics, EFS, custom ARIA metrics |
 | 3.5 | X-Ray instrumentation in ARIA Express app (disabled on Free/Individual, 5% on Enterprise Starter, 10% on Enterprise Pro+) |
-| 3.6 | Per-tenant tfvars generator with all new fields (aws\\_region, pricing\\_tier, pricing\\_track, log\\_retention\\_days, is\\_internal, god\\_mode vars) |
+| 3.6 | Per-tenant tfvars generator with all new fields (aws\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_region, pricing\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_tier, pricing\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_track, log\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_retention\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_days, is\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_internal, god\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_mode vars) |
 | 3.7 | Multi-region state backend config |
 | 3.8 | `/internal/provision/complete` + `/failed` handlers |
 | 3.9 | SuspendCheckLambda: full SUSPENDING->SUSPENDED transition with ECS drain check |
@@ -1449,10 +1468,82 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 | OD-8 | Suspend grace period | **Free: 1h; Individual + Enterprise Starter/Pro: 3h; Enterprise Unlimited: configurable 1–24h** |
 | OD-9 | Region availability per tier | **Free + Individual: eu-london + us-east; Enterprise Starter+: all 8 regions** |
 | OD-10 | Region migration | **Roadmap only** — region is immutable after provisioning in V1 |
-| OD-11 | Free plan infrastructure | **Smallest ECS Fargate (512 CPU/512MB)** + 1h auto-suspend; platform absorbs \\~$1/month per free user |
+| OD-11 | Free plan infrastructure | **Smallest ECS Fargate (512 CPU/512MB)** + 1h auto-suspend; platform absorbs \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\~$1/month per free user |
 | OD-12 | God Mode visibility | **Completely hidden from UI and public API**; operator-only audit log entry |
 | OD-13 | Observability tier differentiation | **Free: logs only; Individual: logs + dashboard; Enterprise: full (dashboard + alarms + X-Ray)** |
 
 ---
 
 *End of design document. Awaiting Phase 1 implementation sign-off.*
+
+## 17. AWS Organizations & Security Architecture
+
+### Account Structure
+
+| Account | Purpose | Workloads |
+| --- | --- | --- |
+| **Management** | Billing, consolidated Cost Explorer, SCPs | None — billing only |
+| **Security** (Phase 5+) | GuardDuty delegated admin, Security Hub delegated admin, CloudTrail org trail, Config aggregator | Audit/security tooling only |
+| **Platform** (current MVP) | Control plane + all tenant infrastructure | API Gateway, Lambda, DynamoDB, SQS, ECS provisioner, ECR, per-tenant stacks |
+| **Tenant accounts** (Phase 6, Enterprise Unlimited) | Fully isolated per-customer AWS accounts | Per-tenant stack (VPC, ECS, ALB, CF, EFS, S3) |
+
+> **MVP scope**: Single platform account. GuardDuty and Security Hub are enabled directly in the platform account (eu-west-2) via `environments/saas-platform/security.tf`. Delegated admin and org trail are Phase 5 additions.
+
+---
+
+### Platform Security Monitoring (MVP — `modules/guardduty`)
+
+| Component | Configuration |
+| --- | --- |
+| **GuardDuty Detector** | S3 data events enabled; EBS malware protection enabled; `prevent_destroy = true` |
+| **Findings bucket** | KMS CMK (30-day deletion window, key rotation enabled); versioning; 90-day lifecycle; deny non-TLS; GuardDuty PutObject requires `aws:SourceArn` condition |
+| **Publishing destination** | GuardDuty → S3 findings bucket (encrypted with same CMK) |
+| **Security Hub** | `enable_default_standards = false`; explicit subscriptions: FSBP v1.0.0 + CIS v1.4.0; GuardDuty product integration enabled |
+| **SNS alert topic** | KMS encrypted (same CMK); optional email subscription via `var.alert_email` |
+| **EventBridge — GuardDuty** | Pattern: `severity >= 7` (HIGH/CRITICAL); formatted message → SNS |
+| **EventBridge — Security Hub** | Pattern: `Severity.Label = CRITICAL \\\| HIGH` + `RecordState = ACTIVE`; formatted message → SNS |
+| **KMS key policy** | Root account: full access; GuardDuty service: Encrypt/Decrypt/GenerateDataKey; `events.amazonaws.com`: GenerateDataKey + Decrypt (required for EventBridge → KMS-encrypted SNS) |
+
+---
+
+### WAF Rule Priority (post-fix)
+
+| Priority | Rule | Action |
+| --- | --- | --- |
+| 1 | `AWSManagedRulesAmazonIpReputationList` | **Block** — known malicious IPs |
+| 2 | `AWSManagedRulesCommonRuleSet` | **Block** — OWASP Top 10 (was incorrectly `count`-only) |
+| 3 | `AWSManagedRulesKnownBadInputsRuleSet` | **Block** — LFI, RFI, SSRF patterns |
+| 4 | `RateLimitPerIp` | **Block** — rate-based per IP (default: 2000 req/5min) |
+
+---
+
+### CloudFront Auth Redirect Function
+
+**Goal**: Prevent direct CloudFront URL access without a session. Unauthenticated users are always redirected to the main website sign-in page.
+
+| Property | Value |
+| --- | --- |
+| Runtime | `cloudfront-js-1.0` |
+| Event type | `viewer-request` (runs before WAF, before cache) |
+| Created when | `saas_mode = true` (tenant-module always passes `true`; dev passes `false`) |
+| Cookies checked | `__Host-aria_session` (production HTTPS) OR `aria_session` (dev/local) |
+| Exempt paths | `/health`, `/auth/*`, `/api/auth/*` |
+| Redirect target | `${main_website_url}/sign-in?return=<urlEncoded(fullRequestUri)>` |
+| Response | HTTP 302 with `cache-control: no-store, no-cache, must-revalidate` |
+| Behaviors covered | `default_cache_behavior` + all `ordered_cache_behavior` except `/health` |
+
+---
+
+### Import Notes
+
+If GuardDuty or Security Hub were previously enabled manually in the platform account, import before applying:
+
+```bash
+# GuardDuty
+terraform import module.platform_security.aws_guardduty_detector.this <detector_id>
+
+# Security Hub
+terraform import module.platform_security.aws_securityhub_account.this <aws_account_id>
+```
+
+---

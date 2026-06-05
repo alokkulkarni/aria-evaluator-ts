@@ -79,6 +79,18 @@ variable "pricing_tier" {
   default     = ""
 }
 
+variable "saas_mode" {
+  description = "When true, deploy the CloudFront Function that redirects unauthenticated requests to the main website sign-in page. Set false for standalone or dev deployments."
+  type        = bool
+  default     = false
+}
+
+variable "main_website_url" {
+  description = "Base URL of the ARIA SaaS marketing/sign-in website (e.g. https://ariaeval.io). Used in the auth redirect CloudFront Function — only relevant when saas_mode = true."
+  type        = string
+  default     = "https://ariaeval.io"
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

@@ -215,6 +215,18 @@ resource "aws_cloudfront_origin_request_policy" "api" {
   }
 }
 
+resource "aws_cloudfront_function" "auth_redirect" {
+  count   = var.saas_mode ? 1 : 0
+  name    = "${local.short_name}-auth-redirect"
+  runtime = "cloudfront-js-1.0"
+  comment = "Redirect unauthenticated requests to ${var.main_website_url}/sign-in"
+  publish = true
+
+  code = templatefile("${path.module}/templates/auth_redirect.js.tpl", {
+    main_website_url = var.main_website_url
+  })
+}
+
 resource "aws_cloudfront_distribution" "main" {
   enabled             = true
   http_version        = "http2"
@@ -252,6 +264,14 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods         = ["GET", "HEAD", "OPTIONS"]
     compress               = true
     cache_policy_id        = aws_cloudfront_cache_policy.static.id
+
+    dynamic "function_association" {
+      for_each = var.saas_mode ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.auth_redirect[0].arn
+      }
+    }
   }
 
   ordered_cache_behavior {
@@ -263,6 +283,14 @@ resource "aws_cloudfront_distribution" "main" {
     compress                 = true
     cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
+
+    dynamic "function_association" {
+      for_each = var.saas_mode ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.auth_redirect[0].arn
+      }
+    }
   }
 
   ordered_cache_behavior {
@@ -274,6 +302,14 @@ resource "aws_cloudfront_distribution" "main" {
     compress                 = true
     cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
+
+    dynamic "function_association" {
+      for_each = var.saas_mode ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.auth_redirect[0].arn
+      }
+    }
   }
 
   ordered_cache_behavior {
@@ -285,6 +321,14 @@ resource "aws_cloudfront_distribution" "main" {
     compress                 = true
     cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
+
+    dynamic "function_association" {
+      for_each = var.saas_mode ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.auth_redirect[0].arn
+      }
+    }
   }
 
   ordered_cache_behavior {
@@ -296,8 +340,17 @@ resource "aws_cloudfront_distribution" "main" {
     compress                 = true
     cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
+
+    dynamic "function_association" {
+      for_each = var.saas_mode ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.auth_redirect[0].arn
+      }
+    }
   }
 
+  # /health is exempt from auth redirect — always passthrough
   ordered_cache_behavior {
     path_pattern             = "/health"
     target_origin_id         = "alb-origin"

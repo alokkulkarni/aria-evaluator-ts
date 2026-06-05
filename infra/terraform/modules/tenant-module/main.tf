@@ -264,6 +264,8 @@ module "cloudfront" {
   waf_web_acl_arn          = var.waf_enabled ? module.waf[0].web_acl_arn : ""
   tenant_id                = var.tenant_id
   pricing_tier             = var.pricing_tier
+  saas_mode                = true
+  main_website_url         = var.main_website_url
   tags = merge(local.common_tags, {
     "aria:resource_type" = "network"
   })

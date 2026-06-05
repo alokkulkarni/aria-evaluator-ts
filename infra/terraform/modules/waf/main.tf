@@ -35,12 +35,36 @@ resource "aws_wafv2_web_acl" "this" {
     allow {}
   }
 
+  # Priority 1: IP Reputation — block known malicious IPs before any other evaluation
   rule {
-    name     = "AWSManagedRulesCommonRuleSet"
+    name     = "AWSManagedRulesAmazonIpReputationList"
     priority = 1
 
     override_action {
-      count {}
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesAmazonIpReputationList"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.tenant_id}-ip-reputation"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Priority 2: Common Rule Set — BLOCKING (was erroneously set to count-only mode)
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 2
+
+    override_action {
+      none {}
     }
 
     statement {
@@ -59,7 +83,7 @@ resource "aws_wafv2_web_acl" "this" {
 
   rule {
     name     = "AWSManagedRulesKnownBadInputsRuleSet"
-    priority = 2
+    priority = 3
 
     override_action {
       none {}
@@ -81,7 +105,7 @@ resource "aws_wafv2_web_acl" "this" {
 
   rule {
     name     = "RateLimitPerIp"
-    priority = 3
+    priority = 4
 
     action {
       block {}

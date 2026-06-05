@@ -158,6 +158,12 @@ variable "cloudfront_enabled" {
   default     = true
 }
 
+variable "main_website_url" {
+  description = "Base URL of the ARIA SaaS marketing/sign-in website. Used by the CloudFront auth-redirect function to redirect unauthenticated users."
+  type        = string
+  default     = "https://ariaeval.io"
+}
+
 variable "waf_enabled" {
   description = "Whether the CloudFront Web ACL should be provisioned"
   type        = bool
