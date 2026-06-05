@@ -1,7 +1,7 @@
 # ARIA Evaluator — SaaS Platform Design
 
 **Date:** 2026-06-05
-**Last updated:** 2026-06-05 — added customer region selection (data sovereignty)
+**Last updated:** 2026-06-05 — region selection; expanded auto-suspend; per-instance observability; pricing restructure (Individual/Enterprise/Free/God Mode)
 **Scope:** Full SaaS platform wrapping the existing ARIA Evaluator product
 **Status:** Design approved — awaiting Phase 1 implementation sign-off
 
@@ -13,6 +13,9 @@
 2. [System Overview & Principles](#2-system-overview--principles)
 3. [Architecture — Layers and Boundaries](#3-architecture--layers-and-boundaries)
 4. [Component Design](#4-component-design)
+
+4.1 Main Website4.2 Control Plane API4.3 Tenant Provisioner4.4 ARIA Instance — Modifications Required4.5 Auto-Suspend / Reinstate Engine \*(expanded)\*4.6 Usage Enforcement4.7 Auth & SSO Bridge4.8 Per-Instance Observability \*(new)\*4.9 God Mode — Internal Override *(new)*
+
 5. [Region Selection & Data Sovereignty](#5-region-selection--data-sovereignty)
 6. [Data Model](#6-data-model)
 7. [Pricing & Packages](#7-pricing--packages)
@@ -231,34 +234,99 @@ Instance admin can invite users; they receive invite email linking back to main 
 
 ### 4.5 Auto-Suspend / Reinstate Engine
 
-**Suspend:**
+Auto-suspend is a core cost-control feature. Every tenant instance emits a heartbeat every 10 minutes. A background scheduler checks all running instances every 15 minutes and suspends any idle beyond the tier's threshold.
+
+#### Instance lifecycle state machine
 
 ```javascript
-EventBridge Scheduler: every 15 minutes
-  -> SuspendCheckLambda:
-     - Query DynamoDB: all instances with status = RUNNING
-     - For each: last_heartbeat_at > 3 hours ago?
-       YES -> ECS UpdateService(desiredCount=0, region=tenant.aws_region)
-               DynamoDB: instance.status = SUSPENDED
-       NO  -> skip
+  [provision complete]
+                      |
+                      v
++-------+        +---------+        +---------+
+| FAILED|<-------| STARTING|------->| RUNNING |
++-------+ tmout  +----^----+ healthy+----+----+
+                      |                  |
+            [resume]  |                  | [idle > threshold]
+                      |                  v
+                 +-----------+    +------------+
+                 | SUSPENDED |<---| SUSPENDING |
+                 +-----------+    +------------+
 ```
 
-**Resume (triggered by user login):**
+States:
+
+- **STARTING** — ECS desiredCount=1; task launching; ALB health check pending
+- **RUNNING** — ALB health check passing; instance sending heartbeats
+- **SUSPENDING** — ECS desiredCount=0; connection draining in progress (30s grace)
+- **SUSPENDED** — ECS task stopped; EFS data intact; no compute cost; CloudFront returns 503 "workspace suspended" page
+- **FAILED** — provisioning or resume failed; operator CloudWatch alarm fires
+
+#### Suspend process (detailed)
 
 ```javascript
-User logs in -> check instance.status
-  SUSPENDED?
-    -> ECS UpdateService(desiredCount=1, region=tenant.aws_region)
-    -> instance.status = STARTING
-    -> return { status: "starting", estimated_seconds: 60 }
-  
-Website: "Your workspace is waking up..." (polls /tenant/me every 5s)
-  -> ECS task HEALTHY -> ALB health check passes
-  -> instance.status = RUNNING
-  -> SSO redirect to instance
+EventBridge Scheduler: fires every 15 minutes (shared rule, all tenants)
+  |
+  v
+SuspendCheckLambda:
+  1. Scan DynamoDB aria_tenants WHERE status IN (RUNNING, SUSPENDING)
+  2. For each RUNNING instance:
+     a. idle_seconds = now - last_heartbeat_at
+     b. threshold = tier_suspend_threshold(pricing_tier)
+        free: 1h | starter: 3h | individual: 3h
+        professional: 3h | enterprise: configurable (default 3h)
+     c. if idle_seconds > threshold - 30min AND NOT suspend_warning_sent:
+          -> Email admin: "Your workspace suspends in 30 minutes"
+          -> DynamoDB: suspend_warning_sent_at = now
+     d. if idle_seconds > threshold:
+          -> ECS UpdateService(desiredCount=0, region=tenant.aws_region)
+          -> DynamoDB: status=SUSPENDING, suspended_at=now
+          -> CloudWatch: put metric SuspendEvent{tenant_id, region, tier}
+          -> aria_events: INSTANCE_SUSPENDED
+  3. For each SUSPENDING instance:
+     a. Check ECS service runningCount == 0
+        YES -> DynamoDB: status=SUSPENDED
+        NO  -> skip (hard-stop after 10 min if still draining)
 ```
 
-**Estimated wake-up:** 45–90 seconds.
+#### Resume process (detailed)
+
+```javascript
+User logs in to main website:
+  1. Control plane checks tenant.status
+  2. IF SUSPENDED:
+     a. ECS UpdateService(desiredCount=1, region=tenant.aws_region)
+     b. DynamoDB: status=STARTING, resume_started_at=now
+     c. Return { status: "starting", estimated_wait_seconds: 75 }
+  3. Website: "Waking up your workspace..." progress bar
+     Polls GET /tenant/me every 5s
+  4. ECS task reaches HEALTHY (ALB /health check passes):
+     a. Control plane: runningCount=1 AND healthStatus=HEALTHY
+     b. DynamoDB: status=RUNNING, resumed_at=now,
+                  suspend_warning_sent_at=null (reset for next cycle)
+     c. aria_events: INSTANCE_RESUMED
+  5. Website: POST /instance/sso-token -> redirect
+  Total wake time: 45-90 seconds
+```
+
+#### Grace period and edge cases
+
+| Scenario | Behaviour |
+| --- | --- |
+| User logs in while STARTING | Returns `{ status: "starting" }` — website polls; no duplicate ECS call |
+| Two users log in during STARTING | Both poll; first to see RUNNING gets SSO; second follows within 5s |
+| Instance fails to start in 5 min | status=FAILED; admin email sent; CloudWatch alarm fires |
+| Instance crashes mid-session (no heartbeat) | Treated as idle; SuspendCheckLambda suspends after threshold period |
+| Enterprise configurable threshold | `suspend_threshold_hours` field in DynamoDB; min 1h, max 24h |
+| Free plan threshold | 1 hour — aggressive to minimise platform cost for non-paying users |
+
+#### Cost impact (Fargate, eu-west-2)
+
+| Usage pattern | Monthly cost (512 CPU/1GB) |
+| --- | --- |
+| Running 24/7 | \\\\\\~$12.60 |
+| Running 8h/day | \\\\\\~$4.20 |
+| 4h/day active (auto-suspend) | \\\\\\~$1.68 |
+| Auto-suspend recovers | 60–85% of idle compute cost |
 
 ---
 
@@ -299,6 +367,176 @@ Overage: `HTTP 402` with `{ error: "LIMIT_EXCEEDED", limit, current, max, upgrad
 ```
 
 **Backdoor:** `SAAS_MODE=false` (or unset) → ARIA uses existing local auth.
+
+---
+
+### 4.8 Per-Instance Observability
+
+Every tenant instance gets its own dedicated observability stack provisioned by Terraform at the same time as the instance itself. Observability resources are tagged identically to the instance (see §9) so they are discoverable per tenant, per organisation, and per region in AWS Console and Cost Explorer.
+
+#### What is provisioned per tenant (by Terraform)
+
+```javascript
+CloudWatch Log Group: /ecs/aria/<tenant_id>
+  - Retention: 30 days (Free/Starter), 90 days (Individual/Professional), 365 days (Enterprise)
+  - Log streams: one per ECS task revision
+
+CloudWatch Dashboard: aria-<tenant_id>-dashboard
+  Widgets:
+  - ECS Task CPU utilisation (%)
+  - ECS Task memory utilisation (%)
+  - ALB request count (5min)
+  - ALB 4xx / 5xx error rate (%)
+  - ALB target response time (p50, p95, p99)
+  - EFS throughput (bytes/s)
+  - EFS burst credit balance
+  - Instance status (RUNNING / SUSPENDED — driven by custom metric)
+  - Run count this month vs limit (custom metric from ARIA heartbeat)
+  - Active user count (custom metric)
+
+CloudWatch Alarms (per tenant):
+  - ECS task stopped unexpectedly -> SNS -> admin email
+  - ALB 5xx rate > 5% over 5 min -> SNS -> admin email
+  - EFS burst credit < 10% -> SNS -> operator alert
+  - CPU > 85% sustained 10 min -> SNS -> operator alert
+  - Resume failure (status=FAILED after 5 min STARTING) -> SNS -> operator PagerDuty
+
+CloudWatch Metrics (custom, published by ARIA instance heartbeat):
+  Namespace: ARIA/Instance
+  Dimensions: TenantId, PricingTier, Region
+  Metrics:
+  - RunsThisMonth (count)
+  - ScenariosTotal (count)
+  - ActiveUsers (count)
+  - StorageUsedGB (gauge)
+  - HeartbeatAge (seconds since last heartbeat — derived)
+
+X-Ray Tracing (Professional + Enterprise only):
+  - ARIA Express app instrumented with AWS X-Ray SDK
+  - Traces: API requests, Bedrock judge calls, scenario runs
+  - Sampling: 5% (Professional), 10% (Enterprise)
+```
+
+#### Observability Terraform module
+
+The tenant Terraform module (`tenant-module/`) includes a dedicated `observability.tf` file:
+
+```hcl
+# observability.tf (tenant-module)
+resource "aws_cloudwatch_log_group" "aria" {
+  name              = "/ecs/aria/${var.tenant_id}"
+  retention_in_days = var.log_retention_days  # from pricing tier
+  tags              = local.tenant_tags
+}
+
+resource "aws_cloudwatch_dashboard" "aria" {
+  dashboard_name = "aria-${var.tenant_id}"
+  dashboard_body = templatefile("${path.module}/dashboard.json.tpl", {
+    tenant_id  = var.tenant_id
+    region     = var.aws_region
+    cluster    = aws_ecs_cluster.aria.name
+    service    = aws_ecs_service.aria.name
+    alb_arn    = aws_lb.aria.arn_suffix
+    efs_id     = aws_efs_file_system.aria.id
+  })
+}
+
+resource "aws_cloudwatch_metric_alarm" "task_stopped" {
+  alarm_name          = "aria-${var.tenant_id}-task-stopped"
+  comparison_operator = "LessThanThreshold"
+  metric_name         = "RunningTaskCount"
+  namespace           = "ECS/ContainerInsights"
+  dimensions = {
+    ClusterName = aws_ecs_cluster.aria.name
+    ServiceName = aws_ecs_service.aria.name
+  }
+  threshold           = 1
+  evaluation_periods  = 2
+  period              = 60
+  alarm_actions       = [aws_sns_topic.aria_alerts.arn]
+  tags                = local.tenant_tags
+}
+```
+
+#### Tag propagation for observability resources
+
+All CloudWatch dashboards, alarms, log groups, and SNS topics created by the tenant module carry the full tag set from §9, including `aria:tenant_id`, `aria:company`, `aria:pricing_tier`, `aria:region`. This means:
+
+- **AWS Console** — filter CloudWatch dashboards by `aria:company` tag to see a specific org's dashboard
+- **Cost Explorer** — tag `aria:tenant_id` on log groups enables per-tenant observability cost attribution
+- **AWS Resource Groups** — create a resource group per tenant to see all observability + compute in one view
+- **CloudWatch Container Insights** — enabled on every ECS cluster; provides CPU/memory/network at task level, tagged to tenant
+
+#### Dashboard access for tenant admins (future)
+
+Phase 6+: tenant admins can be granted read-only access to their own CloudWatch dashboard via a pre-signed URL or embedded iframe in the ARIA Settings UI. IAM policy scoped to `Condition: { StringEquals: { "aws:ResourceTag/aria:tenant_id": "${tenant_id}" } }`.
+
+---
+
+### 4.9 God Mode — Internal Team Override
+
+God Mode is a hidden, non-advertised override for internal development and QA teams that bypasses all tier limits, usage counters, suspend timers, and billing enforcement. It is **never shown or mentioned in any public UI, documentation, or marketing material**.
+
+#### Activation
+
+God Mode is activated by setting a secret environment variable on a running ARIA instance (or in the container at provision time for internal instances):
+
+```javascript
+ARIA_GOD_MODE=true
+ARIA_GOD_MODE_TOKEN=<sha256-of-secret-passphrase>
+```
+
+Both must be set. `ARIA_GOD_MODE_TOKEN` is a SHA-256 hash of an internal passphrase managed in AWS Secrets Manager (key: `aria/internal/god-mode-token`). The ARIA app verifies the token at startup to prevent accidental activation via misconfiguration.
+
+#### What God Mode bypasses
+
+| Enforcement point | Normal behaviour | God Mode |
+| --- | --- | --- |
+| `MAX_SCENARIOS` | 403 over limit | No limit |
+| `MAX_RUNS_PER_MONTH` | 402 over limit | No limit |
+| `MAX_USERS` | 402 over limit | No limit |
+| `MAX_STORAGE_GB` | 403 over limit | No limit |
+| Auto-suspend heartbeat | Suspend after idle threshold | Never suspended |
+| SSO enforcement | Cognito token required | Optional (backdoor still works) |
+| Heartbeat emission | POSTs every 10 min | Disabled (no false heartbeat to control plane) |
+| Package limit UI banners | Shown when approaching limits | Never shown |
+| Trial expiry | Converts to Starter after 14 days | Never expires |
+| Bedrock model restrictions | Tier-restricted judge model | Any model |
+
+#### God Mode in the control plane
+
+When the control plane provisions an internal instance (e.g., for CI pipelines or dev testing), it can inject God Mode variables:
+
+```typescript
+// In provisioner tfvars generator:
+if (tenant.is_internal) {
+  tfvars.god_mode = true;
+  tfvars.god_mode_token = resolveFromSecretsManager('aria/internal/god-mode-token');
+}
+```
+
+Internal tenants are identified by `aria_tenants.is_internal = true` — a field set only by the operator, never via the public sign-up flow.
+
+#### God Mode visibility rules
+
+- No UI indicator, banner, or label when God Mode is active
+- ARIA logs a single line at startup: `[internal] extended access active` (deliberately vague)
+- No reference to "God Mode" in any user-facing string, help text, or API response
+- Control plane audit events do log `god_mode_active: true` for internal billing reconciliation — but this is visible only to operators, not tenants
+- The `ARIA_GOD_MODE` env var is never returned by any API endpoint or included in any tenant-facing output
+
+#### Internal CI use
+
+For automated testing in CI/CD pipelines (GitHub Actions, etc.):
+
+```yaml
+# .github/workflows/e2e.yml
+env:
+  ARIA_GOD_MODE: "true"
+  ARIA_GOD_MODE_TOKEN: ${{ secrets.ARIA_GOD_MODE_TOKEN }}
+```
+
+This allows CI to run unlimited scenario suites without hitting billing limits.
 
 ---
 
@@ -424,8 +662,9 @@ SK: "METADATA"
 tenant_id               string   UUID
 company_name            string
 admin_email             string
-pricing_tier            string   starter | professional | enterprise
-status                  string   PENDING | PROVISIONING | RUNNING | SUSPENDED | STARTING | FAILED
+pricing_tier            string   free | individual | enterprise_starter | enterprise_pro | enterprise_unlimited
+pricing_track           string   individual | enterprise
+status                  string   PENDING | PROVISIONING | RUNNING | SUSPENDING | SUSPENDED | STARTING | FAILED
 created_at              ISO8601
 instance_url            string   https://<tenant>.ariaeval.io
 instance_id             string
@@ -438,6 +677,14 @@ bedrock_geo             string   "eu" | "us" | "ap" — inference profile prefix
 last_heartbeat_at       ISO8601
 provision_started_at    ISO8601
 provision_completed_at  ISO8601
+suspended_at            ISO8601
+resumed_at              ISO8601
+resume_started_at       ISO8601
+suspend_warning_sent_at ISO8601  (null = reset each resume cycle)
+suspend_threshold_hours number   defaults: free=1, all others=3, enterprise=configurable 1-24
+trial_started_at        ISO8601  (null if not in trial)
+trial_ends_at           ISO8601  (null if not in trial)
+is_internal             boolean  operator-set only; never exposed via public API; enables God Mode
 GSI1PK: admin_email
 ```
 
@@ -518,40 +765,218 @@ timestamp     ISO8601
 
 ## 7. Pricing & Packages
 
-### Tiers
+Plans are structured across two tracks: **Individual** (solo developers, small teams) and **Enterprise** (organisations, regulated industries). Both tracks include a progression from Free through paid tiers.
 
-| Feature | Starter | Professional | Enterprise |
-| --- | --- | --- | --- |
-| **Price (monthly)** | $49 | $199 | $999 |
-| **Price (annual, 20% off)** | $470 | $1,910 | $9,590 |
-| **Scenarios (total)** | 50 | 200 | Unlimited |
-| **Runs per month** | 500 | 2,000 | Unlimited |
-| **Users per instance** | 3 | 10 | Unlimited |
-| **Storage** | 5 GB | 20 GB | 100 GB |
-| **Transcript retention** | 30 days | 90 days | 365 days |
-| **Judge model** | Claude Haiku | Claude Sonnet | Claude Sonnet + custom |
-| **Providers** | OpenAPI, Lex | All providers | All + priority support |
-| **Deployment regions** | Europe — London, US East | All 8 regions | All 8 regions |
-| **Auto-suspend** | 3 hours | 3 hours | Configurable |
-| **SLA** | Best effort | 99.5% uptime | 99.9% + dedicated support |
-| **ECS resources** | 512 CPU / 1GB | 1024 CPU / 2GB | 2048 CPU / 4GB |
-| **AWS WAF** | No | No | Yes |
-| **Dedicated subdomain** | Shared ALB | Yes | Yes |
-| **Custom domain** | No | No | Yes |
-| **Fine-tune pipeline** | No | No | Yes |
+### Plan tracks overview
 
-### Add-ons (future)
+```javascript
+INDIVIDUAL TRACK              ENTERPRISE TRACK
++------------------+          +----------------------+
+| Free             |          | Enterprise Starter   |
+| (always free)    |          | (team use)           |
++------------------+          +----------------------+
+| Individual       |          | Enterprise Pro       |
+| (paid solo)      |          | (department-wide)    |
++------------------+          +----------------------+
+                              | Enterprise Unlimited |
+                              | (org-wide)           |
+                              +----------------------+
+```
+
+---
+
+### Free Plan (Individual Track — Always Free)
+
+The Free Plan is a **permanent free tier**, not a trial. It gives individual developers full access to ARIA's feature set with strict limits that cap infrastructure cost to near-zero. No credit card required. No expiry.
+
+**Hard limits (enforced by platform; cannot be overridden by user):**
+
+| Limit | Value | Reason |
+| --- | --- | --- |
+| Scenarios | 5 total | Prevents runaway scenario creation |
+| Runs per month | 10 | Caps Bedrock judge invocations |
+| Turns per run | 5 | Limits transcript size |
+| Users per instance | 1 (owner only) | Prevents team abuse of free tier |
+| Storage | 500 MB | Caps EFS + S3 cost |
+| Transcript retention | 7 days | Auto-deleted after 7 days |
+| Judge model | Claude Haiku only | Lowest cost judge |
+| Providers | OpenAPI only | Limits scope |
+| Deployment regions | Europe — London or US East (one choice, fixed at sign-up) | One region only |
+| Auto-suspend threshold | 1 hour | Aggressive to minimise idle cost |
+| Observability | Basic (CloudWatch logs only; no dashboard, no alarms) | Reduces CloudWatch cost |
+| Concurrent runs | 1 | No parallel execution |
+
+**What Free users CAN do (full feature access within limits):**
+
+- Use all scenario types (functional, adversarial, escalation, edge, security)
+- Use all judge dimensions and all judge configuration options
+- View full transcripts and judge reports
+- Use the judge system prompt editor
+- Access the settings UI (all tabs)
+- Export run reports (within retention window)
+
+**What triggers an upgrade prompt:**
+
+- Attempting to create a 6th scenario → prompt to upgrade
+- Attempting to start run 11 in a month → prompt to upgrade
+- Attempting to invite a user → prompt to upgrade
+
+**Free plan infrastructure cost (to platform):**
+
+- ECS 512 CPU / 512 MB (smallest viable) — \~$6.30/month running 24/7
+- With 1h auto-suspend, \~2h/day avg active → \~$0.84/month
+- EFS: 500 MB → $0.03/month
+- Platform absorbs this cost per free user; break-even is \~6 free users converting to paid per 100 free users
+
+---
+
+### Individual Plan (Individual Track — Paid)
+
+For solo developers, security researchers, and consultants evaluating AI agents professionally.
+
+| Feature | Value |
+| --- | --- |
+| **Price** | $49/month or $470/year (20% off) |
+| **Scenarios** | 100 total |
+| **Runs per month** | 1,000 |
+| **Turns per run** | 20 |
+| **Users per instance** | 1 (owner only — individual use) |
+| **Storage** | 10 GB |
+| **Transcript retention** | 90 days |
+| **Judge model** | Claude Haiku or Sonnet (user choice) |
+| **Providers** | All providers |
+| **Deployment regions** | Europe — London, US East (2 regions) |
+| **Auto-suspend** | 3 hours |
+| **Observability** | CloudWatch logs + dashboard |
+| **SLA** | Best effort |
+| **ECS resources** | 512 CPU / 1GB |
+
+---
+
+### Enterprise Starter (Enterprise Track)
+
+For small engineering teams (up to 10 users) evaluating AI agents across a project or department.
+
+| Feature | Value |
+| --- | --- |
+| **Price** | $199/month or $1,910/year |
+| **Scenarios** | 500 total |
+| **Runs per month** | 5,000 |
+| **Turns per run** | Unlimited |
+| **Users per instance** | 10 |
+| **Storage** | 50 GB |
+| **Transcript retention** | 180 days |
+| **Judge model** | Claude Sonnet |
+| **Providers** | All providers |
+| **Deployment regions** | All 8 regions |
+| **Auto-suspend** | 3 hours |
+| **Observability** | Full (dashboard + alarms + 90-day log retention) |
+| **SLA** | 99.5% uptime |
+| **ECS resources** | 1024 CPU / 2GB |
+| **X-Ray tracing** | Yes (5% sampling) |
+
+---
+
+### Enterprise Pro (Enterprise Track)
+
+For larger engineering organisations needing higher throughput, HA, and compliance-grade observability.
+
+| Feature | Value |
+| --- | --- |
+| **Price** | $599/month or $5,750/year |
+| **Scenarios** | 2,000 total |
+| **Runs per month** | 20,000 |
+| **Turns per run** | Unlimited |
+| **Users per instance** | 50 |
+| **Storage** | 200 GB |
+| **Transcript retention** | 365 days |
+| **Judge model** | Claude Sonnet + Haiku (configurable per run) |
+| **Providers** | All + priority support |
+| **Deployment regions** | All 8 regions |
+| **Auto-suspend** | Configurable (1–24h) |
+| **Observability** | Full + X-Ray (10% sampling) + CloudWatch Insights |
+| **SLA** | 99.9% uptime |
+| **ECS resources** | 2048 CPU / 4GB |
+| **AWS WAF** | Yes |
+| **Dedicated subdomain** | Yes |
+| **Fine-tune pipeline** | Yes |
+
+---
+
+### Enterprise Unlimited (Enterprise Track)
+
+For large enterprises needing organisation-wide deployment with no usage caps and full white-glove support.
+
+| Feature | Value |
+| --- | --- |
+| **Price** | Custom / negotiated annually |
+| **Scenarios** | Unlimited |
+| **Runs per month** | Unlimited |
+| **Users per instance** | Unlimited |
+| **Storage** | 1 TB+ (configurable) |
+| **Transcript retention** | Configurable (up to 7 years for compliance) |
+| **Judge models** | Any Bedrock model including fine-tuned |
+| **Providers** | All + custom |
+| **Deployment regions** | All 8 regions + custom region on request |
+| **Auto-suspend** | Configurable or disabled |
+| **Observability** | Full + dedicated CloudWatch account if required |
+| **SLA** | 99.9% + dedicated support + 4-hour incident response |
+| **ECS resources** | Configurable (up to 8192 CPU / 16GB) |
+| **AWS WAF** | Yes + custom rules |
+| **Custom domain** | Yes |
+| **Dedicated AWS account** | Optional (isolate from other tenants entirely) |
+| **Fine-tune pipeline** | Yes |
+| **SAML/SSO integration** | Yes (replaces Cognito for enterprise IdP) |
+
+---
+
+### Pricing tier → internal key mapping
+
+| Display Name | Internal `pricing_tier` key | Track |
+| --- | --- | --- |
+| Free | `free` | individual |
+| Individual | `individual` | individual |
+| Enterprise Starter | `enterprise_starter` | enterprise |
+| Enterprise Pro | `enterprise_pro` | enterprise |
+| Enterprise Unlimited | `enterprise_unlimited` | enterprise |
+
+---
+
+### Free trial
+
+- Any paid plan can be trialled for **14 days** from sign-up
+- No credit card required during trial
+- Full access to that plan's features and limits during trial
+- At day 14: if no payment method added, account downgrades to Free plan (not deleted)
+- Trial reminder emails at day 7 and day 13
+
+---
+
+### Add-ons (all paid plans)
 
 - Additional storage: $5/GB/month
-- Additional runs: $0.10/run over limit
-- Dedicated AWS account: custom (Enterprise only)
+- Additional runs: $0.10/run over limit (not available on Free)
+- Dedicated AWS account: custom pricing (Enterprise Unlimited only)
 - Priority provisioning (< 5 min SLA): +$50/month
 
-### Free tier
+---
 
-- 14-day free trial on Professional tier
-- No credit card required
-- Converts to Starter automatically if not upgraded after 14 days
+### Plan limit enforcement in `aria_tenants`
+
+The following fields are written to DynamoDB at provision time and injected as env vars into the ARIA instance:
+
+```javascript
+pricing_tier          string    "free" | "individual" | "enterprise_starter" | ...
+pricing_track         string    "individual" | "enterprise"
+MAX_SCENARIOS         number
+MAX_RUNS_PER_MONTH    number    (-1 = unlimited)
+MAX_TURNS_PER_RUN     number    (-1 = unlimited)
+MAX_USERS             number    (-1 = unlimited)
+MAX_STORAGE_GB        number
+MAX_CONCURRENT_RUNS   number
+LOG_RETENTION_DAYS    number
+suspend_threshold_hours number
+```
 
 ---
 
@@ -597,24 +1022,34 @@ Per-Tenant Resources (isolated, created by Terraform in tenant's chosen region)
 
 ## 9. AWS Tagging Strategy
 
-Every AWS resource in the tenant Terraform stack is tagged:
+Every AWS resource in the tenant Terraform stack is tagged — including observability resources (CloudWatch log groups, dashboards, alarms, SNS topics):
 
 | Tag Key | Value | Source |
 | --- | --- | --- |
 | `aria:tenant_id` | `ten-abc123xyz` | DynamoDB -> tfvars |
 | `aria:company` | `Acme Corp` | Sign-up form -> tfvars |
 | `aria:admin_email` | `admin@acme.com` | Sign-up form -> tfvars |
-| `aria:pricing_tier` | `professional` | Selected tier -> tfvars |
+| `aria:pricing_tier` | `enterprise_starter` | Selected tier -> tfvars |
+| `aria:pricing_track` | `enterprise` | Derived from tier -> tfvars |
 | `aria:instance_id` | `inst-def456uvw` | Generated at provision time |
 | `aria:provisioned_at` | `2026-06-05T09:00:00Z` | Terraform timestamp |
 | `aria:region` | `eu-west-2` | Customer's chosen region (AWS code) |
 | `aria:region_display_name` | `Europe — London` | Customer's chosen region (display) |
 | `aria:environment` | `saas-prod` | Fixed |
+| `aria:resource_type` | `compute` / `observability` / `storage` / `network` | Per-resource category |
 | `Project` | `aria-evaluator` | Fixed |
 | `ManagedBy` | `terraform` | Fixed |
 | `CostCenter` | `<tenant_id>` | Per-tenant cost attribution |
 
-AWS Cost Explorer can group by `aria:tenant_id` or `aria:region` for per-tenant and per-region cost analysis.
+**AWS Cost Explorer groupings:**
+
+- Group by `aria:tenant_id` → per-tenant total cost
+- Group by `aria:region` → cost by deployment region
+- Group by `aria:pricing_tier` → revenue vs cost analysis per tier
+- Group by `aria:resource_type` → compute vs observability vs storage split per tenant
+
+**AWS Resource Groups:**
+A Resource Group `aria-tenant-<tenant_id>` can be created with tag filter `aria:tenant_id = <tenant_id>` to show all resources (compute, observability, storage, network) for a tenant in one view.
 
 ---
 
@@ -916,53 +1351,60 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 
 | Task | Description |
 | --- | --- |
-| 1.1 | Cognito User Pool + App Client (hosted UI or custom) |
-| 1.2 | DynamoDB tables: aria\\_tenants, aria\\_users, aria\\_usage, aria\\_sso\\_tokens, aria\\_events |
+| 1.1 | Cognito User Pool + App Client |
+| 1.2 | DynamoDB tables: aria\\\\\\_tenants (with new fields), aria\\\\\\_users, aria\\\\\\_usage, aria\\\\\\_sso\\\\\\_tokens, aria\\\\\\_events |
 | 1.3 | Control plane API: auth endpoints (register, confirm, login, refresh, forgot/reset) |
 | 1.4 | Control plane API: tenant endpoints (me, provision/status, suspend, resume) |
-| 1.5 | Control plane API: user management endpoints (list, invite, remove) |
-| 1.6 | Control plane API: `/regions` endpoint — returns region display name list |
-| 1.7 | SSO token issuer: RS256 key pair in Secrets Manager, `/instance/sso-token`, `/instance/sso-verify` |
+| 1.5 | Control plane API: user management endpoints |
+| 1.6 | Control plane API: `/regions` + `/packages` public endpoints |
+| 1.7 | SSO token issuer (RS256 key pair in Secrets Manager) |
 | 1.8 | SQS FIFO queue + provisioning job schema |
-| 1.9 | EventBridge + SuspendCheckLambda (stub — real ECS calls in Phase 3) |
+| 1.9 | EventBridge + SuspendCheckLambda — full state machine (RUNNING -> SUSPENDING -> SUSPENDED) |
+| 1.10 | Free plan enforcement: `is_internal` flag, pricing\\_track field, tier limit constants |
 
 ### Phase 2 — ARIA Instance Modifications (Weeks 2–3)
 
 | Task | Description |
 | --- | --- |
-| 2.1 | `GET /auth/sso?token=<jwt>` endpoint — verify + session create + backdoor fallback |
-| 2.2 | Heartbeat background job (10-min interval, HMAC signed) |
-| 2.3 | Package limit env vars (`MAX_SCENARIOS`, `MAX_RUNS_PER_MONTH`, etc.) + enforcement |
-| 2.4 | Usage bar UI components in ARIA settings/dashboard |
+| 2.1 | `GET /auth/sso?token=<jwt>` — verify + session + backdoor fallback |
+| 2.2 | Heartbeat background job (10-min, HMAC signed) |
+| 2.3 | All plan limit env vars + enforcement at each check point |
+| 2.4 | Usage bar UI in ARIA settings/dashboard |
 | 2.5 | Admin bootstrap from `INITIAL_ADMIN_EMAIL` |
 | 2.6 | `SAAS_MODE` env var gate |
-| 2.7 | Internal user invite flow (links back to main website) |
+| 2.7 | User invite flow linking back to main website |
+| 2.8 | **God Mode**: `ARIA_GOD_MODE` + `ARIA_GOD_MODE_TOKEN` env var check at startup; bypass all limits when active; no UI indicator |
+| 2.9 | `/health` endpoint for ALB health checks (must respond 200 within 5s) |
 
-### Phase 3 — Tenant Provisioner (Weeks 3–4)
+### Phase 3 — Tenant Provisioner + Observability (Weeks 3–4)
 
 | Task | Description |
 | --- | --- |
 | 3.1 | Provisioner Docker container: SQS consumer + terraform wrapper |
-| 3.2 | `tenant-module` Terraform module wrapping existing prod modules |
-| 3.3 | Per-tenant tfvars generator (including `aws_region` from DynamoDB) |
-| 3.4 | Multi-region state backend config (`-backend-config=region=<aws_region>`) |
-| 3.5 | `/internal/provision/complete` + `/failed` handlers in control plane |
-| 3.6 | Provisioner ECS task definition + IAM role in `saas-platform` Terraform |
-| 3.7 | SuspendCheckLambda: real ECS `UpdateService` calls per tenant's region |
+| 3.2 | `tenant-module` Terraform wrapping existing prod modules |
+| 3.3 | `observability.tf` in tenant-module: CloudWatch log group, dashboard, alarms, SNS topic — all tagged |
+| 3.4 | Dashboard template (`dashboard.json.tpl`): ECS CPU/memory, ALB metrics, EFS, custom ARIA metrics |
+| 3.5 | X-Ray instrumentation in ARIA Express app (disabled on Free/Individual, 5% on Enterprise Starter, 10% on Enterprise Pro+) |
+| 3.6 | Per-tenant tfvars generator with all new fields (aws\\_region, pricing\\_tier, pricing\\_track, log\\_retention\\_days, is\\_internal, god\\_mode vars) |
+| 3.7 | Multi-region state backend config |
+| 3.8 | `/internal/provision/complete` + `/failed` handlers |
+| 3.9 | SuspendCheckLambda: full SUSPENDING->SUSPENDED transition with ECS drain check |
+| 3.10 | God Mode provisioner path: inject `ARIA_GOD_MODE` vars for `is_internal=true` tenants |
 
 ### Phase 4 — Website (Weeks 4–6)
 
 | Task | Description |
 | --- | --- |
 | 4.1 | Next.js project scaffold with static export |
-| 4.2 | Hero / Marketing pages (responsive, Tailwind + shadcn/ui) |
-| 4.3 | Pricing table component (interactive tier comparison) |
-| 4.4 | Sign-up flow: 4-step form — details, plan, **region selection (RegionSelector)**, confirm |
+| 4.2 | Hero / Marketing pages (Tailwind + shadcn/ui) |
+| 4.3 | PricingTable component (Individual + Enterprise tracks, Free plan, annual toggle) |
+| 4.4 | Sign-up flow: 4-step form — details, plan (track selector), region (RegionSelector), confirm |
 | 4.5 | Sign-in + Cognito integration |
-| 4.6 | Dashboard: InstanceStatusCard, ProvisionProgress (SSE), UsageBar |
-| 4.7 | User management UI |
-| 4.8 | Billing page (read-only initially; Stripe in Phase 6) |
-| 4.9 | CloudFront + S3 deployment Terraform |
+| 4.6 | Dashboard: InstanceStatusCard (shows region + status), ProvisionProgress (SSE), UsageBar |
+| 4.7 | InstanceStatusCard: SUSPENDING state + "workspace suspended" page on CloudFront 503 |
+| 4.8 | User management UI |
+| 4.9 | Billing page |
+| 4.10 | CloudFront + S3 deployment Terraform |
 
 ### Phase 5 — Multi-Region Bootstrap (Week 6)
 
@@ -970,39 +1412,46 @@ aria-saas-provisioner/               <- NEW: Terraform runner
 | --- | --- |
 | 5.1 | Bootstrap S3 state buckets in all 8 regions |
 | 5.2 | Bootstrap DynamoDB lock tables in all 8 regions |
-| 5.3 | Provision wildcard ACM certs (`*.ariaeval.io`) in all 8 regions |
-| 5.4 | ECR cross-region replication OR per-region ECR push in CI |
-| 5.5 | End-to-end provisioning test for each supported region |
+| 5.3 | Provision wildcard ACM certs (`*.ariaeval.io`) in all 8 regions (for ALB use) |
+| 5.4 | ECR cross-region replication |
+| 5.5 | Bootstrap CloudWatch alarm SNS topics (operator alerts) in all 8 regions |
+| 5.6 | End-to-end provisioning test in each supported region |
+| 5.7 | God Mode Secrets Manager key (`aria/internal/god-mode-token`) seeded in all regions |
 
 ### Phase 6 — Payments, Polish, Launch (Weeks 7–9)
 
 | Task | Description |
 | --- | --- |
-| 6.1 | Stripe Checkout integration |
-| 6.2 | Billing webhooks: Stripe -> control plane -> DynamoDB plan update |
-| 6.3 | Email sequences: welcome, provisioning complete, idle warning, limit warning |
-| 6.4 | CloudWatch dashboards: per-tenant cost, provisioning success rate |
-| 6.5 | Load testing: 10 concurrent provisioning jobs |
-| 6.6 | Security review: IAM boundary analysis, cross-tenant access testing |
-| 6.7 | Terms of service, privacy policy, cookie notice |
-| 6.8 | Custom domain support (Enterprise) |
+| 6.1 | Stripe Checkout integration (Individual + Enterprise tracks, annual toggle) |
+| 6.2 | Billing webhooks: Stripe -> control plane -> tier upgrade/downgrade |
+| 6.3 | Trial expiry flow: reminder emails at day 7 + 13; downgrade to Free at day 14 |
+| 6.4 | Email sequences: welcome, provisioning complete, 30-min suspend warning, limit warnings |
+| 6.5 | CloudWatch operator dashboards: provisioning success rate, suspend events, cross-tenant metrics |
+| 6.6 | Load testing: 10 concurrent provisioning jobs across 3 regions |
+| 6.7 | Security review: IAM boundary analysis, God Mode token rotation, cross-tenant access testing |
+| 6.8 | Terms of service, privacy policy, cookie notice |
+| 6.9 | Custom domain support (Enterprise Unlimited) |
+| 6.10 | Tenant admin CloudWatch dashboard embedded view (pre-signed URL in ARIA Settings) |
 
 ---
 
 ## 16. Open Decisions
 
-| ID | Topic | Options | Decision |
-| --- | --- | --- | --- |
-| OD-1 | Control plane deployment | Lambda vs ECS Fargate | **Lambda** — lower cost at early scale |
-| OD-2 | ALB sharing (Starter tier) | Shared ALB vs per-tenant ALB | **Shared ALB** for Starter, per-tenant for Professional+ |
-| OD-3 | Terraform state backend | S3 same account vs dedicated account | **Same account** initially |
-| OD-4 | SQLite storage | EFS (current) vs RDS Postgres | **EFS** — preserves existing ARIA design |
-| OD-5 | Payment processor | Stripe vs Marketplace vs manual | **Stripe** |
-| OD-6 | Website rendering | Static export vs SSR | **Static export** |
-| OD-7 | Tenant slug collision | Hash suffix vs user-chosen subdomain | **Auto-generated + 6-char hash** |
-| OD-8 | Suspend grace period | Fixed 3h vs configurable | **Fixed 3h for Starter/Pro, configurable for Enterprise** |
-| OD-9 | Region selection scope | All tiers vs tier-restricted | **Starter: eu-london + us-east only; Professional/Enterprise: all 8 regions** |
-| OD-10 | Region migration | Supported at launch vs roadmap | **Roadmap only** — region is immutable after provisioning in V1 |
+| ID | Topic | Decision |
+| --- | --- | --- |
+| OD-1 | Control plane deployment | **Lambda + API Gateway** — lower cost at early scale; swap to ECS if p99 latency is an issue |
+| OD-2 | ALB sharing | **Shared ALB for Free/Individual** (host-based routing), **per-tenant ALB for Enterprise** |
+| OD-3 | Terraform state backend | **S3 in same account** initially; dedicated account option for Enterprise Unlimited |
+| OD-4 | SQLite storage | **EFS** — preserves existing ARIA design; RDS only if multi-writer needs arise |
+| OD-5 | Payment processor | **Stripe** — fastest integration, global support |
+| OD-6 | Website rendering | **Static export** — CloudFront delivery; SSR only if personalised pages needed |
+| OD-7 | Tenant slug collision | **Auto-generated from company name + 6-char hash** |
+| OD-8 | Suspend grace period | **Free: 1h; Individual + Enterprise Starter/Pro: 3h; Enterprise Unlimited: configurable 1–24h** |
+| OD-9 | Region availability per tier | **Free + Individual: eu-london + us-east; Enterprise Starter+: all 8 regions** |
+| OD-10 | Region migration | **Roadmap only** — region is immutable after provisioning in V1 |
+| OD-11 | Free plan infrastructure | **Smallest ECS Fargate (512 CPU/512MB)** + 1h auto-suspend; platform absorbs \\~$1/month per free user |
+| OD-12 | God Mode visibility | **Completely hidden from UI and public API**; operator-only audit log entry |
+| OD-13 | Observability tier differentiation | **Free: logs only; Individual: logs + dashboard; Enterprise: full (dashboard + alarms + X-Ray)** |
 
 ---
 
