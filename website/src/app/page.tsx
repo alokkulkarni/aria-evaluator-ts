@@ -11,8 +11,7 @@ const quickFeatures = [
   { icon: Globe, title: 'Global Deployment', description: 'Deploy dedicated evaluation workspaces in the regions your teams require.' },
   { icon: BarChart3, title: 'Real-time Observability', description: 'Monitor usage, traces, and scenario outcomes from a single command center.' },
 ]
-const trustedLogos = ['Acme Corp', 'BetaTech', 'Northstar AI', 'Helios Systems', 'Quantum Ridge', 'Monarch Labs']
-const previewPlans = ['individual', 'enterprise_pro', 'enterprise_unlimited'] as const
+const previewPlans = ['free', 'individual', 'enterprise_starter'] as const
 const showcaseRuns = [
   { label: 'Adversarial coverage', value: '96%', tone: 'bg-emerald-400' },
   { label: 'Judge agreement', value: '92%', tone: 'bg-cyan-400' },
@@ -352,18 +351,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="border-y border-slate-200/80 bg-white/70">
-        <div className="max-w-8xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
-          <p className="section-label text-center">Trusted by forward-looking teams</p>
-          <div className="mt-8 grid gap-4 text-center text-lg font-semibold tracking-[0.2em] text-slate-400 sm:grid-cols-3 lg:grid-cols-6">
-            {trustedLogos.map((logo) => (
-              <div key={logo} className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-5">
-                {logo}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Trusted logos hidden until we have real customers */}
 
       <section className="max-w-8xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
