@@ -90,6 +90,30 @@ export const VIDEOS: Video[] = [
     tags: ['transformers', 'attention', 'deep-learning', '3blue1brown', 'visual'],
   },
   {
+    youtubeId: 'wjZofJX0v4M',
+    title: 'Transformers, the Tech Behind LLMs | Deep Learning Chapter 5',
+    channel: '3Blue1Brown',
+    channelUrl: 'https://www.youtube.com/@3blue1brown',
+    description:
+      "The prequel to Chapter 6 — Grant Sanderson's signature animated mathematics explains the complete transformer architecture from first principles: token embeddings, positional encodings, the full attention block, and feed-forward layers. The best visual overview of how the architecture responsible for every modern LLM actually works. Pairs with Chapter 6 for a complete two-part transformer deep dive.",
+    category: 'education',
+    durationLabel: '26:46',
+    publishedAt: '2024-04-01',
+    tags: ['transformers', 'llm-architecture', 'embeddings', 'deep-learning', '3blue1brown'],
+  },
+  {
+    youtubeId: 'hhiLw5Q_UFg',
+    title: 'Reinforcement Learning from Human Feedback: Progress and Challenges',
+    channel: 'UC Berkeley EECS',
+    channelUrl: 'https://www.youtube.com/@BerkeleyEECS',
+    description:
+      "A guest lecture by John Schulman (OpenAI co-founder, principal architect of ChatGPT's RLHF pipeline) delivered to UC Berkeley's EECS department. Covers the complete training loop — supervised fine-tuning, reward model training from preference data, and PPO-based policy optimisation — with frank discussion of open challenges like reward hacking, over-optimisation, and distributional shift. The authoritative source from the person who built it.",
+    category: 'education',
+    durationLabel: '1:02:14',
+    publishedAt: '2023-04-26',
+    tags: ['rlhf', 'reward-model', 'ppo', 'alignment', 'openai'],
+  },
+  {
     youtubeId: 'aircAruvnKk',
     title: 'But What Is a Neural Network? | Deep Learning Chapter 1',
     channel: '3Blue1Brown',
@@ -186,6 +210,66 @@ export const VIDEOS: Video[] = [
     publishedAt: '2024-06-12',
     tags: ['promptfoo', 'owasp', 'automated', 'ci-cd', 'red-team'],
   },
+  {
+    youtubeId: 'DwFVhFdD2fs',
+    title: 'AI Red Teaming 101 — Full Course (Episodes 1–10)',
+    channel: 'Microsoft Developer',
+    channelUrl: 'https://www.youtube.com/@MicrosoftDeveloper',
+    description:
+      "Microsoft's official comprehensive AI red teaming curriculum compiled into a single full-course video. Ten episodes covering threat modelling for LLMs, prompt injection, jailbreak techniques, model safety evaluation, the PyRIT automation framework, and enterprise red-team workflows — presented by Microsoft's AI security research team including Amanda Minnich and Gary Lopez.",
+    category: 'safety-red-team',
+    durationLabel: '3:22:00',
+    publishedAt: '2024-02-15',
+    tags: ['microsoft', 'pyrit', 'red-team', 'threat-modelling', 'curriculum'],
+  },
+  {
+    youtubeId: 'dj1H4g4YSlU',
+    title: 'Intro to LLM Security — OWASP Top 10 for Large Language Models',
+    channel: 'WhyLabs',
+    channelUrl: 'https://www.youtube.com/@whylabs',
+    description:
+      'WhyLabs walks through all ten entries of the OWASP Top 10 for LLM Applications — the industry-standard classification of LLM security risks. Covers prompt injection (LLM01), insecure output handling (LLM02), training data poisoning (LLM03), supply chain vulnerabilities, and more, with real-world examples and mitigation strategies for each. Essential orientation for any LLM security programme.',
+    category: 'safety-red-team',
+    durationLabel: '58:34',
+    publishedAt: '2023-10-19',
+    tags: ['owasp-llm-top-10', 'llm-security', 'whylabs', 'mitigations', 'supply-chain'],
+  },
+  {
+    youtubeId: 'tnV00OqLbAw',
+    title: '5 LLM Security Threats — The Future of Hacking?',
+    channel: 'All About AI',
+    channelUrl: 'https://www.youtube.com/@AllAboutAI',
+    description:
+      'A concise, well-produced overview of the five most critical LLM threat vectors: prompt injection, jailbreaking, data exfiltration, adversarial inputs, and model inversion. Uses live demonstrations and real-world case studies. Ideal for briefing stakeholders or onboarding new team members who need a fast but rigorous introduction to the attack surface before working with ARIA Evaluator scenarios.',
+    category: 'safety-red-team',
+    durationLabel: '21:07',
+    publishedAt: '2023-08-14',
+    tags: ['prompt-injection', 'jailbreaking', 'adversarial-ml', 'data-exfiltration', 'llm-threats'],
+  },
+  {
+    youtubeId: 'vA8Q5465HU4',
+    title: 'Agentic AI and Security',
+    channel: 'SANS Cyber Defense',
+    channelUrl: 'https://www.youtube.com/@SANSCyberDefense',
+    description:
+      'SANS Institute examines the unique security challenges of autonomous AI agents with tool use, memory, and planning capabilities — covering agent-specific attack surfaces: indirect prompt injection through tool outputs, privilege escalation, memory poisoning, and multi-agent trust chain attacks. Presented by David Hoelzer, SANS senior instructor. Directly relevant for evaluating agentic LLM deployments.',
+    category: 'safety-red-team',
+    durationLabel: '51:22',
+    publishedAt: '2024-09-12',
+    tags: ['agentic-ai', 'agent-security', 'sans', 'privilege-escalation', 'memory-poisoning'],
+  },
+  {
+    youtubeId: 'jaJWjHS1jkI',
+    title: 'When AI Goes Awry: Responding to AI Incidents',
+    channel: 'Security BSides San Francisco',
+    channelUrl: 'https://www.youtube.com/@BSidesSF',
+    description:
+      'Presented by Eoin Wickens and Marta Janus at BSidesSF 2025, this talk covers the emerging discipline of AI incident response — detecting that an LLM-powered system is being actively exploited, containing the damage, and forensically analysing model behaviour post-incident. Bridges traditional security incident response with the unique challenges of ML systems. Highly practical and grounded in real attack scenarios.',
+    category: 'safety-red-team',
+    durationLabel: '43:18',
+    publishedAt: '2025-05-01',
+    tags: ['incident-response', 'ai-security', 'bsides', 'forensics', 'detection'],
+  },
   // ── Evaluation ─────────────────────────────────────────────────────────────
   {
     youtubeId: 'QEaBAZQCtwE',
@@ -246,5 +330,29 @@ export const VIDEOS: Video[] = [
     durationLabel: '58:12',
     publishedAt: '2024-01-11',
     tags: ['weights-biases', 'weave', 'rag', 'dashboards', 'evaluation'],
+  },
+  {
+    youtubeId: 'IQcGGNLN3zo',
+    title: 'Introducing Weave from Weights & Biases',
+    channel: 'Weights & Biases',
+    channelUrl: 'https://www.youtube.com/@WeightsBiases',
+    description:
+      'The official W&B product introduction for Weave — their LLM observability platform purpose-built for production AI. Demonstrates tracing LLM calls, logging inputs/outputs, building evaluation pipelines, and tracking latency and cost per trace. This video is linked directly from the official W&B documentation as the recommended starting point. Integrates with OpenAI, Anthropic, LangChain, and any LLM framework.',
+    category: 'observability',
+    durationLabel: '12:34',
+    publishedAt: '2024-03-20',
+    tags: ['weights-biases', 'weave', 'tracing', 'llm-monitoring', 'official'],
+  },
+  {
+    youtubeId: 'fo0F-DAum7E',
+    title: 'Building Production-Grade LLM Apps',
+    channel: 'DeepLearning.AI',
+    channelUrl: 'https://www.youtube.com/@Deeplearningai',
+    description:
+      "Published by Andrew Ng's DeepLearning.AI organisation, this talk covers the practical challenges of moving LLM applications from prototype to production — evaluation frameworks, quality metrics, continuous monitoring, hallucination detection, and feedback loops. Covers tools including TruLens for LLM evaluation and the RAG evaluation lifecycle. Authoritative and practitioner-focused view of the full LLMOps stack.",
+    category: 'observability',
+    durationLabel: '1:14:08',
+    publishedAt: '2023-11-08',
+    tags: ['llmops', 'production', 'trulens', 'rag-evaluation', 'deeplearning-ai'],
   },
 ]
