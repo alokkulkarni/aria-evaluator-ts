@@ -129,3 +129,50 @@
 .metric-card-value {
   @apply text-lg font-semibold text-slate-900;
 }
+
+/* ── Article / blog post prose ─────────────────────────────────────────────── */
+
+.article-prose {
+  @apply text-slate-700 leading-7 text-base;
+}
+
+.article-prose h2 {
+  @apply text-2xl font-bold text-slate-900 mt-10 mb-4;
+}
+
+.article-prose h3 {
+  @apply text-lg font-semibold text-slate-800 mt-7 mb-3;
+}
+
+.article-prose p {
+  @apply mb-5;
+}
+
+.article-prose ul {
+  @apply mb-6 ml-5 list-disc space-y-2;
+}
+
+.article-prose li {
+  @apply text-slate-600 leading-7 pl-1;
+}
+
+.article-prose code {
+  @apply rounded bg-slate-100 px-1.5 py-0.5 text-sm font-mono text-slate-800;
+}
+
+.article-prose sup {
+  @apply text-xs text-blue-600;
+}
+
+.article-lead {
+  @apply text-lg font-medium text-slate-800 leading-8 mb-6;
+}
+
+.article-blockquote {
+  @apply my-7 pl-5 border-l-4 border-blue-600 bg-blue-50/60 py-4 pr-4 rounded-r-lg;
+}
+
+.article-blockquote p {
+  @apply text-base text-slate-700 italic leading-7 mb-0;
+}
+
