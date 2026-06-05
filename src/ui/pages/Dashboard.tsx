@@ -1,5 +1,5 @@
 // src/ui/pages/Dashboard.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
 import { formatLatency, formatTokenCount } from '../lib/format.js';
 import {
@@ -85,13 +85,45 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
   const passed = runs.filter((r) => r.evalResult?.passed === true).length;
   const failed = runs.filter((r) => r.evalResult?.passed === false).length;
 
-  // Exclude security-only runs from the quality average so adversarial tests
-  // don't drag down the headline score.
-  const qualityRuns = runs.filter((r) => r.evalResult && r.evalResult.scenarioType !== 'security');
+  // Use strict equality so 'mixed' runs are excluded from both buckets.
+  const qualityRuns = runs.filter((r) => r.evalResult?.scenarioType === 'quality');
+  const securityRuns = runs.filter((r) => r.evalResult?.scenarioType === 'security');
+
   const avgScore =
     qualityRuns.length > 0
       ? (qualityRuns.reduce((a, b) => a + (b.evalResult?.overallScore ?? 0), 0) / qualityRuns.length).toFixed(1)
       : '—';
+
+  // Release readiness KPIs — scoped to the last 100 runs (API default limit).
+  const readiness = useMemo(() => {
+    const securityBlocked = securityRuns.filter((r) => r.evalResult?.passed === true).length;
+    const attackBlockRate =
+      securityRuns.length > 0 ? Math.round((securityBlocked / securityRuns.length) * 100) : null;
+
+    const avgQualityScore =
+      qualityRuns.length > 0
+        ? Math.round((qualityRuns.reduce((a, r) => a + (r.evalResult?.overallScore ?? 0), 0) / qualityRuns.length) * 10)
+        : null;
+
+    const completedCount = runs.filter((r) => r.status === 'completed').length;
+    const completionRate = total > 0 ? Math.round((completedCount / total) * 100) : null;
+
+    // Derive a top insight from the data.
+    const topInsight = (() => {
+      if (securityRuns.length > 0 && attackBlockRate != null && attackBlockRate < 80) {
+        return `${100 - attackBlockRate}% of adversarial attacks were not blocked — review security scenario pass criteria.`;
+      }
+      if (qualityRuns.length > 0 && avgQualityScore != null && avgQualityScore < 70) {
+        return 'Avg quality score is below 70% — consider tuning judge thresholds or reviewing failing scenarios.';
+      }
+      if (failed > 0) {
+        return `${failed} run${failed === 1 ? '' : 's'} failed in the last 100 — check the failure class breakdown below.`;
+      }
+      return 'All recent evaluation runs are within healthy thresholds.';
+    })();
+
+    return { attackBlockRate, avgQualityScore, violationsBlocked: securityBlocked, completionRate, completedCount, topInsight };
+  }, [runs, qualityRuns, securityRuns, total, failed]);
 
   const recent = runs.slice(0, 8);
 
@@ -118,6 +150,148 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
         <StatCard label="Passed" value={String(passed)} color="green" />
         <StatCard label="Failed" value={String(failed)} color="red" />
       </div>
+
+      {/* ── Executive Overview ─────────────────────────────────────────────── */}
+      <section data-tour-target="dashboard-release-readiness">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-slate-900">Release Readiness</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Based on last 100 runs</p>
+          </div>
+          {!loading && (
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+              readiness.attackBlockRate != null && readiness.attackBlockRate >= 80 && (readiness.avgQualityScore ?? 0) >= 70
+                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                : readiness.attackBlockRate != null && readiness.attackBlockRate < 60
+                  ? 'bg-rose-50 text-rose-700 ring-rose-200'
+                  : 'bg-amber-50 text-amber-700 ring-amber-200'
+            }`}>
+              {readiness.attackBlockRate != null && readiness.attackBlockRate >= 80 && (readiness.avgQualityScore ?? 0) >= 70
+                ? 'Ship candidate'
+                : readiness.attackBlockRate != null && readiness.attackBlockRate < 60
+                  ? 'Action required'
+                  : 'Needs review'}
+            </span>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="card py-10 text-center text-sm text-slate-400">Loading…</div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+            {/* Left: KPIs + completeness + insights */}
+            <div className="card space-y-5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <KpiCard
+                  label="Attack Block Rate"
+                  value={readiness.attackBlockRate != null ? `${readiness.attackBlockRate}%` : '—'}
+                  tone={readiness.attackBlockRate == null ? 'neutral' : readiness.attackBlockRate >= 80 ? 'green' : readiness.attackBlockRate >= 60 ? 'amber' : 'red'}
+                  sub={securityRuns.length > 0 ? `${readiness.violationsBlocked}/${securityRuns.length} security runs` : 'No security runs'}
+                />
+                <KpiCard
+                  label="Avg Quality Score"
+                  value={readiness.avgQualityScore != null ? `${readiness.avgQualityScore}%` : '—'}
+                  tone={readiness.avgQualityScore == null ? 'neutral' : readiness.avgQualityScore >= 70 ? 'green' : readiness.avgQualityScore >= 50 ? 'amber' : 'red'}
+                  sub={qualityRuns.length > 0 ? `Over ${qualityRuns.length} quality runs` : 'No quality runs'}
+                />
+                <KpiCard
+                  label="Violations Blocked"
+                  value={String(readiness.violationsBlocked)}
+                  tone={readiness.violationsBlocked > 0 ? 'green' : securityRuns.length > 0 ? 'red' : 'neutral'}
+                  sub="Security attacks stopped"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm text-slate-600">
+                  <span>Run completion rate</span>
+                  <span className="font-semibold text-slate-900">
+                    {readiness.completionRate != null ? `${readiness.completedCount} / ${total}` : '—'}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100">
+                  <div
+                    className="h-2 rounded-full bg-cyan-500 transition-all"
+                    style={{ width: readiness.completionRate != null ? `${readiness.completionRate}%` : '0%' }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-slate-950 p-4 text-white">
+                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-cyan-300/80">Top insight</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-200">{readiness.topInsight}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Suggested action</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {readiness.attackBlockRate != null && readiness.attackBlockRate < 80
+                      ? 'Re-run the adversarial test pack and tighten refusal policy before approving release.'
+                      : readiness.avgQualityScore != null && readiness.avgQualityScore < 70
+                        ? 'Review failing quality scenarios and adjust judge threshold calibration.'
+                        : 'Continue monitoring. All metrics are within acceptable thresholds.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Judge comparison by run type */}
+            <div className="card space-y-5">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.28em] text-blue-600">Judge breakdown</p>
+                <h4 className="mt-1 text-base font-semibold text-slate-900">Pass rate by scenario type</h4>
+              </div>
+              <div className="space-y-4">
+                {[
+                  {
+                    label: 'Quality',
+                    count: qualityRuns.length,
+                    rate: qualityRuns.length > 0
+                      ? Math.round((qualityRuns.filter(r => r.evalResult?.passed === true).length / qualityRuns.length) * 100)
+                      : null,
+                    color: 'bg-emerald-500',
+                  },
+                  {
+                    label: 'Security',
+                    count: securityRuns.length,
+                    rate: securityRuns.length > 0
+                      ? Math.round((securityRuns.filter(r => r.evalResult?.passed === true).length / securityRuns.length) * 100)
+                      : null,
+                    color: 'bg-cyan-500',
+                  },
+                  {
+                    label: 'All runs',
+                    count: total,
+                    rate: total > 0 ? Math.round((passed / total) * 100) : null,
+                    color: 'bg-blue-500',
+                  },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <div className="mb-1.5 flex items-center justify-between text-sm">
+                      <span className="text-slate-600">
+                        {item.label}
+                        <span className="ml-1.5 text-xs text-slate-400">({item.count})</span>
+                      </span>
+                      <span className="font-semibold text-slate-900">{item.rate != null ? `${item.rate}%` : '—'}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100">
+                      <div
+                        className={`h-2 rounded-full transition-all ${item.color}`}
+                        style={{ width: item.rate != null ? `${item.rate}%` : '0%' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs text-slate-500 leading-5">
+                <span className="font-semibold text-slate-700">Note:</span> Security pass = attack blocked.
+                Quality pass = score ≥ 6/10. Mixed-type runs are excluded from type breakdowns.
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="card" data-tour-target="dashboard-observability">
         <div className="mb-4 flex items-center justify-between">
@@ -334,6 +508,22 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
       <p className={`mt-1 text-3xl font-bold ${colors[color] ?? 'text-slate-800'}`}>
         {value}{sub && <span className="text-base font-normal text-slate-400">{sub}</span>}
       </p>
+    </div>
+  );
+}
+
+function KpiCard({ label, value, tone, sub }: { label: string; value: string; tone: 'green' | 'amber' | 'red' | 'neutral'; sub?: string }) {
+  const dotColors: Record<string, string> = {
+    green: 'bg-emerald-500', amber: 'bg-amber-400', red: 'bg-rose-500', neutral: 'bg-slate-300',
+  };
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-3 flex items-center gap-2">
+        <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${dotColors[tone]}`} />
+        <p className="text-2xl font-semibold text-slate-900">{value}</p>
+      </div>
+      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }

@@ -13,6 +13,16 @@ const quickFeatures = [
 ]
 const trustedLogos = ['Acme Corp', 'BetaTech', 'Northstar AI', 'Helios Systems', 'Quantum Ridge', 'Monarch Labs']
 const previewPlans = ['individual', 'enterprise_pro', 'enterprise_unlimited'] as const
+const showcaseRuns = [
+  { label: 'Adversarial coverage', value: '96%', tone: 'bg-emerald-400' },
+  { label: 'Judge agreement', value: '92%', tone: 'bg-cyan-400' },
+  { label: 'Policy violations blocked', value: '18', tone: 'bg-amber-400' },
+]
+const showcaseRegions = [
+  { name: 'UK London', code: 'eu-west-2', status: 'Primary' },
+  { name: 'US East', code: 'us-east-1', status: 'Active' },
+  { name: 'Frankfurt', code: 'eu-central-1', status: 'Ready' },
+]
 
 export default function HomePage() {
   return (
@@ -115,6 +125,205 @@ export default function HomePage() {
               </div>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="max-w-8xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
+        <div className="max-w-3xl space-y-4">
+          <p className="section-label">Platform showcase</p>
+          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+            See the main ARIA workspace before you sign up
+          </h2>
+          <p className="text-base leading-7 text-slate-600">
+            Give buyers and engineering teams an immediate feel for the platform with a guided visual tour of scenario coverage,
+            judge confidence, and region-aware deployment controls.
+          </p>
+        </div>
+
+        <div className="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <article className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.1)] backdrop-blur-sm">
+            <div className="flex items-center justify-between border-b border-slate-200/70 bg-slate-50/90 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              </div>
+              <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-500">
+                ariaeval.io / workspace / executive-overview
+              </div>
+            </div>
+
+            <div className="grid gap-0 lg:grid-cols-[220px_minmax(0,1fr)]">
+              <div className="border-b border-slate-200/70 bg-slate-950 px-4 py-5 text-white lg:border-b-0 lg:border-r lg:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <span className="rounded-lg bg-[var(--brand)] px-2 py-1 text-[0.65rem] font-bold uppercase tracking-[0.28em] text-white">
+                    ARIA
+                  </span>
+                  <span className="text-sm font-semibold">Command center</span>
+                </div>
+                <div className="mt-6 space-y-2">
+                  {['Overview', 'Scenarios', 'Models', 'Observability', 'Governance'].map((item, index) => (
+                    <div
+                      key={item}
+                      className={`rounded-2xl px-3 py-2 text-sm ${index === 0 ? 'bg-white/12 text-white ring-1 ring-white/15' : 'text-slate-300'}`}
+                    >
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-cyan-300/80">Workspace posture</p>
+                  <p className="mt-2 text-2xl font-semibold">Healthy</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    742 evaluation runs this week across 8 regions and 10+ judge / target model combinations.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-slate-50 to-blue-50/60 p-4">
+                <div className="space-y-4">
+                  <div className="rounded-3xl border border-slate-200/80 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.28em] text-blue-600">Executive summary</p>
+                        <h3 className="mt-1 text-base font-semibold text-slate-900">Release readiness snapshot</h3>
+                        </div>
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                          Ship candidate
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 grid-cols-3">
+                        {showcaseRuns.map((item) => (
+                          <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-500">{item.label}</p>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className={`h-2 w-2 rounded-full ${item.tone}`} />
+                              <p className="text-lg font-semibold text-slate-900">{item.value}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center justify-between text-xs text-slate-600">
+                          <span>Scenario pack completeness</span>
+                          <span className="font-semibold text-slate-900">43 / 45 critical tests</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-200">
+                          <div className="h-1.5 w-[95%] rounded-full bg-cyan-500" />
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-xl bg-slate-950 p-3 text-white">
+                            <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-300/80">Top insight</p>
+                            <p className="mt-1.5 text-xs leading-5 text-slate-200">
+                              One escalation flow is leaking confidence under adversarial pressure after turn 5.
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Action</p>
+                            <p className="mt-1.5 text-xs leading-5 text-slate-600">
+                              Tighten refusal policy and re-run the red-team pack before release.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+                      <p className="text-[10px] uppercase tracking-[0.28em] text-blue-600">Judge comparison</p>
+                      <h3 className="mt-1 text-sm font-semibold text-slate-900">Consensus by scenario type</h3>
+                      <div className="mt-3 space-y-2.5">
+                        {[
+                          { label: 'Functional', score: 94, color: 'bg-emerald-500' },
+                          { label: 'Adversarial', score: 88, color: 'bg-cyan-500' },
+                          { label: 'Escalation', score: 91, color: 'bg-blue-500' },
+                        ].map((item) => (
+                          <div key={item.label}>
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                              <span className="text-slate-600">{item.label}</span>
+                              <span className="font-semibold text-slate-900">{item.score}%</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-200">
+                              <div className={`h-1.5 rounded-full ${item.color}`} style={{ width: `${item.score}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+                      <p className="text-[10px] uppercase tracking-[0.28em] text-blue-600">Region controls</p>
+                      <h3 className="mt-1 text-sm font-semibold text-slate-900">Tenant isolation</h3>
+                      <div className="mt-3 space-y-2">
+                        {showcaseRegions.map((region) => (
+                          <div key={region.code} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-2">
+                            <div>
+                              <p className="text-xs font-semibold text-slate-900">{region.name}</p>
+                              <p className="text-[10px] text-slate-500">{region.code}</p>
+                            </div>
+                            <span className="rounded-full bg-slate-950 px-2 py-0.5 text-[10px] font-medium text-white">
+                              {region.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <div className="grid gap-5">
+            <article className="card space-y-4">
+              <p className="section-label">What buyers notice first</p>
+              <h3 className="text-2xl font-semibold text-slate-900">A visual tour that sells the product before the trial starts</h3>
+              <p className="text-sm leading-6 text-slate-600">
+                This section is designed to take real screenshots or a short product reel later. For now it gives visitors a clear, premium
+                preview of the platform’s strongest moments: release readiness, judge confidence, and region-aware isolation.
+              </p>
+              <div className="rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-400 text-slate-950">
+                    <Zap className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Future-ready video slot</p>
+                    <p className="text-xs text-slate-300">
+                      Drop in an MP4/WebM or a hosted demo later without redesigning the homepage.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article className="card space-y-4">
+              <p className="section-label">Highlights</p>
+              <div className="space-y-3">
+                {[
+                  'Dedicated tenant workspaces with enterprise isolation built in.',
+                  'Adversarial and functional scenario coverage in one release view.',
+                  'Multi-model judge comparisons with traceable confidence signals.',
+                  'Region selection aligned to sovereignty and compliance requirements.',
+                ].map((item) => (
+                  <div key={item} className="flex items-start gap-3">
+                    <span className="mt-1 h-2.5 w-2.5 rounded-full bg-cyan-500" />
+                    <p className="text-sm leading-6 text-slate-600">{item}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Link href="/sign-up" className="btn-primary rounded-xl">
+                  Start for free
+                </Link>
+                <Link href="/blog" className="btn-secondary rounded-xl">
+                  Explore insights
+                </Link>
+              </div>
+            </article>
+          </div>
         </div>
       </section>
 
