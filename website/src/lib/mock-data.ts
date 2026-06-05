@@ -8,9 +8,9 @@ export const MOCK_INSTANCE: InstanceInfo = {
   instanceUrl: '#',
   usage: {
     runsThisMonth: 742,
-    maxRuns: 2000,
+    maxRuns: 900,
     scenariosUsed: 84,
-    maxScenarios: 200,
+    maxScenarios: 120,
   },
   provisioningStep: 'complete',
   provisioningProgress: 100,
