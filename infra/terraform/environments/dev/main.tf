@@ -6,9 +6,19 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+data "aws_region" "current" {}
+
 locals {
   aws_account_id     = data.aws_caller_identity.current.account_id
   availability_zones = slice(data.aws_availability_zones.available.names, 0, length(var.public_subnet_cidrs))
+  # Enrich caller-supplied var.tags with region and pricing_track for every module call.
+  common_tags = merge(
+    var.tags,
+    {
+      "aria:region"        = data.aws_region.current.region
+      "aria:pricing_track" = var.pricing_track
+    },
+  )
 }
 
 # ── Networking ────────────────────────────────────────────────────────────────
@@ -24,7 +34,7 @@ module "networking" {
   container_port      = var.container_port
   tenant_id           = var.tenant_id
   pricing_tier        = var.pricing_tier
-  tags                = var.tags
+  tags                = local.common_tags
 }
 
 # ── ECR ───────────────────────────────────────────────────────────────────────
@@ -35,7 +45,7 @@ module "ecr" {
   app_name     = var.app_name
   environment  = var.environment
   scan_on_push = false # dev: skip scanning to keep iteration fast
-  tags         = var.tags
+  tags         = local.common_tags
 }
 
 # ── S3 State Bucket ───────────────────────────────────────────────────────────
@@ -49,7 +59,7 @@ module "s3" {
   force_destroy = true # dev: allow clean teardown
   tenant_id     = var.tenant_id
   pricing_tier  = var.pricing_tier
-  tags          = var.tags
+  tags          = local.common_tags
 }
 
 # ── IAM ───────────────────────────────────────────────────────────────────────
@@ -65,7 +75,7 @@ module "iam" {
   connect_instance_id = var.connect_instance_id
   tenant_id           = var.tenant_id
   pricing_tier        = var.pricing_tier
-  tags                = var.tags
+  tags                = local.common_tags
 }
 
 # ── ALB ───────────────────────────────────────────────────────────────────────
@@ -85,7 +95,7 @@ module "alb" {
   cloudfront_origin_secret = ""
   tenant_id                = var.tenant_id
   pricing_tier             = var.pricing_tier
-  tags                     = var.tags
+  tags                     = local.common_tags
 }
 
 # ── ECS ───────────────────────────────────────────────────────────────────────
@@ -115,7 +125,7 @@ module "ecs" {
   saas_mode                     = false # dev is always standalone
   tenant_id                     = var.tenant_id
   pricing_tier                  = var.pricing_tier
-  tags                          = var.tags
+  tags                          = local.common_tags
 }
 
 # ── Bedrock Lambda ────────────────────────────────────────────────────────────
@@ -138,7 +148,7 @@ module "bedrock_lambda" {
 
   tenant_id    = var.tenant_id
   pricing_tier = var.pricing_tier
-  tags         = var.tags
+  tags         = local.common_tags
 }
 
 # ── CloudFront ────────────────────────────────────────────────────────────────
@@ -157,5 +167,5 @@ module "cloudfront" {
   cloudfront_origin_secret = ""
   tenant_id                = var.tenant_id
   pricing_tier             = var.pricing_tier
-  tags                     = var.tags
+  tags                     = local.common_tags
 }

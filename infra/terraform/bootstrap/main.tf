@@ -10,6 +10,7 @@ locals {
       Project              = "aria-evaluator"
       AppName              = "aria-evaluator"
       Environment          = "bootstrap"
+      "aria:region"        = data.aws_region.current.region
       "aria:resource_type" = "storage"
     },
   )

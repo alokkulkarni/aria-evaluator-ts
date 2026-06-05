@@ -37,3 +37,13 @@ output "kms_key_arn" {
   description = "ARN of the shared KMS key used for secrets encryption"
   value       = aws_kms_key.secrets.arn
 }
+
+output "ses_identity_arn" {
+  description = "ARN of the SES domain identity for suspend warning emails. Empty when ses_sender_domain is not set."
+  value       = length(aws_ses_domain_identity.sender) > 0 ? aws_ses_domain_identity.sender[0].arn : ""
+}
+
+output "ses_dkim_tokens" {
+  description = "Three DKIM CNAME tokens. For each: add <token>._domainkey.<domain> → <token>.dkim.amazonses.com to your DNS zone."
+  value       = length(aws_ses_domain_dkim.sender) > 0 ? aws_ses_domain_dkim.sender[0].dkim_tokens : []
+}

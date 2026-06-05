@@ -32,6 +32,7 @@ locals {
       Project              = "aria-evaluator"
       Environment          = var.environment
       AppName              = var.app_name
+      "aria:region"        = var.aws_region
       "aria:tenant_id"     = var.tenant_id
       "aria:pricing_tier"  = var.pricing_tier
       "aria:pricing_track" = var.pricing_track
