@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import { AriaLogo } from '@/components/shared/AriaLogo'
+
 const footerGroups = {
   Product: [
     { label: 'Features', href: '/#features' },
@@ -27,9 +29,7 @@ export function Footer() {
         <div className="grid gap-10 lg:grid-cols-[1.2fr_repeat(3,minmax(0,1fr))]">
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <span className="rounded-lg bg-[var(--brand)] px-2 py-1 text-[0.65rem] font-bold uppercase tracking-[0.28em] text-white">
-                ARIA
-              </span>
+              <AriaLogo />
               <span className="text-sm font-bold text-white">ARIA Evaluator</span>
             </div>
             <p className="max-w-sm text-sm leading-6 text-slate-400">

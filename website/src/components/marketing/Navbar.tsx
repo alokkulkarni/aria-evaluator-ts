@@ -6,6 +6,7 @@ import { Menu, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { cn } from '@/lib/utils'
+import { AriaLogo } from '@/components/shared/AriaLogo'
 
 const navItems = [
   { label: 'Home', href: '/', match: '/' },
@@ -28,9 +29,7 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl">
       <div className="max-w-8xl mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-3">
-          <span className="rounded-lg bg-[var(--brand)] px-2 py-1 text-[0.65rem] font-bold uppercase tracking-[0.28em] text-white shadow-inner shadow-white/10">
-            ARIA
-          </span>
+          <AriaLogo />
           <span className="text-sm font-bold text-white sm:text-base">ARIA Evaluator</span>
         </Link>
 

@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { FormEvent, useState } from 'react'
 
+import { AriaLogo } from '@/components/shared/AriaLogo'
+
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -52,9 +54,7 @@ export function SignInForm() {
     <div className="card mx-auto mt-16 max-w-md space-y-6">
       <div className="space-y-3 text-center">
         <div className="mx-auto flex w-fit items-center gap-3">
-          <span className="rounded-lg bg-[var(--brand)] px-2 py-1 text-[0.65rem] font-bold uppercase tracking-[0.28em] text-white">
-            ARIA
-          </span>
+          <AriaLogo />
           <span className="text-sm font-bold text-slate-900">ARIA Evaluator</span>
         </div>
         <div className="space-y-1">

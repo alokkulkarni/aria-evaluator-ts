@@ -19,6 +19,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'ARIA Evaluator',
   description: 'Enterprise AI safety evaluation, observability, and global deployment workflows for modern teams.',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

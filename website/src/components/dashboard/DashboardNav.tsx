@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 
 import { cn } from '@/lib/utils'
+import { AriaLogo } from '@/components/shared/AriaLogo'
 
 const links = [
   { label: 'Overview', href: '/dashboard', match: '/dashboard', icon: LayoutDashboard },
@@ -58,7 +59,7 @@ export function DashboardNav({ user = {} }: DashboardNavProps) {
           <div className="space-y-6">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <span className="rounded-lg bg-[var(--brand)] px-2 py-1 text-[0.65rem] font-bold uppercase tracking-[0.28em] text-white">ARIA</span>
+                <AriaLogo />
                 <span className="text-sm font-bold text-slate-900">ARIA Evaluator</span>
               </div>
               <p className="text-sm text-slate-500">Manage provisioning, usage, and billing from one secure workspace.</p>
