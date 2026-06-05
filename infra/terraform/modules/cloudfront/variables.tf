@@ -54,6 +54,31 @@ variable "aliases" {
   default     = []
 }
 
+variable "cloudfront_origin_secret" {
+  description = "Shared origin secret forwarded to the ALB in the X-CF-Origin-Secret header"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "waf_web_acl_arn" {
+  description = "Optional WAF Web ACL ARN attached to the distribution"
+  type        = string
+  default     = ""
+}
+
+variable "tenant_id" {
+  description = "Tenant identifier used for naming and tagging"
+  type        = string
+  default     = ""
+}
+
+variable "pricing_tier" {
+  description = "Pricing tier used for tagging"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

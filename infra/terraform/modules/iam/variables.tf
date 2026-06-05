@@ -29,6 +29,37 @@ variable "connect_instance_id" {
   default     = "*"
 }
 
+variable "secrets_arns" {
+  description = "Secrets Manager ARNs that the ECS task role may read"
+  type        = list(string)
+  default     = []
+}
+
+variable "heartbeat_table_arn" {
+  description = "ARN of the shared heartbeat DynamoDB table"
+  type        = string
+  default     = ""
+}
+
+variable "god_mode_secret_arn" {
+  description = "Secrets Manager ARN containing the ARIA god mode token"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "tenant_id" {
+  description = "Tenant identifier used for naming and tagging"
+  type        = string
+  default     = ""
+}
+
+variable "pricing_tier" {
+  description = "Pricing tier used for tagging"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

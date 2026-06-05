@@ -67,8 +67,8 @@ variable "bedrock_proxy_url" {
     Leave empty to omit BEDROCK_LAMBDA_ENDPOINT and use extra_environment_vars
     to point at an AWS API Gateway endpoint instead.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 # ── Scenarios bind-mount ───────────────────────────────────────────────────────
@@ -80,8 +80,8 @@ variable "local_scenarios_dir" {
     /app/state/scenarios so pre-built scenarios are always available.
     Leave empty to use only the named state volume.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 # ── Local DB bind-mount (optional) ────────────────────────────────────────────
@@ -93,6 +93,6 @@ variable "local_db_path" {
     to preserve run history across terraform destroy / apply cycles.
     Leave empty to let the container create a fresh database.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }

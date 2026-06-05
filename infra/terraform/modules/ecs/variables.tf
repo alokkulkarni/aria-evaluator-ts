@@ -14,7 +14,7 @@ variable "aws_region" {
 }
 
 variable "app_image_uri" {
-  description = "Full ECR image URI including tag (e.g. 123456789012.dkr.ecr.eu-west-2.amazonaws.com/repo:latest)"
+  description = "Full ECR image URI including tag"
   type        = string
 }
 
@@ -39,6 +39,24 @@ variable "memory" {
   description = "Fargate task memory in MiB (must be compatible with cpu)"
   type        = number
   default     = 512
+
+  validation {
+    condition = contains(
+      lookup(
+        {
+          "256"  = [512, 1024, 2048]
+          "512"  = range(1024, 4097, 1024)
+          "1024" = range(2048, 8193, 1024)
+          "2048" = range(4096, 16385, 1024)
+          "4096" = range(8192, 30721, 1024)
+        },
+        tostring(var.cpu),
+        [],
+      ),
+      var.memory,
+    )
+    error_message = "Memory must be valid for the selected Fargate CPU value."
+  }
 }
 
 variable "desired_count" {
@@ -58,8 +76,14 @@ variable "task_role_arn" {
 }
 
 variable "public_subnet_ids" {
-  description = "Subnet IDs for the ECS service (public subnets with ENABLED public IP)"
+  description = "Public subnet IDs for the ECS service"
   type        = list(string)
+}
+
+variable "private_subnet_ids" {
+  description = "Private subnet IDs for the ECS service"
+  type        = list(string)
+  default     = []
 }
 
 variable "ecs_service_security_group_id" {
@@ -73,7 +97,7 @@ variable "target_group_arn" {
 }
 
 variable "alb_listener_arn" {
-  description = "ARN of the ALB listener — the ECS service will not be created until this listener exists"
+  description = "ARN of the ALB listener"
   type        = string
 }
 
@@ -100,6 +124,18 @@ variable "log_retention_days" {
   default     = 7
 }
 
+variable "app_log_group_name" {
+  description = "Optional externally managed CloudWatch log group name for the application container"
+  type        = string
+  default     = ""
+}
+
+variable "app_log_group_arn" {
+  description = "Optional externally managed CloudWatch log group ARN for the application container"
+  type        = string
+  default     = ""
+}
+
 variable "deployment_minimum_healthy_percent" {
   description = "Minimum healthy task percentage during deployment"
   type        = number
@@ -119,6 +155,49 @@ variable "extra_environment_vars" {
     value = string
   }))
   default = []
+}
+
+variable "tenant_id" {
+  description = "Tenant identifier used for naming and tagging"
+  type        = string
+  default     = ""
+}
+
+variable "pricing_tier" {
+  description = "Pricing tier used for tagging"
+  type        = string
+  default     = ""
+}
+
+variable "efs_file_system_id" {
+  description = "Optional EFS file system ID mounted into the task"
+  type        = string
+  default     = ""
+}
+
+variable "efs_access_point_id" {
+  description = "Optional EFS access point ID mounted into the task"
+  type        = string
+  default     = ""
+}
+
+variable "heartbeat_table_name" {
+  description = "Optional heartbeat table name injected into the container"
+  type        = string
+  default     = ""
+}
+
+variable "god_mode_enabled" {
+  description = "Whether ARIA god mode should be enabled in the container"
+  type        = bool
+  default     = false
+}
+
+variable "god_mode_secret_arn" {
+  description = "Secrets Manager ARN containing the ARIA god mode token"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "tags" {

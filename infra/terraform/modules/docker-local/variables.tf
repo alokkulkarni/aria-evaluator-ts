@@ -39,8 +39,8 @@ variable "app_dockerfile" {
     avoiding the esbuild linux-arm64 vs linux-x64 mismatch.
     Set to "Dockerfile" only for ECS/production cross-platform builds.
   EOT
-  type    = string
-  default = "Dockerfile.local"
+  type        = string
+  default     = "Dockerfile.local"
 }
 
 # ── Ports ──────────────────────────────────────────────────────────────────────
@@ -89,8 +89,8 @@ variable "bedrock_proxy_url" {
     Leave empty to omit BEDROCK_LAMBDA_ENDPOINT (use extra_environment_vars to
     point at an AWS API Gateway endpoint instead).
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 # ── Scenarios bind-mount ───────────────────────────────────────────────────────
@@ -104,8 +104,8 @@ variable "local_scenarios_dir" {
     via the UI are stored there instead).
     Example: abspath("../../../../scenarios")
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 # ── Local DB bind-mount (optional) ────────────────────────────────────────────
@@ -118,6 +118,6 @@ variable "local_db_path" {
     Leave empty (default) to let the container create a fresh database in the
     named state volume on first start.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }

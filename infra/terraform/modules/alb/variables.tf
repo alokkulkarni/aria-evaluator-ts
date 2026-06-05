@@ -59,6 +59,43 @@ variable "deregistration_delay" {
   default     = 30
 }
 
+variable "acm_certificate_arn" {
+  description = "ACM certificate ARN for the HTTPS listener in the deployment region"
+  type        = string
+  default     = ""
+}
+
+variable "cloudfront_origin_secret" {
+  description = "Shared origin secret that CloudFront injects into ALB requests"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "log_bucket_suffix" {
+  description = "Unique suffix appended to the ALB access log bucket"
+  type        = string
+  default     = "logs"
+}
+
+variable "enable_deletion_protection" {
+  description = "Whether deletion protection should be enabled for the ALB"
+  type        = bool
+  default     = true
+}
+
+variable "tenant_id" {
+  description = "Tenant identifier used for naming and tagging"
+  type        = string
+  default     = ""
+}
+
+variable "pricing_tier" {
+  description = "Pricing tier used for tagging"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

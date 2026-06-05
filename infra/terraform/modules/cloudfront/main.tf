@@ -1,23 +1,162 @@
+data "aws_caller_identity" "current" {}
+
+data "aws_canonical_user_id" "current" {}
+
+data "aws_cloudfront_log_delivery_canonical_user_id" "current" {}
+
 locals {
-  name_prefix = "${var.app_name}-${var.environment}"
-
-  common_tags = merge(
-    {
-      AppName     = var.app_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    },
-    var.tags,
-  )
-
+  name_prefix     = var.tenant_id != "" ? "${var.app_name}-${var.environment}-${var.tenant_id}" : "${var.app_name}-${var.environment}"
+  short_name      = "${substr(local.name_prefix, 0, 14)}-${substr(md5(local.name_prefix), 0, 5)}"
   use_custom_cert = var.acm_certificate_arn != ""
+  log_bucket_name = lower("aria-${local.short_name}-cf-logs")
+  common_tags = merge(
+    var.tags,
+    {
+      ManagedBy            = "terraform"
+      Project              = "aria-evaluator"
+      Environment          = var.environment
+      AppName              = var.app_name
+      "aria:resource_type" = "network"
+    },
+    var.tenant_id != "" ? { "aria:tenant_id" = var.tenant_id } : {},
+    var.pricing_tier != "" ? { "aria:pricing_tier" = var.pricing_tier } : {},
+  )
 }
 
-# ── Cache Policy: Static Assets ────────────────────────────────────────────────
-# Used for the default behaviour (React SPA assets, fonts, images).
+resource "aws_s3_bucket" "cf_logs" {
+  bucket = local.log_bucket_name
+
+  tags = merge(local.common_tags, {
+    Name = local.log_bucket_name
+  })
+}
+
+resource "aws_s3_bucket_public_access_block" "cf_logs" {
+  bucket = aws_s3_bucket.cf_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "cf_logs" {
+  bucket = aws_s3_bucket.cf_logs.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+resource "aws_s3_bucket_acl" "cf_logs" {
+  depends_on = [
+    aws_s3_bucket_public_access_block.cf_logs,
+    aws_s3_bucket_ownership_controls.cf_logs,
+  ]
+
+  bucket = aws_s3_bucket.cf_logs.id
+
+  access_control_policy {
+    owner {
+      id = data.aws_canonical_user_id.current.id
+    }
+
+    grant {
+      grantee {
+        id   = data.aws_cloudfront_log_delivery_canonical_user_id.current.id
+        type = "CanonicalUser"
+      }
+      permission = "FULL_CONTROL"
+    }
+
+    grant {
+      grantee {
+        id   = data.aws_canonical_user_id.current.id
+        type = "CanonicalUser"
+      }
+      permission = "FULL_CONTROL"
+    }
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "cf_logs" {
+  bucket = aws_s3_bucket.cf_logs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "cf_logs" {
+  bucket = aws_s3_bucket.cf_logs.id
+
+  versioning_configuration {
+    status = "Suspended"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "cf_logs" {
+  bucket = aws_s3_bucket.cf_logs.id
+
+  rule {
+    id     = "expire-cf-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+data "aws_iam_policy_document" "cf_logs" {
+  statement {
+    sid    = "AllowCloudFrontLogDelivery"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.cf_logs.arn}/cf-access/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+  }
+
+  statement {
+    sid    = "AllowCloudFrontLogAclCheck"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.cf_logs.arn]
+  }
+}
+
+resource "aws_s3_bucket_policy" "cf_logs" {
+  bucket = aws_s3_bucket.cf_logs.id
+  policy = data.aws_iam_policy_document.cf_logs.json
+}
 
 resource "aws_cloudfront_cache_policy" "static" {
-  name        = "${local.name_prefix}-static"
+  name        = "${local.short_name}-static"
   comment     = "Static asset cache policy for ${local.name_prefix}"
   default_ttl = var.static_cache_default_ttl
   max_ttl     = var.static_cache_max_ttl
@@ -38,11 +177,8 @@ resource "aws_cloudfront_cache_policy" "static" {
   }
 }
 
-# ── Cache Policy: No Cache ─────────────────────────────────────────────────────
-# Used for API, reports, transcripts, audio, and health paths.
-
 resource "aws_cloudfront_cache_policy" "no_cache" {
-  name        = "${local.name_prefix}-no-cache"
+  name        = "${local.short_name}-no-cache"
   comment     = "Disable edge caching for dynamic endpoints in ${local.name_prefix}"
   default_ttl = 0
   max_ttl     = 1
@@ -63,11 +199,8 @@ resource "aws_cloudfront_cache_policy" "no_cache" {
   }
 }
 
-# ── Origin Request Policy: API ─────────────────────────────────────────────────
-# Forwards all viewer context to the ALB origin for dynamic paths.
-
 resource "aws_cloudfront_origin_request_policy" "api" {
-  name    = "${local.name_prefix}-api-origin"
+  name    = "${local.short_name}-api-origin"
   comment = "Forward all request context for API paths in ${local.name_prefix}"
 
   cookies_config {
@@ -81,8 +214,6 @@ resource "aws_cloudfront_origin_request_policy" "api" {
   }
 }
 
-# ── CloudFront Distribution ────────────────────────────────────────────────────
-
 resource "aws_cloudfront_distribution" "main" {
   enabled             = true
   http_version        = "http2"
@@ -90,20 +221,29 @@ resource "aws_cloudfront_distribution" "main" {
   default_root_object = var.default_root_object
   aliases             = var.aliases
   comment             = "${local.name_prefix} distribution"
+  web_acl_id          = var.waf_web_acl_arn != "" ? var.waf_web_acl_arn : null
 
   origin {
     origin_id   = "alb-origin"
     domain_name = var.alb_dns_name
 
+    dynamic "custom_header" {
+      for_each = var.cloudfront_origin_secret != "" ? [1] : []
+
+      content {
+        name  = "X-CF-Origin-Secret"
+        value = var.cloudfront_origin_secret
+      }
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
+      origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
 
-  # ── Default behaviour: React SPA (static assets) ──────────────────────────
   default_cache_behavior {
     target_origin_id       = "alb-origin"
     viewer_protocol_policy = "redirect-to-https"
@@ -113,72 +253,72 @@ resource "aws_cloudfront_distribution" "main" {
     cache_policy_id        = aws_cloudfront_cache_policy.static.id
   }
 
-  # ── /api/* — Express REST + SSE ───────────────────────────────────────────
   ordered_cache_behavior {
-    path_pattern           = "/api/*"
-    target_origin_id       = "alb-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    compress               = true
-    cache_policy_id        = aws_cloudfront_cache_policy.no_cache.id
+    path_pattern             = "/api/*"
+    target_origin_id         = "alb-origin"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
+    cached_methods           = ["GET", "HEAD", "OPTIONS"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
-  # ── /reports/* — HTML/JSON evaluation reports ─────────────────────────────
   ordered_cache_behavior {
-    path_pattern           = "/reports/*"
-    target_origin_id       = "alb-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    compress               = true
-    cache_policy_id        = aws_cloudfront_cache_policy.no_cache.id
+    path_pattern             = "/reports/*"
+    target_origin_id         = "alb-origin"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD", "OPTIONS"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
-  # ── /transcripts/* — conversation transcript JSON files ──────────────────
   ordered_cache_behavior {
-    path_pattern           = "/transcripts/*"
-    target_origin_id       = "alb-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    compress               = true
-    cache_policy_id        = aws_cloudfront_cache_policy.no_cache.id
+    path_pattern             = "/transcripts/*"
+    target_origin_id         = "alb-origin"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD", "OPTIONS"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
-  # ── /audio/* — voice call WAV recordings ─────────────────────────────────
   ordered_cache_behavior {
-    path_pattern           = "/audio/*"
-    target_origin_id       = "alb-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    compress               = true
-    cache_policy_id        = aws_cloudfront_cache_policy.no_cache.id
+    path_pattern             = "/audio/*"
+    target_origin_id         = "alb-origin"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD", "OPTIONS"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
-  # ── /health — ALB health check passthrough ────────────────────────────────
   ordered_cache_behavior {
-    path_pattern           = "/health"
-    target_origin_id       = "alb-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    compress               = true
-    cache_policy_id        = aws_cloudfront_cache_policy.no_cache.id
+    path_pattern             = "/health"
+    target_origin_id         = "alb-origin"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD", "OPTIONS"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.no_cache.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
-  # ── TLS certificate ───────────────────────────────────────────────────────
   viewer_certificate {
     cloudfront_default_certificate = local.use_custom_cert ? false : true
     acm_certificate_arn            = local.use_custom_cert ? var.acm_certificate_arn : null
     ssl_support_method             = local.use_custom_cert ? "sni-only" : null
     minimum_protocol_version       = local.use_custom_cert ? "TLSv1.2_2021" : null
+  }
+
+  logging_config {
+    bucket          = aws_s3_bucket.cf_logs.bucket_regional_domain_name
+    include_cookies = false
+    prefix          = "cf-access/"
   }
 
   restrictions {
@@ -187,5 +327,7 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  tags = local.common_tags
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-cloudfront"
+  })
 }

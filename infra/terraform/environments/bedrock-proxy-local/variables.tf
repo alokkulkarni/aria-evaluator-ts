@@ -21,8 +21,8 @@ variable "dockerfile_context" {
     Absolute path to the directory containing Dockerfile.local.
     Leave blank to auto-detect from the repository root.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 variable "host_port" {

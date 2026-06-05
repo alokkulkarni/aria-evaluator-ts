@@ -39,13 +39,13 @@ locals {
   # AWS_S3_STATE_BUCKET is deliberately left empty — the entrypoint script
   # detects this and skips all S3 restore/sync operations for local runs.
   base_environment = [
-    { name = "NODE_ENV",               value = "production" },
-    { name = "API_PORT",               value = tostring(var.container_port) },
-    { name = "AWS_S3_STATE_BUCKET",    value = "" },
+    { name = "NODE_ENV", value = "production" },
+    { name = "API_PORT", value = tostring(var.container_port) },
+    { name = "AWS_S3_STATE_BUCKET", value = "" },
     { name = "AUTH_DEFAULT_ADMIN_ENABLED", value = "true" },
-    { name = "DATABASE_URL",           value = "file:/app/state/data/aria-evaluator.db" },
+    { name = "DATABASE_URL", value = "file:/app/state/data/aria-evaluator.db" },
     { name = "EVAL_REPORT_OUTPUT_DIR", value = "/app/state/reports" },
-    { name = "SCENARIOS_DIR",          value = "/app/state/scenarios" },
+    { name = "SCENARIOS_DIR", value = "/app/state/scenarios" },
   ]
 
   # When the caller passes a bedrock_proxy_url (the separately-deployed proxy's

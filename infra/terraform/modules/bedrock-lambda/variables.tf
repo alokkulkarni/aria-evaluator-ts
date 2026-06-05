@@ -96,8 +96,8 @@ variable "allowed_origins" {
     Example: "https://app.example.com,https://staging.example.com"
     Use "*" to allow all origins (not recommended for production).
   EOT
-  type    = string
-  default = "*"
+  type        = string
+  default     = "*"
 }
 
 # ── Tags ──────────────────────────────────────────────────────────────────────

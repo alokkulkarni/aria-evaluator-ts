@@ -9,7 +9,7 @@ output "proxy_url_docker" {
     host.docker.internal (works on macOS/Windows Docker Desktop and Linux when
     the proxy module adds host.docker.internal via extra_hosts).
   EOT
-  value = "http://host.docker.internal:${var.host_port}"
+  value       = "http://host.docker.internal:${var.host_port}"
 }
 
 output "container_name" {

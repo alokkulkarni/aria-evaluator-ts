@@ -9,7 +9,7 @@ output "proxy_url_docker" {
     Set bedrock_proxy_url to this value in environments/local/terraform.tfvars
     before running `terraform apply` for the evaluator.
   EOT
-  value = module.bedrock_proxy.proxy_url_docker
+  value       = module.bedrock_proxy.proxy_url_docker
 }
 
 output "container_name" {

@@ -1,68 +1,72 @@
 # ARIA Evaluator — Terraform Infrastructure
 
-Modular Terraform for deploying `aria-evaluator-ts` on AWS ECS Fargate with CloudFront.
+Terraform for ARIA Evaluator now uses a bootstrap + tenant-stack model for SaaS multi-tenancy.
 
-## Structure
+## Layout
 
-```
-infra/terraform/
-├── modules/                    # Reusable base modules
-│   ├── networking/             # VPC, subnets, IGW, route tables, security groups
-│   ├── ecr/                    # ECR repository
-│   ├── s3/                     # S3 state bucket
-│   ├── iam/                    # ECS task execution + task IAM roles
-│   ├── ecs/                    # ECS cluster, task definition, Fargate service
-│   ├── alb/                    # Application Load Balancer, listener, target group
-│   └── cloudfront/             # CloudFront distribution + cache policies
-├── environments/
-│   ├── dev/                    # Dev environment deployment
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   ├── outputs.tf
-│   │   ├── versions.tf
-│   │   └── terraform.tfvars
-│   └── prod/                   # Prod environment deployment
-│       ├── main.tf
-│       ├── variables.tf
-│       ├── outputs.tf
-│       ├── versions.tf
-│       └── terraform.tfvars
-└── README.md
-```
+- `bootstrap/` — one-time shared infrastructure:
+  - Terraform state S3 bucket
+  - DynamoDB lock table
+  - shared ECR repository
+  - shared `aria-heartbeats` DynamoDB table
+  - shared KMS key for secrets
+- `modules/tenant-module/` — per-tenant stack wrapper
+- `modules/*` — reusable building blocks (networking, ALB, ECS, IAM, CloudFront, WAF, observability, EFS, suspend Lambdas)
+- `environments/prod/` — thin wrapper that instantiates one tenant module
 
-## Quick Start
+## Bootstrap first
 
-### 1. Bootstrap (first time only)
+Bootstrap uses the **local backend intentionally** so it can create the remote backend resources:
 
 ```bash
-# Create S3 backend bucket and DynamoDB lock table manually, or use the bootstrap script
-cd infra/terraform/environments/dev
+cd infra/terraform/bootstrap
 terraform init
-terraform plan -var-file=terraform.tfvars
+terraform apply -var='bucket_suffix=<unique-suffix>'
+```
+
+Capture these bootstrap outputs for tenant deployments:
+
+- `state_bucket_name`
+- `locks_table_name`
+- `heartbeat_table_name`
+- `heartbeat_table_arn`
+- `kms_key_arn`
+- `ecr_repository_url`
+
+## Tenant deployments
+
+Each tenant gets its own state file under:
+
+```text
+tenants/<tenant_id>/terraform.tfstate
+```
+
+The committed `environments/prod/versions.tf` backend block contains placeholders on purpose. Supply real values at deploy time with `terraform init -backend-config=...`.
+
+Example tenant flow:
+
+```bash
+cd infra/terraform/environments/prod
+terraform init \
+  -backend-config="bucket=<bootstrap-state-bucket>" \
+  -backend-config="key=tenants/<tenant_id>/terraform.tfstate" \
+  -backend-config="region=<region>" \
+  -backend-config="dynamodb_table=aria-evaluator-tf-locks" \
+  -backend-config="kms_key_id=<bootstrap-kms-key-arn>"
+
 terraform apply -var-file=terraform.tfvars
 ```
 
-### 2. Build and push Docker image
+## Production architecture highlights
 
-```bash
-# Get ECR URI from Terraform output
-ECR_URI=$(terraform output -raw ecr_repository_uri)
-aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin $ECR_URI
-docker build --platform linux/amd64 -t $ECR_URI:latest .
-docker push $ECR_URI:latest
-```
+- Shared ECR and shared heartbeat table from bootstrap
+- Per-tenant VPC, ALB, ECS service, S3 bucket, CloudFront, optional WAF, optional EFS
+- CloudFront → ALB origin protection via `X-CF-Origin-Secret`
+- WAF attached to CloudFront only (us-east-1)
+- VPC Flow Logs and ECS Container Insights enabled
+- Per-tenant observability stack (logs, alarms, dashboard, optional X-Ray)
+- Per-tenant suspension automation with EventBridge + Lambda + DynamoDB conditional writes
 
-### 3. Deploy ECS service with image
+## Secrets
 
-```bash
-terraform apply -var="app_image_uri=$ECR_URI:latest" -var-file=terraform.tfvars
-```
-
-## Environment Variables
-
-All sensitive values are passed via `terraform.tfvars` (never committed) or environment variables.
-See `terraform.tfvars.example` in each environment directory.
-
-## Remote State
-
-Configure `backend.tf` in each environment with your S3 bucket and DynamoDB table for state locking.
+Sensitive values are stored in AWS Secrets Manager and referenced by ARN from Terraform variables. Do not commit tenant secrets to `terraform.tfvars`.

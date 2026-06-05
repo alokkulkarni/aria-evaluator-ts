@@ -2,12 +2,14 @@ locals {
   bucket_name = var.bucket_suffix != "" ? "${var.app_name}-${var.environment}-state-${var.bucket_suffix}" : "${var.app_name}-${var.environment}-state"
 
   common_tags = merge(
-    {
-      AppName     = var.app_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    },
     var.tags,
+    {
+      ManagedBy            = "terraform"
+      Project              = "aria-evaluator"
+      Environment          = var.environment
+      AppName              = var.app_name
+      "aria:resource_type" = "storage"
+    },
   )
 }
 
@@ -16,6 +18,10 @@ resource "aws_s3_bucket" "state" {
   force_destroy = var.force_destroy
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "state" {

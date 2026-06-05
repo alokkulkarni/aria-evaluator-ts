@@ -24,11 +24,11 @@ output "task_definition_arn" {
 }
 
 output "log_group_name" {
-  description = "Name of the CloudWatch log group"
-  value       = aws_cloudwatch_log_group.app.name
+  description = "Name of the application CloudWatch log group"
+  value       = local.effective_app_log_group_name
 }
 
 output "log_group_arn" {
-  description = "ARN of the CloudWatch log group"
-  value       = aws_cloudwatch_log_group.app.arn
+  description = "ARN of the application CloudWatch log group"
+  value       = local.effective_app_log_group_arn
 }

@@ -1,13 +1,5 @@
-# ── Core ──────────────────────────────────────────────────────────────────────
-
-variable "aws_region" {
-  description = "AWS region to deploy into"
-  type        = string
-  default     = "eu-west-2"
-}
-
 variable "app_name" {
-  description = "Application name used as a prefix for all resource names"
+  description = "Application name used for naming and tagging"
   type        = string
   default     = "aria-evaluator"
 }
@@ -18,158 +10,155 @@ variable "environment" {
   default     = "prod"
 }
 
-variable "bucket_suffix" {
-  description = "Short unique suffix appended to the S3 bucket name to ensure global uniqueness"
+variable "tenant_id" {
+  description = "Unique tenant identifier"
   type        = string
 }
 
-# ── Networking ────────────────────────────────────────────────────────────────
-
-variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
+variable "pricing_tier" {
+  description = "Tenant pricing tier"
   type        = string
-  default     = "10.43.0.0/16"
+
+  validation {
+    condition = contains([
+      "free",
+      "individual",
+      "enterprise_starter",
+      "enterprise_pro",
+      "enterprise_unlimited",
+    ], var.pricing_tier)
+    error_message = "pricing_tier must be one of free, individual, enterprise_starter, enterprise_pro, or enterprise_unlimited."
+  }
 }
 
-variable "public_subnet_cidrs" {
-  description = "CIDR blocks for public subnets (one per AZ)"
-  type        = list(string)
-  default     = ["10.43.1.0/24", "10.43.2.0/24"]
-}
-
-# ── ECS ───────────────────────────────────────────────────────────────────────
-
-variable "app_image_uri" {
-  description = "Full ECR image URI including tag"
+variable "pricing_track" {
+  description = "Pricing track used for tagging"
   type        = string
+
+  validation {
+    condition     = contains(["individual", "enterprise"], var.pricing_track)
+    error_message = "pricing_track must be individual or enterprise."
+  }
 }
 
-variable "container_port" {
-  description = "Port the container listens on"
-  type        = number
-  default     = 3001
-}
-
-variable "cpu" {
-  description = "Fargate task CPU units"
-  type        = number
-  default     = 512
-}
-
-variable "memory" {
-  description = "Fargate task memory in MiB"
-  type        = number
-  default     = 1024
-}
-
-variable "desired_count" {
-  description = "Number of ECS tasks to run"
-  type        = number
-  default     = 1
-}
-
-variable "s3_state_prefix" {
-  description = "S3 key prefix for state files"
-  type        = string
-  default     = "aria-evaluator"
-}
-
-variable "s3_sync_interval_seconds" {
-  description = "Interval in seconds between S3 state sync operations"
-  type        = number
-  default     = 30
-}
-
-variable "log_retention_days" {
-  description = "CloudWatch log retention in days"
-  type        = number
-  default     = 30
-}
-
-# ── Amazon Connect ────────────────────────────────────────────────────────────
-
-variable "connect_instance_id" {
-  description = "Amazon Connect instance ID for IAM scoping"
-  type        = string
-}
-
-# ── CloudFront ────────────────────────────────────────────────────────────────
-
-variable "cloudfront_price_class" {
-  description = "CloudFront price class"
-  type        = string
-  default     = "PriceClass_100"
-}
-
-variable "acm_certificate_arn" {
-  description = "ACM certificate ARN (us-east-1) for custom domain"
-  type        = string
-  default     = ""
-}
-
-variable "cloudfront_aliases" {
-  description = "Custom domain aliases for CloudFront"
-  type        = list(string)
-  default     = []
-}
-
-# ── App-specific environment variables ────────────────────────────────────────
-
-variable "extra_environment_vars" {
-  description = "Additional environment variables injected into the ECS container"
-  type = list(object({
-    name  = string
-    value = string
-  }))
-  default = []
-}
-
-variable "tags" {
-  description = "Additional tags applied to all resources"
-  type        = map(string)
-  default     = {}
-}
-
-# ── Bedrock Lambda ────────────────────────────────────────────────────────────
-
-variable "bedrock_lambda_enabled" {
-  description = "Set to true to deploy the Bedrock proxy Lambda and HTTP API"
-  type        = bool
-  default     = false
-}
-
-variable "bedrock_model_id" {
-  description = "Bedrock model ID, cross-region inference prefix, or full ARN"
-  type        = string
-  default     = "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
-}
-
-variable "bedrock_region" {
-  description = "AWS region for Bedrock API calls (may differ from deployment region)"
+variable "aws_region" {
+  description = "AWS region where tenant resources are deployed"
   type        = string
   default     = "eu-west-2"
 }
 
-variable "bedrock_system_prompt" {
-  description = "Default system prompt injected into every Bedrock conversation"
+variable "app_image_uri" {
+  description = "ECR image URI for the tenant application"
+  type        = string
+}
+
+variable "acm_certificate_arn" {
+  description = "Regional ACM certificate ARN used by the tenant ALB"
   type        = string
   default     = ""
 }
 
-variable "bedrock_allowed_origins" {
-  description = "Comma-separated CORS origins for the Bedrock HTTP API"
+variable "cloudfront_acm_certificate_arn" {
+  description = "ACM certificate ARN in us-east-1 used by CloudFront"
+  type        = string
+  default     = ""
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block allocated to the tenant VPC"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "public_subnet_cidrs" {
+  description = "Public subnet CIDRs for the tenant"
+  type        = list(string)
+  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+}
+
+variable "private_subnet_cidrs" {
+  description = "Private subnet CIDRs for the tenant"
+  type        = list(string)
+  default     = ["10.0.3.0/24", "10.0.4.0/24"]
+}
+
+variable "bucket_suffix" {
+  description = "Suffix used to make S3 bucket names globally unique"
+  type        = string
+}
+
+variable "heartbeat_table_arn" {
+  description = "ARN of the shared heartbeat DynamoDB table"
+  type        = string
+}
+
+variable "heartbeat_table_name" {
+  description = "Name of the shared heartbeat DynamoDB table"
+  type        = string
+}
+
+variable "kms_key_arn" {
+  description = "KMS key ARN used for secrets, SNS, and EFS encryption"
+  type        = string
+}
+
+variable "god_mode_enabled" {
+  description = "Whether god mode should be enabled for this tenant"
+  type        = bool
+  default     = false
+}
+
+variable "god_mode_secret_arn" {
+  description = "Secrets Manager ARN containing the god mode token"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "alert_email" {
+  description = "Tenant alert email recipient"
+  type        = string
+  default     = ""
+}
+
+variable "control_plane_role_arn" {
+  description = "IAM role ARN allowed to invoke the resume Lambda"
+  type        = string
+  default     = ""
+}
+
+variable "suspend_threshold_hours_override" {
+  description = "Override for the default suspend threshold; 0 uses the tier default"
+  type        = number
+  default     = 0
+}
+
+variable "connect_instance_id" {
+  description = "Amazon Connect instance ID used for IAM scoping"
   type        = string
   default     = "*"
 }
 
-variable "bedrock_lambda_memory_size" {
-  description = "Memory allocation in MiB for the Bedrock proxy Lambda"
-  type        = number
-  default     = 512
+variable "cloudfront_enabled" {
+  description = "Whether CloudFront should be provisioned for the tenant"
+  type        = bool
+  default     = true
 }
 
-variable "bedrock_lambda_timeout" {
-  description = "Timeout in seconds for the Bedrock proxy Lambda"
+variable "waf_enabled" {
+  description = "Whether the CloudFront Web ACL should be provisioned"
+  type        = bool
+  default     = true
+}
+
+variable "log_retention_days_override" {
+  description = "Override for the default log retention; 0 uses the tier default"
   type        = number
-  default     = 120
+  default     = 0
+}
+
+variable "tags" {
+  description = "Additional tags applied to all tenant resources"
+  type        = map(string)
+  default     = {}
 }

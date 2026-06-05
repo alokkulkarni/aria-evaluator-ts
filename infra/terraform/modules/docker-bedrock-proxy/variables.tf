@@ -21,8 +21,8 @@ variable "dockerfile_context" {
     Absolute path to the directory containing Dockerfile.local for the proxy.
     When empty the module auto-detects the repo root and appends lambda/bedrock_proxy.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 variable "host_port" {
@@ -45,8 +45,8 @@ variable "model_id" {
       eu.anthropic.claude-sonnet-4-5-20250929-v1:0
       arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
   EOT
-  type    = string
-  default = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+  type        = string
+  default     = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
 }
 
 variable "region" {

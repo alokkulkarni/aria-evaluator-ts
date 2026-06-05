@@ -1,80 +1,38 @@
-# ── Prod environment — example tfvars ────────────────────────────────────────
-# Copy to terraform.tfvars and replace all REPLACE_* placeholders.
-# terraform.tfvars is gitignored; this example file is safe to commit.
+app_name       = "aria-evaluator"
+environment    = "prod"
+aws_region     = "eu-west-2"
+tenant_id      = "tenant-acme"
+pricing_tier   = "enterprise_starter"
+pricing_track  = "enterprise"
 
-# ── Core ──────────────────────────────────────────────────────────────────────
-aws_region  = "eu-west-2"
-app_name    = "aria-evaluator"
-environment = "prod"
+app_image_uri                  = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/aria-evaluator:sha-abcdef0"
+acm_certificate_arn            = "arn:aws:acm:eu-west-2:123456789012:certificate/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+cloudfront_acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/ffffffff-1111-2222-3333-444444444444"
 
-bucket_suffix = "123456"
+vpc_cidr             = "10.42.0.0/16"
+public_subnet_cidrs  = ["10.42.1.0/24", "10.42.2.0/24"]
+private_subnet_cidrs = ["10.42.3.0/24", "10.42.4.0/24"]
 
-# ── Networking ────────────────────────────────────────────────────────────────
-vpc_cidr            = "10.43.0.0/16"
-public_subnet_cidrs = ["10.43.1.0/24", "10.43.2.0/24"]
+bucket_suffix        = "acme123"
+heartbeat_table_arn  = "arn:aws:dynamodb:eu-west-2:123456789012:table/aria-heartbeats"
+heartbeat_table_name = "aria-heartbeats"
+kms_key_arn          = "arn:aws:kms:eu-west-2:123456789012:key/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
-# ── ECS ───────────────────────────────────────────────────────────────────────
-# Use an immutable tag (git SHA or semver) in prod — never "latest".
-app_image_uri  = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/aria-evaluator:v1.0.0"
-container_port = 3001
-cpu            = 512
-memory         = 1024
-desired_count  = 1
+god_mode_enabled    = true
+god_mode_secret_arn = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:aria/tenant-acme/god-mode-token-AbCdEf"
 
-s3_state_prefix          = "aria-evaluator"
-s3_sync_interval_seconds = 30
-log_retention_days       = 30
+alert_email                      = "platform-alerts@example.com"
+control_plane_role_arn           = "arn:aws:iam::123456789012:role/aria-control-plane"
+suspend_threshold_hours_override = 0
+connect_instance_id              = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+cloudfront_enabled               = true
+waf_enabled                      = true
+log_retention_days_override      = 0
 
-# ── Amazon Connect ────────────────────────────────────────────────────────────
-connect_instance_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-
-# ── CloudFront ────────────────────────────────────────────────────────────────
-cloudfront_price_class = "PriceClass_100"
-# For a custom domain, set the ACM cert ARN (must be in us-east-1).
-acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-cloudfront_aliases  = ["aria.example.com"]
-
-# ── Bedrock Lambda proxy ──────────────────────────────────────────────────────
-# Deploy independently from the evaluator — set bedrock_lambda_enabled = true
-# to create the Lambda + API Gateway. The evaluator and proxy share the same
-# Terraform state but can be targeted individually:
-#
-#   Deploy proxy only:
-#     terraform apply -var="bedrock_lambda_enabled=true" \
-#       -target=module.bedrock_lambda
-#
-#   Deploy evaluator only (skip proxy):
-#     terraform apply -var="bedrock_lambda_enabled=false"
-#
-# Or use the deploy script:
-#   ./infra/terraform/scripts/deploy.sh -e prod -c bedrock
-#   ./infra/terraform/scripts/deploy.sh -e prod -c evaluator
-bedrock_lambda_enabled     = false
-bedrock_model_id           = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-bedrock_region             = "eu-west-2"
-bedrock_system_prompt      = "You are a helpful AI assistant for customer service evaluation."
-bedrock_allowed_origins    = "https://aria.example.com"
-bedrock_lambda_memory_size = 512
-bedrock_lambda_timeout     = 120
-
-# ── App-specific environment variables ────────────────────────────────────────
-extra_environment_vars = [
-  { name = "CONNECT_INSTANCE_ID",           value = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
-  { name = "CONNECT_REGION",                value = "eu-west-2" },
-  { name = "CONNECT_CONTACT_FLOW_NAME",     value = "conversation bot flow" },
-  { name = "CONNECT_WEBRTC_FLOW_ID",        value = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
-  { name = "BEDROCK_REGION",                value = "eu-west-2" },
-  { name = "JUDGE_MODEL_ID",                value = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0" },
-  { name = "EVAL_CUSTOMER_ID",              value = "CUST-001" },
-  { name = "EVAL_CUSTOMER_NAME",            value = "James Wilson" },
-  { name = "EVAL_PROVIDER_DEFAULT",         value = "connect" },
-  { name = "POLLY_VOICE_ID",                value = "Amy" },
-  { name = "EVAL_RESPONSE_TIMEOUT_SECONDS", value = "120" },
-  { name = "VOICE_PRE_SEND_DELAY_MS",       value = "1200" },
-]
-
-# ── Extra tags ────────────────────────────────────────────────────────────────
 tags = {
-  CostCentre = "engineering"
-  Owner      = "platform-team"
+  Owner               = "platform-team"
+  CostCentre          = "engineering"
+  "aria:tenant_id"     = "tenant-acme"
+  "aria:pricing_tier"  = "enterprise_starter"
+  "aria:pricing_track" = "enterprise"
 }

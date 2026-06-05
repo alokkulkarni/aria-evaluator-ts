@@ -30,10 +30,10 @@ module "networking" {
 module "ecr" {
   source = "../../modules/ecr"
 
-  app_name    = var.app_name
-  environment = var.environment
-  scan_on_push = false  # dev: skip scanning to keep iteration fast
-  tags        = var.tags
+  app_name     = var.app_name
+  environment  = var.environment
+  scan_on_push = false # dev: skip scanning to keep iteration fast
+  tags         = var.tags
 }
 
 # ── S3 State Bucket ───────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ module "s3" {
   app_name      = var.app_name
   environment   = var.environment
   bucket_suffix = var.bucket_suffix
-  force_destroy = true  # dev: allow clean teardown
+  force_destroy = true # dev: allow clean teardown
   tags          = var.tags
 }
 
@@ -81,26 +81,26 @@ module "alb" {
 module "ecs" {
   source = "../../modules/ecs"
 
-  app_name                = var.app_name
-  environment             = var.environment
-  aws_region              = var.aws_region
-  app_image_uri           = var.app_image_uri
-  container_port          = var.container_port
-  cpu                     = var.cpu
-  memory                  = var.memory
-  desired_count           = var.desired_count
-  task_execution_role_arn = module.iam.task_execution_role_arn
-  task_role_arn           = module.iam.task_role_arn
-  public_subnet_ids       = module.networking.public_subnet_ids
+  app_name                      = var.app_name
+  environment                   = var.environment
+  aws_region                    = var.aws_region
+  app_image_uri                 = var.app_image_uri
+  container_port                = var.container_port
+  cpu                           = var.cpu
+  memory                        = var.memory
+  desired_count                 = var.desired_count
+  task_execution_role_arn       = module.iam.task_execution_role_arn
+  task_role_arn                 = module.iam.task_role_arn
+  public_subnet_ids             = module.networking.public_subnet_ids
   ecs_service_security_group_id = module.networking.ecs_service_security_group_id
-  target_group_arn        = module.alb.target_group_arn
-  alb_listener_arn        = module.alb.listener_arn
-  state_bucket_name       = module.s3.bucket_name
-  s3_state_prefix         = var.s3_state_prefix
-  s3_sync_interval_seconds = var.s3_sync_interval_seconds
-  log_retention_days      = var.log_retention_days
-  extra_environment_vars  = var.extra_environment_vars
-  tags                    = var.tags
+  target_group_arn              = module.alb.target_group_arn
+  alb_listener_arn              = module.alb.listener_arn
+  state_bucket_name             = module.s3.bucket_name
+  s3_state_prefix               = var.s3_state_prefix
+  s3_sync_interval_seconds      = var.s3_sync_interval_seconds
+  log_retention_days            = var.log_retention_days
+  extra_environment_vars        = var.extra_environment_vars
+  tags                          = var.tags
 }
 
 # ── Bedrock Lambda ────────────────────────────────────────────────────────────
