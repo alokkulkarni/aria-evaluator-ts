@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+    background:
+      radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 30%),
+      radial-gradient(circle at top right, rgba(15, 23, 42, 0.08), transparent 28%),
+      linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
+  }
+
+  body {
+    @apply min-h-screen text-slate-800 antialiased;
+    background:
+      radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 30%),
+      radial-gradient(circle at top right, rgba(15, 23, 42, 0.08), transparent 28%),
+      linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
+    background-attachment: fixed;
+  }
+
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    @apply w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10;
+  }
+}
+
+:root {
+  --brand: #0b1f4d;
+  --brand-light: #163a86;
+  --radius: 1rem;
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+}
+
+.btn {
+  @apply inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors;
+}
+
+.btn-primary {
+  @apply btn bg-[var(--brand)] text-white hover:bg-[var(--brand-light)];
+}
+
+.btn-secondary {
+  @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50;
+}
+
+.btn-danger {
+  @apply btn bg-red-600 text-white hover:bg-red-700;
+}
+
+.card {
+  @apply rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] backdrop-blur-sm transition-shadow hover:border-slate-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.09)];
+}
+
+.badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset;
+}
+
+.badge-pass,
+.badge-active {
+  @apply badge bg-emerald-50 text-emerald-700 ring-emerald-200/70;
+}
+
+.badge-fail,
+.badge-error {
+  @apply badge bg-rose-50 text-rose-700 ring-rose-200/70;
+}
+
+.badge-running,
+.badge-pending,
+.badge-suspended {
+  @apply badge bg-amber-50 text-amber-700 ring-amber-200/70;
+}
+
+.badge-info {
+  @apply badge bg-blue-50 text-blue-700 ring-blue-200/70;
+}
+
+.page-hero {
+  @apply rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)];
+}
+
+.page-hero-label {
+  @apply text-xs uppercase tracking-[0.28em] text-cyan-300/80;
+}
+
+.page-hero-title {
+  @apply text-3xl font-semibold tracking-tight text-white sm:text-4xl;
+}
+
+.page-hero-sub {
+  @apply text-sm leading-6 text-slate-200/80;
+}
+
+.page-hero-pill {
+  @apply rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10 text-xs text-slate-100/90;
+}
+
+.section-label {
+  @apply text-xs font-semibold uppercase tracking-[0.28em] text-blue-600;
+}
+
+.metric-card {
+  @apply rounded-2xl border border-slate-200 bg-white/80 p-3;
+}
+
+.metric-card-label {
+  @apply text-xs uppercase tracking-wide text-slate-500;
+}
+
+.metric-card-value {
+  @apply text-lg font-semibold text-slate-900;
+}
