@@ -18,6 +18,24 @@ variable "environment" {
   default     = "dev"
 }
 
+variable "tenant_id" {
+  description = "Identifier for this deployment. Dev uses a fixed standalone value."
+  type        = string
+  default     = "dev-standalone"
+}
+
+variable "pricing_tier" {
+  description = "Pricing tier tag for resource classification"
+  type        = string
+  default     = "individual"
+}
+
+variable "pricing_track" {
+  description = "Pricing track tag for resource classification"
+  type        = string
+  default     = "individual"
+}
+
 variable "bucket_suffix" {
   description = "Short unique suffix appended to the S3 bucket name to ensure global uniqueness (e.g. account ID last 6 digits)"
   type        = string

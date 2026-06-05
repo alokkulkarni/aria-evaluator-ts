@@ -1,5 +1,16 @@
 locals {
   name_prefix = "${var.app_name}-${var.environment}"
+  common_tags = merge(
+    var.tags,
+    {
+      ManagedBy   = "terraform"
+      Project     = "aria-evaluator"
+      Environment = var.environment
+      AppName     = var.app_name
+    },
+    var.tenant_id != "" ? { "aria:tenant_id" = var.tenant_id } : {},
+    var.pricing_tier != "" ? { "aria:pricing_tier" = var.pricing_tier } : {},
+  )
 
   # Parse CORS origins into a list for the HTTP API cors_configuration block.
   # The Lambda handler also receives the raw comma-separated string for its own
@@ -47,7 +58,10 @@ resource "aws_iam_role" "bedrock_lambda" {
   name               = "${local.name_prefix}-bedrock-lambda"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role[0].json
 
-  tags = var.tags
+  tags = merge(local.common_tags, {
+    Name                 = "${local.name_prefix}-bedrock-lambda"
+    "aria:resource_type" = "security"
+  })
 }
 
 # Basic execution (CloudWatch Logs)
@@ -97,7 +111,10 @@ resource "aws_cloudwatch_log_group" "bedrock_lambda" {
   name              = "/aws/lambda/${local.name_prefix}-bedrock-proxy"
   retention_in_days = var.log_retention_days
 
-  tags = var.tags
+  tags = merge(local.common_tags, {
+    Name                 = "/aws/lambda/${local.name_prefix}-bedrock-proxy"
+    "aria:resource_type" = "observability"
+  })
 }
 
 # ── Lambda function ───────────────────────────────────────────────────────────
@@ -137,7 +154,10 @@ resource "aws_lambda_function" "bedrock_proxy" {
     }
   }
 
-  tags = var.tags
+  tags = merge(local.common_tags, {
+    Name                 = "${local.name_prefix}-bedrock-proxy"
+    "aria:resource_type" = "serverless"
+  })
 }
 
 # ── HTTP API (API Gateway v2) ─────────────────────────────────────────────────
@@ -156,7 +176,10 @@ resource "aws_apigatewayv2_api" "bedrock_proxy" {
     max_age       = 300
   }
 
-  tags = var.tags
+  tags = merge(local.common_tags, {
+    Name                 = "${local.name_prefix}-bedrock-proxy"
+    "aria:resource_type" = "network"
+  })
 }
 
 # Lambda proxy integration — payload format 2.0 so the handler receives a clean
@@ -197,10 +220,11 @@ resource "aws_apigatewayv2_stage" "default" {
   name        = "$default"
   auto_deploy = true
 
-  tags = var.tags
+  tags = merge(local.common_tags, {
+    Name                 = "${local.name_prefix}-bedrock-proxy-default"
+    "aria:resource_type" = "network"
+  })
 }
-
-# ── Lambda permission — allow API Gateway to invoke the function ───────────────
 
 resource "aws_lambda_permission" "apigw_invoke" {
   count = var.enabled ? 1 : 0

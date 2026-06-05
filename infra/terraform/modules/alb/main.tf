@@ -24,7 +24,8 @@ resource "aws_s3_bucket" "alb_logs" {
   bucket = local.alb_logs_bucket
 
   tags = merge(local.common_tags, {
-    Name = local.alb_logs_bucket
+    Name                 = local.alb_logs_bucket
+    "aria:resource_type" = "storage"
   })
 
   lifecycle {

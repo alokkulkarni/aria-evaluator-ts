@@ -27,7 +27,8 @@ resource "aws_s3_bucket" "cf_logs" {
   bucket = local.log_bucket_name
 
   tags = merge(local.common_tags, {
-    Name = local.log_bucket_name
+    Name                 = local.log_bucket_name
+    "aria:resource_type" = "storage"
   })
 }
 

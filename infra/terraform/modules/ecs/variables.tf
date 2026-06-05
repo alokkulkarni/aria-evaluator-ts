@@ -200,6 +200,12 @@ variable "god_mode_secret_arn" {
   sensitive   = true
 }
 
+variable "saas_mode" {
+  description = "Whether SAAS_MODE is enabled in the container. Set false for standalone/dev deployments."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

@@ -37,6 +37,18 @@ variable "lifecycle_keep_tagged_count" {
   default     = 10
 }
 
+variable "tenant_id" {
+  description = "Tenant identifier for multi-tenant tagging. Leave empty for standalone deployments."
+  type        = string
+  default     = ""
+}
+
+variable "pricing_tier" {
+  description = "Pricing tier for tagging. Leave empty for standalone deployments."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

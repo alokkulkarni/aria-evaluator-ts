@@ -22,6 +22,8 @@ module "networking" {
   public_subnet_cidrs = var.public_subnet_cidrs
   availability_zones  = local.availability_zones
   container_port      = var.container_port
+  tenant_id           = var.tenant_id
+  pricing_tier        = var.pricing_tier
   tags                = var.tags
 }
 
@@ -45,6 +47,8 @@ module "s3" {
   environment   = var.environment
   bucket_suffix = var.bucket_suffix
   force_destroy = true # dev: allow clean teardown
+  tenant_id     = var.tenant_id
+  pricing_tier  = var.pricing_tier
   tags          = var.tags
 }
 
@@ -59,6 +63,8 @@ module "iam" {
   aws_region          = var.aws_region
   aws_account_id      = local.aws_account_id
   connect_instance_id = var.connect_instance_id
+  tenant_id           = var.tenant_id
+  pricing_tier        = var.pricing_tier
   tags                = var.tags
 }
 
@@ -73,7 +79,13 @@ module "alb" {
   public_subnet_ids     = module.networking.public_subnet_ids
   alb_security_group_id = module.networking.alb_security_group_id
   container_port        = var.container_port
-  tags                  = var.tags
+  log_bucket_suffix     = var.bucket_suffix
+  # No HTTPS cert or CloudFront origin protection in dev
+  acm_certificate_arn      = ""
+  cloudfront_origin_secret = ""
+  tenant_id                = var.tenant_id
+  pricing_tier             = var.pricing_tier
+  tags                     = var.tags
 }
 
 # ── ECS ───────────────────────────────────────────────────────────────────────
@@ -100,6 +112,9 @@ module "ecs" {
   s3_sync_interval_seconds      = var.s3_sync_interval_seconds
   log_retention_days            = var.log_retention_days
   extra_environment_vars        = var.extra_environment_vars
+  saas_mode                     = false # dev is always standalone
+  tenant_id                     = var.tenant_id
+  pricing_tier                  = var.pricing_tier
   tags                          = var.tags
 }
 
@@ -121,7 +136,9 @@ module "bedrock_lambda" {
   lambda_timeout     = var.bedrock_lambda_timeout
   log_retention_days = var.log_retention_days
 
-  tags = var.tags
+  tenant_id    = var.tenant_id
+  pricing_tier = var.pricing_tier
+  tags         = var.tags
 }
 
 # ── CloudFront ────────────────────────────────────────────────────────────────
@@ -135,5 +152,10 @@ module "cloudfront" {
   price_class         = var.cloudfront_price_class
   acm_certificate_arn = var.acm_certificate_arn
   aliases             = var.cloudfront_aliases
-  tags                = var.tags
+  # No WAF or CloudFront origin protection in dev
+  waf_web_acl_arn          = ""
+  cloudfront_origin_secret = ""
+  tenant_id                = var.tenant_id
+  pricing_tier             = var.pricing_tier
+  tags                     = var.tags
 }

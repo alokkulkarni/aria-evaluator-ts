@@ -30,7 +30,7 @@ locals {
       { name = "SCENARIOS_DIR", value = "/app/state/scenarios" },
       { name = "TENANT_ID", value = var.tenant_id },
       { name = "PRICING_TIER", value = var.pricing_tier },
-      { name = "SAAS_MODE", value = "true" },
+      { name = "SAAS_MODE", value = tostring(var.saas_mode) },
       { name = "HEARTBEAT_INTERVAL_SECONDS", value = "600" },
     ],
     var.heartbeat_table_name != "" ? [{ name = "HEARTBEAT_TABLE", value = var.heartbeat_table_name }] : [],

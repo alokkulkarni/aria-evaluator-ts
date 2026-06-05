@@ -1,11 +1,15 @@
 locals {
   common_tags = merge(
-    {
-      AppName     = var.app_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    },
     var.tags,
+    {
+      ManagedBy            = "terraform"
+      Project              = "aria-evaluator"
+      Environment          = var.environment
+      AppName              = var.app_name
+      "aria:resource_type" = "storage"
+    },
+    var.tenant_id != "" ? { "aria:tenant_id" = var.tenant_id } : {},
+    var.pricing_tier != "" ? { "aria:pricing_tier" = var.pricing_tier } : {},
   )
 }
 
@@ -17,7 +21,9 @@ resource "aws_ecr_repository" "main" {
     scan_on_push = var.scan_on_push
   }
 
-  tags = local.common_tags
+  tags = merge(local.common_tags, {
+    Name = var.app_name
+  })
 }
 
 resource "aws_ecr_lifecycle_policy" "main" {

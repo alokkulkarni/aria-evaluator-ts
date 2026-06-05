@@ -10,6 +10,8 @@ locals {
       AppName              = var.app_name
       "aria:resource_type" = "storage"
     },
+    var.tenant_id != "" ? { "aria:tenant_id" = var.tenant_id } : {},
+    var.pricing_tier != "" ? { "aria:pricing_tier" = var.pricing_tier } : {},
   )
 }
 
@@ -17,7 +19,9 @@ resource "aws_s3_bucket" "state" {
   bucket        = local.bucket_name
   force_destroy = var.force_destroy
 
-  tags = local.common_tags
+  tags = merge(local.common_tags, {
+    Name = local.bucket_name
+  })
 
   lifecycle {
     prevent_destroy = true

@@ -100,6 +100,18 @@ variable "allowed_origins" {
   default     = "*"
 }
 
+variable "tenant_id" {
+  description = "Tenant identifier for multi-tenant tagging. Leave empty for standalone deployments."
+  type        = string
+  default     = ""
+}
+
+variable "pricing_tier" {
+  description = "Pricing tier for tagging. Leave empty for standalone deployments."
+  type        = string
+  default     = ""
+}
+
 # ── Tags ──────────────────────────────────────────────────────────────────────
 
 variable "tags" {

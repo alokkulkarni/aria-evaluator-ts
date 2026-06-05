@@ -96,7 +96,10 @@ resource "aws_kms_key" "secrets" {
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "aria-evaluator-tf-state-${var.bucket_suffix}"
 
-  tags = local.common_tags
+  tags = merge(local.common_tags, {
+    Name                 = "aria-evaluator-tf-state-${var.bucket_suffix}"
+    "aria:resource_type" = "storage"
+  })
 
   lifecycle {
     prevent_destroy = true
@@ -163,7 +166,7 @@ resource "aws_dynamodb_table" "terraform_locks" {
 
   tags = merge(local.common_tags, {
     Name                 = "aria-evaluator-tf-locks"
-    "aria:resource_type" = "storage"
+    "aria:resource_type" = "database"
   })
 
   lifecycle {
@@ -239,7 +242,7 @@ resource "aws_dynamodb_table" "heartbeats" {
 
   tags = merge(local.common_tags, {
     Name                 = "aria-heartbeats"
-    "aria:resource_type" = "storage"
+    "aria:resource_type" = "database"
   })
 
   lifecycle {
