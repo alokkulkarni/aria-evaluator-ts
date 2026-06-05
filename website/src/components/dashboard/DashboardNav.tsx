@@ -16,14 +16,14 @@ const links = [
 ]
 
 interface DashboardNavProps {
-  user: {
+  user?: {
     name?: string | null
     email?: string | null
     image?: string | null
   }
 }
 
-export function DashboardNav({ user }: DashboardNavProps) {
+export function DashboardNav({ user = {} }: DashboardNavProps) {
   const pathname = usePathname()
   const initials = (user.name ?? user.email ?? 'A')
     .split(' ')
