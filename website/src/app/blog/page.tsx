@@ -92,7 +92,7 @@ export default function BlogPage() {
       </section>
 
       {/* ── Resources ── */}
-      <section>
+      <section id="standards">
         <div className="mb-6">
           <p className="section-label mb-1 text-slate-500">External resources</p>
           <h2 className="text-2xl font-bold text-slate-900">Industry standards &amp; references</h2>
