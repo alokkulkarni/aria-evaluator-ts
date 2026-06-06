@@ -1,18 +1,28 @@
 'use client'
 
-import { CreditCard, LayoutDashboard, LogOut, Server, Settings, Users } from 'lucide-react'
+import { CreditCard, LayoutDashboard, type LucideIcon, LogOut, Server, Settings, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
+import { useEffect, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import { AriaLogo } from '@/components/shared/AriaLogo'
 
-const links = [
-  { label: 'Overview', href: '/dashboard', match: '/dashboard', icon: LayoutDashboard },
+interface DashboardLink {
+  label: string
+  href: string
+  icon: LucideIcon
+  match?: string
+  matchMode?: 'exact' | 'prefix'
+  requiresEmptyHash?: boolean
+}
+
+const links: DashboardLink[] = [
+  { label: 'Overview', href: '/dashboard', match: '/dashboard', matchMode: 'exact', requiresEmptyHash: true, icon: LayoutDashboard },
   { label: 'My Instance', href: '/dashboard#instance', icon: Server },
   { label: 'Users', href: '/dashboard#team', icon: Users },
-  { label: 'Billing', href: '/dashboard/billing', match: '/dashboard/billing', icon: CreditCard },
+  { label: 'Billing', href: '/dashboard/billing', match: '/dashboard/billing', matchMode: 'prefix', icon: CreditCard },
   { label: 'Settings', href: '/dashboard#settings', icon: Settings },
 ]
 
@@ -26,6 +36,7 @@ interface DashboardNavProps {
 
 export function DashboardNav({ user = {} }: DashboardNavProps) {
   const pathname = usePathname()
+  const [hash, setHash] = useState('')
   const initials = (user.name ?? user.email ?? 'A')
     .split(' ')
     .map((value) => value[0])
@@ -33,15 +44,51 @@ export function DashboardNav({ user = {} }: DashboardNavProps) {
     .slice(0, 2)
     .toUpperCase()
 
+  useEffect(() => {
+    const syncHash = () => setHash(window.location.hash)
+    syncHash()
+    window.addEventListener('hashchange', syncHash)
+    return () => window.removeEventListener('hashchange', syncHash)
+  }, [pathname])
+
+  const isActiveLink = (
+    href: string,
+    match?: string,
+    matchMode: 'exact' | 'prefix' = 'exact',
+    requiresEmptyHash = false,
+  ) => {
+    if (match) {
+      const pathMatches = matchMode === 'prefix' ? pathname.startsWith(match) : pathname === match
+      if (!pathMatches) return false
+      return !requiresEmptyHash || hash === ''
+    }
+    if (!href.includes('#')) return pathname === href
+
+    const [targetPath, targetHash] = href.split('#')
+    return pathname === targetPath && hash === `#${targetHash}`
+  }
+
+  const getLinkHash = (href: string) => {
+    const [, targetHash] = href.split('#')
+    return targetHash ? `#${targetHash}` : ''
+  }
+
+  const handleLinkClick = (href: string) => () => {
+    if (href === '/dashboard' || href.startsWith('/dashboard#')) {
+      setHash(getLinkHash(href))
+    }
+  }
+
   return (
     <>
       <nav className="card mb-4 flex gap-2 overflow-x-auto p-3 lg:hidden">
-        {links.map(({ label, href, match, icon: Icon }) => {
-          const active = match ? pathname.startsWith(match) : false
+        {links.map(({ label, href, match, matchMode, requiresEmptyHash, icon: Icon }) => {
+          const active = isActiveLink(href, match, matchMode, requiresEmptyHash)
           return (
             <Link
               key={label}
               href={href}
+              onClick={handleLinkClick(href)}
               className={cn(
                 'inline-flex min-w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900',
                 active && 'bg-slate-950 text-white hover:bg-slate-950 hover:text-white',
@@ -66,12 +113,13 @@ export function DashboardNav({ user = {} }: DashboardNavProps) {
             </div>
 
             <nav className="space-y-2">
-              {links.map(({ label, href, match, icon: Icon }) => {
-                const active = match ? pathname.startsWith(match) : false
+              {links.map(({ label, href, match, matchMode, requiresEmptyHash, icon: Icon }) => {
+                const active = isActiveLink(href, match, matchMode, requiresEmptyHash)
                 return (
                   <Link
                     key={label}
                     href={href}
+                    onClick={handleLinkClick(href)}
                     className={cn(
                       'flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900',
                       active && 'bg-slate-950 text-white hover:bg-slate-950 hover:text-white',
