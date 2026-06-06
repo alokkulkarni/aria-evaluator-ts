@@ -70,6 +70,7 @@ export function ScenariosPage() {
   const [revisionsError, setRevisionsError] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedSubCategories, setCollapsedSubCategories] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
   const esRef = useRef<EventSource | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -100,9 +101,20 @@ export function ScenariosPage() {
     };
   }, []);
 
-  const filtered = scenarios.filter(
-    (s) => channelFilter === 'all' || s.channel === channelFilter || s.channel === 'both',
-  );
+  const filtered = scenarios.filter((s) => {
+    const matchesChannel = channelFilter === 'all' || s.channel === channelFilter || s.channel === 'both';
+    if (!matchesChannel) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      (s.description ?? '').toLowerCase().includes(q) ||
+      (s.attack_type ?? '').toLowerCase().includes(q) ||
+      (s.goal ?? '').toLowerCase().includes(q) ||
+      (s.filePath ?? '').toLowerCase().includes(q) ||
+      (s.scenario_id ?? '').toLowerCase().includes(q)
+    );
+  });
 
   function cleanup() {
     if (esRef.current) { esRef.current.close(); esRef.current = null; }
@@ -332,10 +344,23 @@ export function ScenariosPage() {
     )}
     <div className="space-y-6">
       <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Scenario library</p>
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Scenarios</h2>
-          <p className="text-sm leading-6 text-slate-200/80">{filtered.length} scenario(s) available</p>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Scenario library</p>
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Scenarios</h2>
+            <p className="text-sm leading-6 text-slate-200/80">
+              {filtered.length === scenarios.length
+                ? `${scenarios.length} scenario(s) available`
+                : `${filtered.length} of ${scenarios.length} scenario(s)`}
+            </p>
+          </div>
+          <input
+            type="text"
+            placeholder="Search scenarios…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white placeholder-slate-400 backdrop-blur focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 w-48"
+          />
         </div>
       </section>
 
@@ -386,7 +411,9 @@ export function ScenariosPage() {
           {loading ? (
             <div className="text-slate-400 text-sm">Loading scenarios…</div>
           ) : filtered.length === 0 ? (
-            <div className="text-slate-400 text-sm">No scenarios found.</div>
+            <div className="text-slate-400 text-sm">
+              {scenarios.length === 0 ? 'No scenarios found.' : 'No scenarios match your filters.'}
+            </div>
           ) : (() => {
             // Build two-level grouping: category → subCategory → scenarios
             const grouped = new Map<string, Map<string, Scenario[]>>();

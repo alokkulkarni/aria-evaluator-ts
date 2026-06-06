@@ -29,6 +29,8 @@ export function ReportsPage() {
   const [reports, setReports] = useState<ReportFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
     apiFetch('/api/reports')
@@ -40,25 +42,69 @@ export function ReportsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const filtered = reports.filter((r) => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      !q ||
+      r.filename.toLowerCase().includes(q) ||
+      (r.runScenarioName ?? '').toLowerCase().includes(q) ||
+      (r.runId ?? '').toLowerCase().includes(q);
+    const matchesStatus = statusFilter === 'all' || r.runStatus === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const statuses = Array.from(new Set(reports.map((r) => r.runStatus).filter(Boolean))) as string[];
+
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Shared outputs</p>
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reports</h2>
-          <p className="text-sm leading-6 text-slate-200/80">{reports.length} evaluation report(s)</p>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Shared outputs</p>
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reports</h2>
+            <p className="text-sm leading-6 text-slate-200/80">
+              {filtered.length === reports.length
+                ? `${reports.length} evaluation report(s)`
+                : `${filtered.length} of ${reports.length} report(s)`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search reports…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white placeholder-slate-400 backdrop-blur focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 w-48"
+            />
+            {statuses.length > 0 && (
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-sm text-white backdrop-blur focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 appearance-none cursor-pointer"
+              >
+                <option value="all" className="text-slate-900">All statuses</option>
+                {statuses.map((s) => (
+                  <option key={s} value={s} className="text-slate-900">{s}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
       </section>
 
       <div className="grid md:grid-cols-4 gap-4">
         {/* ── Report List ── */}
-        <div className="md:col-span-1 space-y-2">
+        <div className="md:col-span-1 space-y-2 max-h-[70vh] overflow-y-auto">
           {loading ? (
             <div className="text-slate-400 text-sm">Loading…</div>
-          ) : reports.length === 0 ? (
-            <div className="card text-slate-400 text-sm">No reports yet. Run an evaluation to generate one.</div>
+          ) : filtered.length === 0 ? (
+            <div className="card text-slate-400 text-sm">
+              {reports.length === 0
+                ? 'No reports yet. Run an evaluation to generate one.'
+                : 'No reports match your filters.'}
+            </div>
           ) : (
-            reports.map((r) => {
+            filtered.map((r) => {
               const url = `/reports/${r.filename}`;
               return (
                 <div key={r.filename}
