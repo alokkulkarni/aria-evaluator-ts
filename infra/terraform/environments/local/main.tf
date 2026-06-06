@@ -30,4 +30,11 @@ module "docker_local" {
   # ── Scenarios / DB bind-mounts ───────────────────────────────────────────────
   local_scenarios_dir = var.local_scenarios_dir
   local_db_path       = var.local_db_path
+
+  # ── Control plane SSO ────────────────────────────────────────────────────────
+  # Point at the local control-plane container. Use host.docker.internal so the
+  # evaluator container can reach the control-plane container on the host network.
+  # Override in terraform.tfvars if using a different host port.
+  control_plane_internal_url    = var.control_plane_internal_url
+  control_plane_internal_secret = var.control_plane_internal_secret
 }

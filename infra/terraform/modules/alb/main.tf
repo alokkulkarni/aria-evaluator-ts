@@ -111,16 +111,38 @@ data "aws_iam_policy_document" "alb_logs" {
     actions   = ["s3:GetBucketAcl"]
     resources = [aws_s3_bucket.alb_logs.arn]
   }
+
+  # Deny all non-HTTPS requests — enforces TLS for all S3 API calls
+  statement {
+    sid    = "DenyHTTP"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.alb_logs.arn, "${aws_s3_bucket.alb_logs.arn}/*"]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "alb_logs" {
   bucket = aws_s3_bucket.alb_logs.id
   policy = data.aws_iam_policy_document.alb_logs.json
+
+  depends_on = [aws_s3_bucket_public_access_block.alb_logs]
 }
 
 resource "aws_lb" "main" {
   name               = "${local.short_name}-alb"
-  internal           = false
+  internal           = var.internal
   load_balancer_type = "application"
   security_groups    = [var.alb_security_group_id]
   subnets            = var.public_subnet_ids

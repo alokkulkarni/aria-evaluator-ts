@@ -496,6 +496,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
+  if (auth.requirePasswordChange) {
+    res.status(428).json({
+      error: 'Password change required',
+      requirePasswordChange: true,
+    });
+    return;
+  }
   next();
 }
 
@@ -758,4 +765,139 @@ authRouter.get('/session', (req, res) => {
       role: auth.role,
     },
   });
+});
+
+// ── SSO helpers ────────────────────────────────────────────────────────────────
+
+const SSO_PASSWORD_PLACEHOLDER = 'sso:no-password';
+
+function isValidReturnPath(value: string | null | undefined): boolean {
+  if (!value) return false;
+  // Must be a relative path: starts with / but NOT // (open-redirect guard)
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//');
+}
+
+async function upsertSsoUser(params: {
+  ssoSubject: string;
+  email: string;
+  name: string | null;
+  role: string;
+}): Promise<{ userId: string; isNewUser: boolean }> {
+  const { ssoSubject, email, name, role } = params;
+  // Use the control-plane userId directly as username — guaranteed unique,
+  // no slug collision risk, and SSO users never log in via username/password.
+  const safeUsername = `sso_${ssoSubject}`;
+  const mappedRole = role === 'owner' || role === 'admin' ? 'admin' : 'member';
+
+  const existing = await prisma.user.findFirst({
+    where: { OR: [{ ssoSubject }, { email }] },
+    select: { id: true, role: true, email: true, ssoSubject: true },
+  });
+
+  if (existing) {
+    // Refresh mutable fields in case they changed on the control plane
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        email,
+        ssoSubject,
+        role: mappedRole,
+        lastLoginAt: new Date(),
+      },
+    });
+    return { userId: existing.id, isNewUser: false };
+  }
+
+  const created = await prisma.user.create({
+    data: {
+      username: safeUsername,
+      email,
+      ssoSubject,
+      passwordHash: SSO_PASSWORD_PLACEHOLDER,
+      role: mappedRole,
+      lastLoginAt: new Date(),
+    },
+    select: { id: true },
+  });
+  return { userId: created.id, isNewUser: true };
+}
+
+export const ssoRouter = Router();
+
+interface ControlPlaneUserPayload {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  tenantId: string | null;
+}
+
+ssoRouter.get('/', async (req, res) => {
+  const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  const returnParam = typeof req.query.return === 'string' ? req.query.return : null;
+  const returnTo = isValidReturnPath(returnParam) ? returnParam! : '/';
+
+  if (!token) {
+    res.redirect(`/sign-in?error=invalid_sso`);
+    return;
+  }
+
+  const controlPlaneUrl = (process.env['CONTROL_PLANE_INTERNAL_URL'] ?? '').replace(/\/$/, '');
+  if (!controlPlaneUrl) {
+    console.error('[SSO] CONTROL_PLANE_INTERNAL_URL is not set — SSO login unavailable');
+    res.redirect('/sign-in?error=sso_unavailable');
+    return;
+  }
+
+  const internalSecret = process.env['CONTROL_PLANE_INTERNAL_SECRET']?.trim() ?? '';
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (internalSecret) headers['Authorization'] = `Bearer ${internalSecret}`;
+
+  let cpUser: ControlPlaneUserPayload | null = null;
+  try {
+    const cpRes = await fetch(`${controlPlaneUrl}/auth/verify-sso-token`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ token }),
+    });
+    if (!cpRes.ok) {
+      res.redirect('/sign-in?error=invalid_sso');
+      return;
+    }
+    const payload = await cpRes.json() as { ok: boolean; user: ControlPlaneUserPayload };
+    cpUser = payload.user;
+  } catch (err) {
+    console.error('[SSO] Control plane verify failed:', err);
+    res.redirect('/sign-in?error=sso_unavailable');
+    return;
+  }
+
+  if (!cpUser?.email) {
+    res.redirect('/sign-in?error=invalid_sso');
+    return;
+  }
+
+  try {
+    const { userId, isNewUser } = await upsertSsoUser({
+      ssoSubject: cpUser.id,
+      email: cpUser.email,
+      name: cpUser.name,
+      role: cpUser.role,
+    });
+
+    const session = await createSessionForUser(userId);
+    setSessionCookie(res, session.token, session.expiresAt);
+
+    await recordAuditEventSafe(req, 'auth.sso_login', userId, {
+      ssoSubject: cpUser.id,
+      email: cpUser.email,
+      role: cpUser.role,
+      newUser: isNewUser,
+    });
+
+    res.redirect(returnTo);
+  } catch (err) {
+    console.error('[SSO] Session creation failed:', err);
+    res.redirect('/sign-in?error=sso_error');
+  }
 });

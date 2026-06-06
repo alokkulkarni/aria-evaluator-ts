@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# Dedicated control-plane image. Shares the repo build but only starts the
+# control-plane server at runtime.
+FROM node:20-bookworm-slim AS build
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY prisma ./prisma
+
+RUN --mount=type=cache,id=aria-npm,target=/root/.npm \
+    --mount=type=cache,id=aria-prisma,target=/root/.cache/prisma \
+    npm ci --prefer-offline && npx prisma generate
+
+COPY . .
+RUN npm run build
+
+FROM --platform=linux/amd64 node:20-bookworm-slim AS runtime
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=build /app /app
+
+EXPOSE 3002
+CMD ["node", "dist/control-plane/server.js"]

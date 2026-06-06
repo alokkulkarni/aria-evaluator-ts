@@ -76,10 +76,6 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
     setError(null);
 
     if (passwordChangeRequired) {
-      if (!username.trim()) {
-        setError('Username is required.');
-        return;
-      }
       if (!password) {
         setError('Current password is required.');
         return;
@@ -214,6 +210,7 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
+                  disabled={passwordChangeRequired}
                 />
               </label>
 

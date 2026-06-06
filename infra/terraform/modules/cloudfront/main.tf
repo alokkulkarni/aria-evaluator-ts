@@ -149,11 +149,33 @@ data "aws_iam_policy_document" "cf_logs" {
     actions   = ["s3:GetBucketAcl"]
     resources = [aws_s3_bucket.cf_logs.arn]
   }
+
+  # Deny all non-HTTPS requests — enforces TLS for all S3 API calls
+  statement {
+    sid    = "DenyHTTP"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.cf_logs.arn, "${aws_s3_bucket.cf_logs.arn}/*"]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "cf_logs" {
   bucket = aws_s3_bucket.cf_logs.id
   policy = data.aws_iam_policy_document.cf_logs.json
+
+  depends_on = [aws_s3_bucket_public_access_block.cf_logs]
 }
 
 resource "aws_cloudfront_cache_policy" "static" {

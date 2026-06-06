@@ -204,6 +204,8 @@ module "ecs" {
   heartbeat_table_name               = var.heartbeat_table_name
   god_mode_enabled                   = var.god_mode_enabled
   god_mode_secret_arn                = var.god_mode_secret_arn
+  control_plane_internal_url         = var.control_plane_internal_url
+  control_plane_internal_secret      = var.control_plane_internal_secret
   tags = merge(local.common_tags, {
     "aria:resource_type" = "compute"
   })

@@ -13,7 +13,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { initDb } from '../db/client.js';
 import { startRunJobWorker } from '../jobs/run-jobs.js';
 import { appPaths, ensureManagedStateDirs, getStateLayoutWarnings } from '../runtime/paths.js';
-import { attachAuthContext, authRouter, requireAuth, ensureDefaultAdminAccount } from './auth.js';
+import { attachAuthContext, authRouter, ssoRouter, requireAuth, ensureDefaultAdminAccount } from './auth.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { runsRouter } from './routes/runs.js';
 import { reviewsRouter } from './routes/reviews.js';
@@ -112,6 +112,10 @@ app.use(cors({
 app.use(express.json({ limit: '2mb' }));
 
 // ── API routes ─────────────────────────────────────────────────────────────────
+// SSO ingestion route — must be mounted BEFORE attachAuthContext so the
+// unauthenticated redirect from the website hits here first.
+// Path matches what control-plane emits: {instanceUrl}/auth/sso?token=...
+app.use('/auth/sso', ssoRouter);
 app.use('/api', attachAuthContext);
 app.use('/api/auth', authRouter);
 app.use('/api', enforceTrustedOrigin);

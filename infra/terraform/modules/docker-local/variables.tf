@@ -121,3 +121,16 @@ variable "local_db_path" {
   type        = string
   default     = ""
 }
+
+variable "control_plane_internal_url" {
+  description = "Internal URL of the control plane, injected as CONTROL_PLANE_INTERNAL_URL for SSO token exchange"
+  type        = string
+  default     = ""
+}
+
+variable "control_plane_internal_secret" {
+  description = "Shared secret between evaluator and control plane for SSO verification (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

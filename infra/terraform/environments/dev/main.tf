@@ -125,6 +125,8 @@ module "ecs" {
   saas_mode                     = false # dev is always standalone
   tenant_id                     = var.tenant_id
   pricing_tier                  = var.pricing_tier
+  control_plane_internal_url    = var.control_plane_internal_url
+  control_plane_internal_secret = var.control_plane_internal_secret
   tags                          = local.common_tags
 }
 

@@ -427,7 +427,7 @@ resource "aws_cloudwatch_event_rule" "securityhub_critical" {
         Severity = {
           Label = ["CRITICAL", "HIGH"]
         }
-        RecordState = ["ACTIVE"]
+        RecordState   = ["ACTIVE"]
         WorkflowState = ["NEW", "NOTIFIED"]
       }
     }

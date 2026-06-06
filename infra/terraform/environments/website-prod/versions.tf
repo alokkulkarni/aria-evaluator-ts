@@ -13,7 +13,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "aria-tfstate-ACCOUNT_ID"  # Replace with real bucket name
+    bucket         = "aria-tfstate-ACCOUNT_ID" # Replace with real bucket name
     key            = "website/prod/terraform.tfstate"
     region         = "eu-west-2"
     encrypt        = true

@@ -26,5 +26,7 @@ module "tenant" {
   cloudfront_enabled               = var.cloudfront_enabled
   waf_enabled                      = var.waf_enabled
   log_retention_days_override      = var.log_retention_days_override
+  control_plane_internal_url       = var.control_plane_internal_url
+  control_plane_internal_secret    = var.control_plane_internal_secret
   tags                             = var.tags
 }

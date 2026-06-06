@@ -19,18 +19,20 @@ locals {
   # ── Environment list in "KEY=VALUE" format for docker_container.env ───────
   # Build from the typed list — NextAuth, OAuth secrets and optional extras.
   base_env = [
-    { name = "NODE_ENV",                        value = "production" },
+    { name = "NODE_ENV", value = "production" },
+    { name = "ARIA_DEPLOY_ENV",                 value = var.environment },
     { name = "PORT",                            value = tostring(var.container_port) },
-    { name = "HOSTNAME",                        value = "0.0.0.0" },
-    { name = "NEXTAUTH_URL",                    value = var.nextauth_url },
-    { name = "NEXT_PUBLIC_APP_URL",             value = var.nextauth_url },
-    { name = "NEXT_PUBLIC_APP_NAME",            value = "ARIA Evaluator" },
-    { name = "NEXT_PUBLIC_CONTROL_PLANE_URL",   value = var.control_plane_url },
-    { name = "NEXTAUTH_SECRET",                 value = var.nextauth_secret },
-    { name = "GOOGLE_CLIENT_ID",                value = var.google_client_id },
-    { name = "GOOGLE_CLIENT_SECRET",            value = var.google_client_secret },
-    { name = "GITHUB_CLIENT_ID",                value = var.github_client_id },
-    { name = "GITHUB_CLIENT_SECRET",            value = var.github_client_secret },
+    { name = "HOSTNAME", value = "0.0.0.0" },
+    { name = "NEXTAUTH_URL", value = var.nextauth_url },
+    { name = "NEXT_PUBLIC_APP_URL", value = var.nextauth_url },
+    { name = "NEXT_PUBLIC_APP_NAME", value = "ARIA Evaluator" },
+    { name = "NEXT_PUBLIC_CONTROL_PLANE_URL", value = "/api/control-plane" },
+    { name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_url },
+    { name = "NEXTAUTH_SECRET", value = var.nextauth_secret },
+    { name = "GOOGLE_CLIENT_ID", value = var.google_client_id },
+    { name = "GOOGLE_CLIENT_SECRET", value = var.google_client_secret },
+    { name = "GITHUB_CLIENT_ID", value = var.github_client_id },
+    { name = "GITHUB_CLIENT_SECRET", value = var.github_client_secret },
   ]
 
   all_env  = concat(local.base_env, var.extra_environment_vars)

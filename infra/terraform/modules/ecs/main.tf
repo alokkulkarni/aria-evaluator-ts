@@ -35,6 +35,8 @@ locals {
     ],
     var.heartbeat_table_name != "" ? [{ name = "HEARTBEAT_TABLE", value = var.heartbeat_table_name }] : [],
     var.god_mode_enabled ? [{ name = "ARIA_GOD_MODE", value = "true" }] : [],
+    var.control_plane_internal_url != "" ? [{ name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_internal_url }] : [],
+    var.control_plane_internal_secret != "" ? [{ name = "CONTROL_PLANE_INTERNAL_SECRET", value = var.control_plane_internal_secret }] : [],
   )
 
   all_environment = concat(local.base_environment, var.extra_environment_vars)

@@ -9,11 +9,13 @@
   "scripts": {
     "dev": "concurrently \"npm run api:dev\" \"wait-on http://localhost:3001/health && npm run ui:dev\"",
     "api:dev": "tsx watch src/api/server.ts",
+    "control-plane:dev": "tsx watch src/control-plane/server.ts",
     "ui:dev": "vite",
     "build": "npm run build:api && npm run build:ui",
     "build:api": "tsc -p tsconfig.json",
     "build:ui": "vite build",
     "start": "node dist/api/server.js",
+    "control-plane:start": "node dist/control-plane/server.js",
     "cli": "tsx src/cli/run-connect.ts",
     "cli:connect": "tsx src/cli/run-connect.ts",
     "cli:lex": "tsx src/cli/run-lex.ts",

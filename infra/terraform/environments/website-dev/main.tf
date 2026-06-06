@@ -49,16 +49,16 @@ module "website" {
   github_client_secret = var.github_client_secret
 
   # Domain — leave empty in dev, use CloudFront default domain
-  domain_name                    = ""
-  route53_zone_id                = ""
-  acm_certificate_arn_us_east_1  = ""
-  acm_certificate_arn_regional   = ""
+  domain_name                   = ""
+  route53_zone_id               = ""
+  acm_certificate_arn_us_east_1 = ""
+  acm_certificate_arn_regional  = ""
 
   # CloudFront
   price_class = "PriceClass_100"
 
-  # Control plane (stub)
-  control_plane_url = ""
+  # Control plane API URL (same-origin proxy on the website forwards here)
+  control_plane_url = var.control_plane_url
 
   # Logging
   log_retention_days = 14

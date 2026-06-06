@@ -5,8 +5,8 @@ locals {
   name_prefix = "${var.app_name}-website-${var.environment}"
 
   # ALB logs bucket — keep short to avoid S3 name limits
-  short_hash       = substr(md5(local.name_prefix), 0, 6)
-  alb_logs_bucket  = lower("aria-web-${var.environment}-alb-${local.short_hash}")
+  short_hash      = substr(md5(local.name_prefix), 0, 6)
+  alb_logs_bucket = lower("aria-web-${var.environment}-alb-${local.short_hash}")
 
   # Effective ALB logs suffix — use provided or fallback to hash
   effective_log_suffix = var.log_bucket_suffix != "" ? var.log_bucket_suffix : local.short_hash
@@ -23,13 +23,13 @@ locals {
   common_tags = merge(
     var.tags,
     {
-      ManagedBy              = "terraform"
-      Project                = "aria-evaluator"
-      Environment            = var.environment
-      AppName                = var.app_name
-      Component              = "main-website"
-      "aria:resource_type"   = "website"
-      "aria:component"       = "main-website"
+      ManagedBy            = "terraform"
+      Project              = "aria-evaluator"
+      Environment          = var.environment
+      AppName              = var.app_name
+      Component            = "main-website"
+      "aria:resource_type" = "website"
+      "aria:component"     = "main-website"
     }
   )
 }
@@ -453,7 +453,7 @@ resource "aws_cloudwatch_log_group" "app" {
 # ── ECR ────────────────────────────────────────────────────────────────────────
 
 resource "aws_ecr_repository" "app" {
-  name                 = "${local.name_prefix}"
+  name                 = local.name_prefix
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration { scan_on_push = true }
@@ -533,11 +533,13 @@ resource "aws_ecs_task_definition" "app" {
       ]
       environment = [
         { name = "NODE_ENV", value = "production" },
-        { name = "PORT", value = tostring(var.container_port) },
+        { name = "ARIA_DEPLOY_ENV",                 value = var.environment },
+        { name = "PORT",                            value = tostring(var.container_port) },
         { name = "HOSTNAME", value = "0.0.0.0" },
         { name = "NEXTAUTH_URL", value = local.app_url },
         { name = "NEXT_PUBLIC_APP_URL", value = local.app_url },
-        { name = "NEXT_PUBLIC_CONTROL_PLANE_URL", value = var.control_plane_url },
+        { name = "NEXT_PUBLIC_CONTROL_PLANE_URL", value = "/api/control-plane" },
+        { name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_url },
         { name = "NEXT_PUBLIC_APP_NAME", value = "ARIA Evaluator" },
       ]
       secrets = [
@@ -1014,11 +1016,11 @@ resource "aws_cloudwatch_dashboard" "main" {
   dashboard_body = jsonencode({
     widgets = [
       {
-        type       = "metric"
-        x          = 0
-        y          = 0
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
         properties = {
           title  = "ALB Request Count & 5XX Errors"
           region = var.aws_region
@@ -1029,11 +1031,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
       {
-        type       = "metric"
-        x          = 12
-        y          = 0
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
         properties = {
           title  = "ECS CPU & Memory"
           region = var.aws_region
@@ -1044,11 +1046,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
       {
-        type       = "metric"
-        x          = 0
-        y          = 6
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
         properties = {
           title  = "ALB Target Response Time (P99)"
           region = var.aws_region
@@ -1058,11 +1060,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
       {
-        type       = "metric"
-        x          = 12
-        y          = 6
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
         properties = {
           title  = "Healthy Hosts"
           region = var.aws_region

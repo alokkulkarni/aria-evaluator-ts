@@ -7,16 +7,23 @@ declare module 'next-auth' {
       isNewUser?: boolean
       role?: 'owner' | 'admin' | 'member'
       tenantId?: string
+      accessToken?: string
     }
   }
 
   interface User {
     isNewUser?: boolean
+    role?: 'owner' | 'admin' | 'member'
+    tenantId?: string
+    accessToken?: string
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
     isNewUser?: boolean
+    role?: 'owner' | 'admin' | 'member'
+    tenantId?: string
+    accessToken?: string
   }
 }

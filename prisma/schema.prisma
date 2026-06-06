@@ -19,6 +19,8 @@ model BootstrapState {
 model User {
   id           String        @id @default(cuid())
   username     String        @unique
+  email        String?       @unique
+  ssoSubject   String?       @unique
   passwordHash String
   role         String        @default("admin")
   lastLoginAt  DateTime?

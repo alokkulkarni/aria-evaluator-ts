@@ -8,6 +8,12 @@ variable "environment" {
   type        = string
 }
 
+variable "internal" {
+  description = "Whether the load balancer should be internal-only"
+  type        = bool
+  default     = false
+}
+
 variable "vpc_id" {
   description = "VPC ID where the ALB is deployed"
   type        = string

@@ -57,7 +57,12 @@ locals {
     { name = "BEDROCK_LAMBDA_ENDPOINT", value = var.bedrock_proxy_url }
   ] : []
 
-  all_environment = concat(local.base_environment, local.proxy_environment, var.extra_environment_vars)
+  cp_environment = var.control_plane_internal_url != "" ? concat(
+    [{ name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_internal_url }],
+    var.control_plane_internal_secret != "" ? [{ name = "CONTROL_PLANE_INTERNAL_SECRET", value = var.control_plane_internal_secret }] : []
+  ) : []
+
+  all_environment = concat(local.base_environment, local.proxy_environment, local.cp_environment, var.extra_environment_vars)
 
   # docker_container.env expects "NAME=VALUE" strings
   env_list = [for e in local.all_environment : "${e.name}=${e.value}"]

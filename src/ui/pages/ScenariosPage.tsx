@@ -191,7 +191,7 @@ export function ScenariosPage() {
       await runOneChannel(scenario, channel, (line) => setLiveEvents((p) => [...p, line]));
       setRunState('done');
     } catch (err) {
-      setRunError((err as Error).message);
+      setRunError(err instanceof ApiError ? err.error ?? err.message : (err as Error).message);
       setRunState('error');
     }
   }
@@ -207,7 +207,7 @@ export function ScenariosPage() {
       await runOneChannel(scenario, 'voice', (line) => setLiveEvents((p) => [...p, line]));
       setRunState('done');
     } catch (err) {
-      setRunError((err as Error).message);
+      setRunError(err instanceof ApiError ? err.error ?? err.message : (err as Error).message);
       setRunState('error');
     }
   }

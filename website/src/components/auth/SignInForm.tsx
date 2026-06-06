@@ -19,7 +19,7 @@ export function SignInForm() {
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const handleOAuth = async (provider: 'google' | 'github') => {
+  const handleSocialSignIn = async (provider: 'google' | 'github') => {
     setError(null)
     setLoadingProvider(provider)
     await signIn(provider, { callbackUrl: returnTo })
@@ -41,7 +41,7 @@ export function SignInForm() {
     setSubmitting(false)
 
     if (result?.error) {
-      setError('Email sign-in will be available once the control plane is connected. Use Google or GitHub for now.')
+      setError('Sign-in failed. Check your email and password, or use Google or GitHub.')
       return
     }
 
@@ -66,7 +66,7 @@ export function SignInForm() {
       <div className="space-y-3">
         <button
           type="button"
-          onClick={() => handleOAuth('google')}
+          onClick={() => handleSocialSignIn('google')}
           className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
           disabled={loadingProvider !== null}
         >
@@ -81,7 +81,7 @@ export function SignInForm() {
 
         <button
           type="button"
-          onClick={() => handleOAuth('github')}
+          onClick={() => handleSocialSignIn('github')}
           className="flex w-full items-center justify-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
           disabled={loadingProvider !== null}
         >

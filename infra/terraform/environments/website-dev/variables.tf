@@ -41,6 +41,12 @@ variable "github_client_secret" {
   default   = ""
 }
 
+variable "control_plane_url" {
+  description = "Control plane API URL"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Additional tags"
   type        = map(string)

@@ -147,6 +147,57 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
   }
 }
 
+# ── HTTPS-only bucket policy ───────────────────────────────────────────────────
+# Denies any request not using TLS. Covers the Terraform state bucket which
+# holds sensitive infrastructure state and must never be accessed over HTTP.
+
+data "aws_iam_policy_document" "terraform_state_https_only" {
+  statement {
+    sid     = "DenyHTTPBucketAccess"
+    effect  = "Deny"
+    actions = ["s3:*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    resources = [aws_s3_bucket.terraform_state.arn]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+
+  statement {
+    sid     = "DenyHTTPObjectAccess"
+    effect  = "Deny"
+    actions = ["s3:*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    resources = ["${aws_s3_bucket.terraform_state.arn}/*"]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "terraform_state_https_only" {
+  bucket = aws_s3_bucket.terraform_state.id
+  policy = data.aws_iam_policy_document.terraform_state_https_only.json
+
+  depends_on = [aws_s3_bucket_public_access_block.terraform_state]
+}
+
 resource "aws_dynamodb_table" "terraform_locks" {
   name         = "aria-evaluator-tf-locks"
   billing_mode = "PAY_PER_REQUEST"

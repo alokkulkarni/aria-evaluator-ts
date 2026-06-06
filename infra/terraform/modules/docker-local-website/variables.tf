@@ -45,8 +45,8 @@ variable "force_rebuild" {
     without modifying the Dockerfile or package-lock.json.
     Usage:  terraform apply -var='force_rebuild=2'
   EOT
-  type    = string
-  default = "1"
+  type        = string
+  default     = "1"
 }
 
 # ── Ports ──────────────────────────────────────────────────────────────────────
@@ -77,8 +77,8 @@ variable "nextauth_secret" {
     Generate with: openssl rand -base64 32
     Never commit to source control — pass via terraform.tfvars or TF_VAR_nextauth_secret.
   EOT
-  type      = string
-  sensitive = true
+  type        = string
+  sensitive   = true
 }
 
 # ── OAuth providers (optional for local dev) ───────────────────────────────────
@@ -91,9 +91,9 @@ variable "google_client_id" {
 
 variable "google_client_secret" {
   description = "Google OAuth client secret"
-  type      = string
-  default   = ""
-  sensitive = true
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "github_client_id" {
@@ -104,9 +104,9 @@ variable "github_client_id" {
 
 variable "github_client_secret" {
   description = "GitHub OAuth app client secret"
-  type      = string
-  default   = ""
-  sensitive = true
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 # ── Control plane ──────────────────────────────────────────────────────────────
@@ -117,8 +117,8 @@ variable "control_plane_url" {
     Leave empty for local dev — all provisioning calls are stubbed in the website
     and no real control plane is needed for UI development.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 # ── Extra environment variables ────────────────────────────────────────────────

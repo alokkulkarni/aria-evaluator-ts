@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Github, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { signIn } from 'next-auth/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { createTenant, registerUser } from '@/lib/api'
@@ -105,10 +106,8 @@ export function SignUpWizard() {
     setState((current) => ({ ...current, authProvider: 'email', step: 2 }))
   }
 
-  const handleOAuthSelection = (provider: 'google' | 'github') => {
-    setFieldErrors({})
-    setSubmitError(null)
-    setState((current) => ({ ...current, authProvider: provider, step: 2 }))
+  const handleSocialSignUp = (provider: 'google' | 'github') => {
+    void signIn(provider, { callbackUrl: '/sign-up?step=plan' })
   }
 
   const handleCreateWorkspace = async () => {
@@ -118,22 +117,28 @@ export function SignUpWizard() {
     setSubmitError(null)
 
     try {
+      let authToken: string | undefined
       if (!state.authProvider || state.authProvider === 'email') {
-        await registerUser({
+        const registration = await registerUser({
           name: state.name,
           email: state.email,
           password: state.password,
           company: state.company,
         })
+        authToken = registration.token
       }
 
       setProvisioning(true)
-      await createTenant({
+      const provision = await createTenant({
         plan: state.selectedPlan,
         region: state.selectedRegion,
         billingPeriod: state.billingPeriod,
-      })
+      }, authToken)
 
+      if (provision.ssoUrl || provision.instanceUrl) {
+        window.location.assign(provision.ssoUrl ?? provision.instanceUrl ?? '/dashboard')
+        return
+      }
       setState((current) => ({ ...current, confirmed: true }))
       await new Promise((resolve) => setTimeout(resolve, 1800))
       router.push('/dashboard')
@@ -197,13 +202,13 @@ export function SignUpWizard() {
             <div className="space-y-2">
               <p className="section-label">Step 1</p>
               <h2 className="text-2xl font-semibold text-slate-900">Create your account</h2>
-              <p className="text-sm leading-6 text-slate-600">Use email and password, or choose an OAuth provider and continue straight to plan selection.</p>
+              <p className="text-sm leading-6 text-slate-600">Create your account with email or use Google / GitHub to get started quickly.</p>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
               <button
                 type="button"
-                onClick={() => handleOAuthSelection('google')}
+                onClick={() => handleSocialSignUp('google')}
                 className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
@@ -216,7 +221,7 @@ export function SignUpWizard() {
               </button>
               <button
                 type="button"
-                onClick={() => handleOAuthSelection('github')}
+                onClick={() => handleSocialSignUp('github')}
                 className="flex items-center justify-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
               >
                 <Github className="h-5 w-5" />
@@ -225,7 +230,7 @@ export function SignUpWizard() {
             </div>
 
             <p className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              If you sign in with OAuth, continue to plan selection →
+              Signing up with Google or GitHub will take you straight to plan selection.
             </p>
 
             <div className="grid gap-5 md:grid-cols-2">

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch, toApiUrl } from '../lib/api.js';
+import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
 import { formatTokenCount } from '../lib/format.js';
 import { StatusBadge } from './Dashboard.js';
 import {
@@ -907,7 +907,7 @@ function NewRunModal({
       onStarted(data.runId);
       onClose();
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof ApiError ? err.error ?? err.message : (err as Error).message);
       setRunning(false);
     }
   }

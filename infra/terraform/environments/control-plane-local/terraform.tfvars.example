@@ -1,0 +1,11 @@
+app_name    = "aria-control-plane"
+environment = "local"
+
+app_image_name = "aria-control-plane:local"
+app_dockerfile = "Dockerfile.control-plane"
+
+app_dockerfile_context = ""
+force_rebuild           = "1"
+
+container_port = 4000
+host_port      = 4000

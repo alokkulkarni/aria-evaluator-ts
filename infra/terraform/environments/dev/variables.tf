@@ -200,3 +200,16 @@ variable "bedrock_lambda_timeout" {
   type        = number
   default     = 120
 }
+
+variable "control_plane_internal_url" {
+  description = "Internal ALB URL of the control plane for server-side SSO token exchange"
+  type        = string
+  default     = ""
+}
+
+variable "control_plane_internal_secret" {
+  description = "Shared secret for evaluator → control plane SSO verification"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

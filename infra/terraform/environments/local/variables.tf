@@ -96,3 +96,18 @@ variable "local_db_path" {
   type        = string
   default     = ""
 }
+
+# ── Control plane SSO ─────────────────────────────────────────────────────────
+
+variable "control_plane_internal_url" {
+  description = "URL of the local control-plane container, e.g. http://host.docker.internal:3002"
+  type        = string
+  default     = "http://host.docker.internal:3002"
+}
+
+variable "control_plane_internal_secret" {
+  description = "Shared secret for evaluator → control plane SSO verification (leave empty for local)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
