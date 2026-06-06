@@ -1,10 +1,13 @@
+import { auth } from '@/auth'
 import Link from 'next/link'
 
 import { InstanceStatusCard } from '@/components/dashboard/InstanceStatusCard'
 import { UsageBar } from '@/components/dashboard/UsageBar'
 import { MOCK_INSTANCE, MOCK_NEXT_BILLING, MOCK_TEAM } from '@/lib/mock-data'
+import { serverApiFetch } from '@/lib/api'
 import { getPlanById } from '@/lib/plans'
 import { getRegionById } from '@/lib/regions'
+import type { InstanceInfo } from '@/types'
 
 const statusLabel: Record<typeof MOCK_INSTANCE.status, string> = {
   not_provisioned: 'Not provisioned',
@@ -24,9 +27,56 @@ const statusBadge: Record<typeof MOCK_INSTANCE.status, string> = {
   error: 'badge-error',
 }
 
-export default function DashboardPage() {
-  const plan = getPlanById(MOCK_INSTANCE.plan)
-  const region = getRegionById(MOCK_INSTANCE.region)
+async function getInstanceInfo(authToken?: string): Promise<InstanceInfo> {
+  if (!authToken) {
+    return {
+      status: 'not_provisioned',
+      plan: 'individual',
+      region: 'eu-west-2',
+      usage: {
+        runsThisMonth: 0,
+        maxRuns: 0,
+        scenariosUsed: 0,
+        maxScenarios: 0,
+      },
+    }
+  }
+
+  const tenant = await serverApiFetch<{
+    tenantId: string | null
+    status: InstanceInfo['status']
+    plan: InstanceInfo['plan'] | null
+    region: string | null
+    billingPeriod: 'monthly' | 'annual' | null
+    instanceUrl: string | null
+    usage: InstanceInfo['usage']
+    provisionedAt?: string
+  }>('/tenant/me', { authToken })
+
+  if (!tenant.tenantId || !tenant.plan || !tenant.region) {
+    return {
+      status: 'not_provisioned',
+      plan: 'individual',
+      region: 'eu-west-2',
+      usage: tenant.usage,
+    }
+  }
+
+  return {
+    status: tenant.status,
+    plan: tenant.plan,
+    region: tenant.region,
+    provisionedAt: tenant.provisionedAt,
+    instanceUrl: tenant.instanceUrl ?? undefined,
+    usage: tenant.usage,
+  }
+}
+
+export default async function DashboardPage() {
+  const session = await auth()
+  const instance = await getInstanceInfo(session?.user?.accessToken)
+  const plan = getPlanById(instance.plan)
+  const region = getRegionById(instance.region)
   const nextBilling = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(MOCK_NEXT_BILLING))
 
   return (
@@ -40,11 +90,11 @@ export default function DashboardPage() {
               Monitor your instance, keep tabs on usage, and open ARIA Evaluator with the same polished control plane experience across every region.
             </p>
           </div>
-          <span className={statusBadge[MOCK_INSTANCE.status]}>{statusLabel[MOCK_INSTANCE.status]}</span>
+          <span className={statusBadge[instance.status]}>{statusLabel[instance.status]}</span>
         </div>
       </section>
 
-      {MOCK_INSTANCE.status === 'not_provisioned' ? (
+      {instance.status === 'not_provisioned' ? (
         <section className="card flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Set up your workspace</h2>
@@ -56,7 +106,7 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {MOCK_INSTANCE.status === 'provisioning' ? (
+      {instance.status === 'provisioning' ? (
         <section className="card">
           <p className="section-label">Provisioning</p>
           <p className="mt-2 text-lg font-semibold text-slate-900">Your workspace is being prepared.</p>
@@ -64,7 +114,7 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {MOCK_INSTANCE.status === 'suspended' ? (
+      {instance.status === 'suspended' ? (
         <section className="card flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Workspace suspended</h2>
@@ -76,21 +126,21 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <InstanceStatusCard instance={MOCK_INSTANCE} />
-      <UsageBar instance={MOCK_INSTANCE} />
+      <InstanceStatusCard instance={instance} launchHref="/api/launch-instance" />
+      <UsageBar instance={instance} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="metric-card">
           <p className="metric-card-label">Region</p>
-          <p className="metric-card-value">{region ? `${region.flag} ${region.name}` : MOCK_INSTANCE.region}</p>
+          <p className="metric-card-value">{region ? `${region.flag} ${region.name}` : instance.region}</p>
         </div>
         <div className="metric-card">
           <p className="metric-card-label">Plan</p>
-          <p className="metric-card-value">{plan?.name ?? MOCK_INSTANCE.plan}</p>
+          <p className="metric-card-value">{plan?.name ?? instance.plan}</p>
         </div>
         <div className="metric-card">
           <p className="metric-card-label">Status</p>
-          <p className="metric-card-value">{statusLabel[MOCK_INSTANCE.status]}</p>
+          <p className="metric-card-value">{statusLabel[instance.status]}</p>
         </div>
         <div className="metric-card">
           <p className="metric-card-label">Next billing</p>

@@ -88,6 +88,15 @@ const STATE_DIR = process.env['CONTROL_PLANE_STATE_DIR']?.trim() || join(process
 const STATE_FILE = join(STATE_DIR, 'state.json');
 const SESSION_TTL_HOURS = Math.max(1, Number.parseInt(process.env['CONTROL_PLANE_SESSION_TTL_HOURS'] ?? '168', 10) || 168);
 const STATE_TMP_SUFFIX = `.tmp-${process.pid}`;
+const DEPLOY_ENV = (process.env['ARIA_DEPLOY_ENV'] ?? process.env['ENVIRONMENT'] ?? '').trim().toLowerCase();
+const LOCAL_SEED_ENABLED = (process.env['CONTROL_PLANE_ENABLE_LOCAL_SEED']?.trim().toLowerCase() === 'true') || DEPLOY_ENV === 'local';
+const LOCAL_SEED_EMAIL = (process.env['CONTROL_PLANE_LOCAL_TEST_EMAIL']?.trim().toLowerCase() || 'local.tester@aria.local');
+const LOCAL_SEED_PASSWORD = process.env['CONTROL_PLANE_LOCAL_TEST_PASSWORD']?.trim() || 'AriaLocal123!';
+const LOCAL_SEED_NAME = process.env['CONTROL_PLANE_LOCAL_TEST_NAME']?.trim() || 'Local Test User';
+const LOCAL_SEED_TENANT_ID = process.env['CONTROL_PLANE_LOCAL_TEST_TENANT_ID']?.trim() || 'local-demo-tenant';
+const LOCAL_SEED_PLAN: PricingTier = 'individual';
+const LOCAL_SEED_REGION = 'eu-west-2';
+const LOCAL_SEED_BILLING_PERIOD: BillingPeriod = 'monthly';
 
 const PLAN_LIMITS: Record<PricingTier, { maxRuns: number; maxScenarios: number }> = {
   free: { maxRuns: 5, maxScenarios: 10 },
@@ -188,6 +197,121 @@ function loadDefaultState(): ControlPlaneState {
 
 let stateCache: ControlPlaneState | null = null;
 
+function ensureLocalSeedState(state: ControlPlaneState): boolean {
+  if (!LOCAL_SEED_ENABLED) return false;
+
+  const now = nowIso();
+  const instanceUrl = makeTenantInstanceUrl(LOCAL_SEED_TENANT_ID);
+  const limits = PLAN_LIMITS[LOCAL_SEED_PLAN];
+
+  let changed = false;
+  let user = state.users.find((entry) => entry.email === LOCAL_SEED_EMAIL);
+
+  if (!user) {
+    user = {
+      id: 'local-seed-user',
+      email: LOCAL_SEED_EMAIL,
+      name: LOCAL_SEED_NAME,
+      role: 'owner',
+      passwordHash: passwordHash(LOCAL_SEED_PASSWORD),
+      isNewUser: false,
+      tenantId: LOCAL_SEED_TENANT_ID,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.users.push(user);
+    changed = true;
+  } else {
+    if (user.id !== 'local-seed-user') {
+      user.id = 'local-seed-user';
+      changed = true;
+    }
+    if (user.name !== LOCAL_SEED_NAME) {
+      user.name = LOCAL_SEED_NAME;
+      changed = true;
+    }
+    if (user.role !== 'owner') {
+      user.role = 'owner';
+      changed = true;
+    }
+    if (!verifyPassword(user.passwordHash, LOCAL_SEED_PASSWORD)) {
+      user.passwordHash = passwordHash(LOCAL_SEED_PASSWORD);
+      changed = true;
+    }
+    if (user.isNewUser) {
+      user.isNewUser = false;
+      changed = true;
+    }
+    if (user.tenantId !== LOCAL_SEED_TENANT_ID) {
+      user.tenantId = LOCAL_SEED_TENANT_ID;
+      changed = true;
+    }
+    if (changed) {
+      user.updatedAt = now;
+    }
+  }
+
+  const existingTenant = state.tenants.find((entry) => entry.id === LOCAL_SEED_TENANT_ID);
+  if (!existingTenant) {
+    state.tenants.push({
+      id: LOCAL_SEED_TENANT_ID,
+      userId: user.id,
+      plan: LOCAL_SEED_PLAN,
+      region: LOCAL_SEED_REGION,
+      billingPeriod: LOCAL_SEED_BILLING_PERIOD,
+      status: 'running',
+      instanceUrl,
+      usage: {
+        runsThisMonth: 0,
+        maxRuns: limits.maxRuns,
+        scenariosUsed: 0,
+        maxScenarios: limits.maxScenarios,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+    changed = true;
+  } else {
+    if (existingTenant.userId !== user.id) {
+      existingTenant.userId = user.id;
+      changed = true;
+    }
+    if (existingTenant.plan !== LOCAL_SEED_PLAN) {
+      existingTenant.plan = LOCAL_SEED_PLAN;
+      changed = true;
+    }
+    if (existingTenant.region !== LOCAL_SEED_REGION) {
+      existingTenant.region = LOCAL_SEED_REGION;
+      changed = true;
+    }
+    if (existingTenant.billingPeriod !== LOCAL_SEED_BILLING_PERIOD) {
+      existingTenant.billingPeriod = LOCAL_SEED_BILLING_PERIOD;
+      changed = true;
+    }
+    if (existingTenant.status !== 'running') {
+      existingTenant.status = 'running';
+      changed = true;
+    }
+    if (existingTenant.instanceUrl !== instanceUrl) {
+      existingTenant.instanceUrl = instanceUrl;
+      changed = true;
+    }
+    if (
+      existingTenant.usage.maxRuns !== limits.maxRuns
+      || existingTenant.usage.maxScenarios !== limits.maxScenarios
+    ) {
+      existingTenant.usage.maxRuns = limits.maxRuns;
+      existingTenant.usage.maxScenarios = limits.maxScenarios;
+      changed = true;
+    }
+    if (changed) {
+      existingTenant.updatedAt = now;
+    }
+  }
+
+  return changed;
+}
+
 async function ensureStateDir(): Promise<void> {
   await mkdir(STATE_DIR, { recursive: true });
 }
@@ -197,6 +321,7 @@ async function loadState(): Promise<ControlPlaneState> {
   await ensureStateDir();
   if (!existsSync(STATE_FILE)) {
     stateCache = loadDefaultState();
+    ensureLocalSeedState(stateCache);
     await saveState(stateCache);
     return stateCache;
   }
@@ -205,6 +330,9 @@ async function loadState(): Promise<ControlPlaneState> {
   stateCache.users ??= [];
   stateCache.sessions ??= [];
   stateCache.tenants ??= [];
+  if (ensureLocalSeedState(stateCache)) {
+    await saveState(stateCache);
+  }
   return stateCache;
 }
 
@@ -280,7 +408,11 @@ function makeUserResponse(user: ControlPlaneUser, accessToken?: string): Control
 
 function makeTenantInstanceUrl(tenantId: string): string {
   const base = process.env['CONTROL_PLANE_INSTANCE_BASE_URL']?.trim() || 'https://ariaeval.io';
-  return `${base.replace(/\/$/, '')}/workspace/${tenantId}`;
+  const normalizedBase = base.replace(/\/$/, '');
+  if (DEPLOY_ENV === 'local') {
+    return normalizedBase;
+  }
+  return `${normalizedBase}/workspace/${tenantId}`;
 }
 
 function validateOrigin(req: Request): boolean {
@@ -684,4 +816,3 @@ if (process.env['NODE_ENV'] !== 'test') {
     process.exit(1);
   });
 }
-

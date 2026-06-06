@@ -26,9 +26,10 @@ const statusLabels: Record<InstanceInfo['status'], string> = {
 
 interface InstanceStatusCardProps {
   instance: InstanceInfo
+  launchHref?: string
 }
 
-export function InstanceStatusCard({ instance }: InstanceStatusCardProps) {
+export function InstanceStatusCard({ instance, launchHref }: InstanceStatusCardProps) {
   const plan = getPlanById(instance.plan)
   const region = getRegionById(instance.region)
   const provisionedAt = instance.provisionedAt
@@ -52,7 +53,7 @@ export function InstanceStatusCard({ instance }: InstanceStatusCardProps) {
         </div>
 
         <Link
-          href={instance.instanceUrl ?? '#'}
+          href={instance.status === 'running' ? (launchHref ?? instance.instanceUrl ?? '#') : '#'}
           className={cn(
             'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition',
             instance.status === 'running'
