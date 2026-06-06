@@ -90,3 +90,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "cloudtrail_bucket_suffix" {
+  description = "Short unique suffix for the CloudTrail S3 bucket (e.g. last 6 digits of account ID)"
+  type        = string
+  default     = "prod"
+}
+
+variable "cloudtrail_kms_key_arn" {
+  description = "KMS key ARN for encrypting CloudTrail logs at rest. Leave empty to use AES256."
+  type        = string
+  default     = ""
+}

@@ -80,3 +80,9 @@ variable "s3_state_prefix" {
   type    = string
   default = "aria-control-plane"
 }
+
+variable "cloudtrail_alert_sns_topic_arn" {
+  description = "SNS topic ARN for CloudTrail CIS security alarms. Required in prod — set to your existing alerts topic or a dedicated security topic."
+  type        = string
+  default     = ""
+}

@@ -52,3 +52,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "cloudtrail_bucket_suffix" {
+  description = "Short unique suffix for the CloudTrail S3 bucket (e.g. last 6 digits of account ID)"
+  type        = string
+  default     = "dev"
+}

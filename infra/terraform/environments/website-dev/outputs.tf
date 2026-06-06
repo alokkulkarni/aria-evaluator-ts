@@ -24,3 +24,20 @@ output "ecs_service_name" {
 output "log_group_name" {
   value = module.website.log_group_name
 }
+
+# ── CloudTrail outputs ────────────────────────────────────────────────────────
+
+output "cloudtrail_trail_arn" {
+  description = "ARN of the CloudTrail trail"
+  value       = module.cloudtrail.trail_arn
+}
+
+output "cloudtrail_s3_bucket" {
+  description = "S3 bucket receiving CloudTrail log files"
+  value       = module.cloudtrail.s3_bucket_name
+}
+
+output "cloudtrail_log_group" {
+  description = "CloudWatch log group for CloudTrail events"
+  value       = module.cloudtrail.cloudwatch_log_group_name
+}

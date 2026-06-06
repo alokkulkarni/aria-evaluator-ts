@@ -43,6 +43,11 @@ output "dashboard_name" {
   value       = module.observability.dashboard_name
 }
 
+output "sns_topic_arn" {
+  description = "Tenant observability SNS topic ARN"
+  value       = module.observability.sns_topic_arn
+}
+
 output "cf_origin_secret_arn" {
   description = "Secrets Manager ARN storing the CloudFront origin secret"
   value       = var.cloudfront_enabled ? aws_secretsmanager_secret.cf_origin_secret[0].arn : null

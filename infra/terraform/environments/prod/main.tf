@@ -30,3 +30,33 @@ module "tenant" {
   control_plane_internal_secret    = var.control_plane_internal_secret
   tags                             = var.tags
 }
+
+# ── CloudTrail ────────────────────────────────────────────────────────────────
+# Records evaluator management API calls and data events across all regions.
+# Use a tenant-qualified app name so per-tenant prod stacks do not collide.
+
+data "aws_caller_identity" "current" {}
+
+module "cloudtrail" {
+  source = "../../modules/cloudtrail"
+
+  app_name       = "${var.app_name}-${var.tenant_id}"
+  environment    = var.environment
+  aws_region     = var.aws_region
+  aws_account_id = data.aws_caller_identity.current.account_id
+  bucket_suffix  = var.bucket_suffix
+  kms_key_arn    = var.kms_key_arn
+
+  is_multi_region               = true
+  include_global_service_events = true
+  enable_log_file_validation    = true
+  enable_s3_data_events         = true
+  enable_lambda_data_events     = true
+  enable_insight_events         = true
+  enable_cloudwatch_logs        = true
+  cloudwatch_log_retention_days = 90
+  s3_log_retention_days         = 365
+  alert_sns_topic_arn           = module.tenant.sns_topic_arn
+
+  tags = var.tags
+}

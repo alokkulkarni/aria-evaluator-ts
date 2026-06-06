@@ -125,3 +125,33 @@ module "ecs" {
   pricing_tier = var.pricing_tier
   tags         = local.common_tags
 }
+
+# ── CloudTrail ────────────────────────────────────────────────────────────────
+# Records all management API calls and S3 data events across ALL AWS regions.
+# Prod: multi-region, Insights enabled, 1-year S3 retention, full CIS alarms.
+
+module "cloudtrail" {
+  source = "../../modules/cloudtrail"
+
+  app_name       = var.app_name
+  environment    = var.environment
+  aws_region     = var.aws_region
+  aws_account_id = data.aws_caller_identity.current.account_id
+  bucket_suffix  = var.bucket_suffix
+  kms_key_arn    = var.kms_key_arn
+
+  is_multi_region               = true   # prod: capture all regions
+  include_global_service_events = true
+  enable_log_file_validation    = true
+  enable_s3_data_events         = true
+  enable_lambda_data_events     = true   # prod: record Lambda invocations
+  enable_insight_events         = true   # prod: detect unusual API patterns
+
+  enable_cloudwatch_logs        = true
+  cloudwatch_log_retention_days = var.log_retention_days
+  s3_log_retention_days         = 365   # prod: 1 year retention
+
+  alert_sns_topic_arn = var.cloudtrail_alert_sns_topic_arn
+
+  tags = local.common_tags
+}

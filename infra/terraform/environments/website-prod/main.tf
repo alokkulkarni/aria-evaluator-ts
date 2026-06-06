@@ -68,3 +68,33 @@ module "website" {
 
   tags = local.common_tags
 }
+
+# ── CloudTrail ────────────────────────────────────────────────────────────────
+# Records all management API calls and data events across ALL AWS regions.
+# Prod: multi-region, Insights, 1-year retention, full CIS alarms.
+
+module "cloudtrail" {
+  source = "../../modules/cloudtrail"
+
+  app_name       = "aria-website"
+  environment    = "prod"
+  aws_region     = var.aws_region
+  aws_account_id = data.aws_caller_identity.current.account_id
+  bucket_suffix  = var.cloudtrail_bucket_suffix
+
+  is_multi_region               = true
+  include_global_service_events = true
+  enable_log_file_validation    = true
+  enable_s3_data_events         = true
+  enable_lambda_data_events     = true
+  enable_insight_events         = true
+  enable_cloudwatch_logs        = true
+  cloudwatch_log_retention_days = 90
+  s3_log_retention_days         = 365
+  kms_key_arn                   = var.cloudtrail_kms_key_arn
+
+  # Re-use the existing alarm SNS topic already declared in this environment
+  alert_sns_topic_arn = var.alarm_sns_topic_arn
+
+  tags = local.common_tags
+}

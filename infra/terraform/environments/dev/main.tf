@@ -171,3 +171,30 @@ module "cloudfront" {
   pricing_tier             = var.pricing_tier
   tags                     = local.common_tags
 }
+
+# ── CloudTrail ────────────────────────────────────────────────────────────────
+# Records evaluator management API calls and S3 data events in the dev account.
+# Dev stays single-region and skips Insights/Lambda data events to control cost.
+
+module "cloudtrail" {
+  source = "../../modules/cloudtrail"
+
+  app_name       = var.app_name
+  environment    = var.environment
+  aws_region     = var.aws_region
+  aws_account_id = local.aws_account_id
+  bucket_suffix  = var.bucket_suffix
+
+  is_multi_region               = false
+  include_global_service_events = true
+  enable_log_file_validation    = true
+  enable_s3_data_events         = true
+  enable_lambda_data_events     = false
+  enable_insight_events         = false
+  enable_cloudwatch_logs        = true
+  cloudwatch_log_retention_days = var.log_retention_days
+  s3_log_retention_days         = 90
+  alert_sns_topic_arn           = ""
+
+  tags = local.common_tags
+}

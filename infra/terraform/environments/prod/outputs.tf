@@ -34,6 +34,10 @@ output "dashboard_name" {
   value = module.tenant.dashboard_name
 }
 
+output "sns_topic_arn" {
+  value = module.tenant.sns_topic_arn
+}
+
 output "cf_origin_secret_arn" {
   value = module.tenant.cf_origin_secret_arn
 }
