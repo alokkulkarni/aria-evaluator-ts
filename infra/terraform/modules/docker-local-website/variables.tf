@@ -114,8 +114,8 @@ variable "github_client_secret" {
 variable "control_plane_url" {
   description = <<-EOT
     Base URL of the ARIA control plane API.
-    Leave empty for local dev — all provisioning calls are stubbed in the website
-    and no real control plane is needed for UI development.
+    For local Docker, prefer http://host.docker.internal:<port> so the website
+    container can reach the control-plane container via the host.
   EOT
   type        = string
   default     = ""

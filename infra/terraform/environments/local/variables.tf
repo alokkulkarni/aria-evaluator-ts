@@ -100,9 +100,9 @@ variable "local_db_path" {
 # ── Control plane SSO ─────────────────────────────────────────────────────────
 
 variable "control_plane_internal_url" {
-  description = "URL of the local control-plane container, e.g. http://host.docker.internal:3002"
+  description = "URL of the local control-plane container, e.g. http://host.docker.internal:4000"
   type        = string
-  default     = "http://host.docker.internal:3002"
+  default     = "http://host.docker.internal:4000"
 }
 
 variable "control_plane_internal_secret" {

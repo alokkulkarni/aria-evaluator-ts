@@ -70,7 +70,7 @@ variable "github_client_secret" {
 
 variable "control_plane_url" {
   type    = string
-  default = ""
+  default = "http://host.docker.internal:4000"
 }
 
 variable "extra_environment_vars" {

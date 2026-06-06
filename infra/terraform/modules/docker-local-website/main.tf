@@ -16,6 +16,16 @@ locals {
     : "${local.repo_root}/website"
   )
 
+  effective_control_plane_url = (
+    var.environment == "local"
+    ? replace(
+        replace(var.control_plane_url, "localhost", "host.docker.internal"),
+        "127.0.0.1",
+        "host.docker.internal",
+      )
+    : var.control_plane_url
+  )
+
   # ── Environment list in "KEY=VALUE" format for docker_container.env ───────
   # Build from the typed list — NextAuth, OAuth secrets and optional extras.
   base_env = [
@@ -27,7 +37,7 @@ locals {
     { name = "NEXT_PUBLIC_APP_URL", value = var.nextauth_url },
     { name = "NEXT_PUBLIC_APP_NAME", value = "ARIA Evaluator" },
     { name = "NEXT_PUBLIC_CONTROL_PLANE_URL", value = "/api/control-plane" },
-    { name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_url },
+    { name = "CONTROL_PLANE_INTERNAL_URL", value = local.effective_control_plane_url },
     { name = "NEXTAUTH_SECRET", value = var.nextauth_secret },
     { name = "GOOGLE_CLIENT_ID", value = var.google_client_id },
     { name = "GOOGLE_CLIENT_SECRET", value = var.google_client_secret },
