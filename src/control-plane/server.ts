@@ -70,6 +70,22 @@ interface ControlPlaneUserResponse {
   isNewUser?: boolean;
 }
 
+interface TenantSummaryResponse {
+  tenantId: string | null;
+  status: InstanceStatus;
+  plan: PricingTier | null;
+  region: string | null;
+  billingPeriod: BillingPeriod | null;
+  instanceUrl: string | null;
+  usage: {
+    runsThisMonth: number;
+    maxRuns: number;
+    scenariosUsed: number;
+    maxScenarios: number;
+  };
+  provisionedAt?: string;
+}
+
 interface RegisterBody {
   name?: string;
   email?: string;
@@ -415,6 +431,32 @@ function makeTenantInstanceUrl(tenantId: string): string {
   return `${normalizedBase}/workspace/${tenantId}`;
 }
 
+function buildTenantSummary(user: ControlPlaneUser, state: ControlPlaneState): TenantSummaryResponse {
+  const tenant = user.tenantId ? state.tenants.find((entry) => entry.id === user.tenantId) : undefined;
+  if (!tenant) {
+    return {
+      tenantId: null,
+      status: 'not_provisioned',
+      plan: null,
+      region: null,
+      billingPeriod: null,
+      instanceUrl: null,
+      usage: { runsThisMonth: 0, maxRuns: 0, scenariosUsed: 0, maxScenarios: 0 },
+    };
+  }
+
+  return {
+    tenantId: tenant.id,
+    status: tenant.status,
+    plan: tenant.plan,
+    region: tenant.region,
+    billingPeriod: tenant.billingPeriod,
+    instanceUrl: tenant.instanceUrl,
+    usage: tenant.usage,
+    provisionedAt: tenant.updatedAt,
+  };
+}
+
 function validateOrigin(req: Request): boolean {
   const allowed = (process.env['CONTROL_PLANE_CORS_ORIGINS'] ?? '')
     .split(',')
@@ -606,30 +648,29 @@ app.get('/tenant/me', async (req, res) => {
   }
 
   const state = await loadState();
-  const tenant = user.tenantId ? state.tenants.find((entry) => entry.id === user.tenantId) : undefined;
-  if (!tenant) {
-    res.json({
-      tenantId: null,
-      status: 'not_provisioned',
-      plan: null,
-      region: null,
-      billingPeriod: null,
-      instanceUrl: null,
-      usage: { runsThisMonth: 0, maxRuns: 0, scenariosUsed: 0, maxScenarios: 0 },
-    });
+  res.json(buildTenantSummary(user, state));
+});
+
+app.post('/internal/tenant-by-user', async (req, res) => {
+  if (!validateInternalSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
     return;
   }
 
-  res.json({
-    tenantId: tenant.id,
-    status: tenant.status,
-    plan: tenant.plan,
-    region: tenant.region,
-    billingPeriod: tenant.billingPeriod,
-    instanceUrl: tenant.instanceUrl,
-    usage: tenant.usage,
-    provisionedAt: tenant.updatedAt,
-  });
+  const parsed = z.object({ userId: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'userId is required' });
+    return;
+  }
+
+  const state = await loadState();
+  const user = state.users.find((entry) => entry.id === parsed.data.userId);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  res.json(buildTenantSummary(user, state));
 });
 
 app.post('/tenant/provision', async (req, res) => {

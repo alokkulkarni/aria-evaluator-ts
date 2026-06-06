@@ -55,6 +55,7 @@ export function AppLogoIcon({ className = 'h-8 w-8' }: AppIconProps) {
 }
 
 export const NavDashboardIcon = LayoutDashboard;
+export const NavWorkspaceIcon = Building2;
 export const NavScenariosIcon = SquareKanban;
 export const NavRunsIcon = PlayCircle;
 export const NavReviewQueueIcon = Search;

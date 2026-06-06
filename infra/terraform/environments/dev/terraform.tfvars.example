@@ -80,3 +80,7 @@ tags = {
   CostCentre = "engineering"
   Owner      = "platform-team"
 }
+
+# ── Website URL (sign-out redirect target) ────────────────────────────────────
+# Leave empty to use the code default. Set to your dev website URL if deployed.
+# website_url = "https://dev.ariaeval.io"

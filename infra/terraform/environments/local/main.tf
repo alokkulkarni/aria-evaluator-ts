@@ -37,4 +37,6 @@ module "docker_local" {
   # Override in terraform.tfvars if using a different host port.
   control_plane_internal_url    = var.control_plane_internal_url
   control_plane_internal_secret = var.control_plane_internal_secret
+
+  website_url = var.website_url
 }

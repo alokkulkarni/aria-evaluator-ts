@@ -11,7 +11,7 @@ import { AriaLogo } from '@/components/shared/AriaLogo'
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const returnTo = searchParams.get('return') ?? '/dashboard'
+  const returnTo = searchParams.get('return') ?? '/api/launch-instance'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

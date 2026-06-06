@@ -122,6 +122,16 @@ variable "local_db_path" {
   default     = ""
 }
 
+variable "website_url" {
+  description = <<-EOT
+    Base URL of the ARIA marketing website, injected as ARIA_WEBSITE_URL.
+    Used for sign-out redirect and other links that return the user to the
+    main website.  Defaults to http://localhost:3000 for local development.
+  EOT
+  type        = string
+  default     = "http://localhost:3000"
+}
+
 variable "control_plane_internal_url" {
   description = "Internal URL of the control plane, injected as CONTROL_PLANE_INTERNAL_URL for SSO token exchange"
   type        = string

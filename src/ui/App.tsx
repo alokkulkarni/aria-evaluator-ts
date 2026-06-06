@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Dashboard } from './pages/Dashboard.js';
+import { WorkspacePage } from './pages/WorkspacePage.js';
 import { ScenariosPage } from './pages/ScenariosPage.js';
 import { RunsPage } from './pages/RunsPage.js';
 import { ReviewQueuePage } from './pages/ReviewQueuePage.js';
@@ -15,6 +16,7 @@ import {
   NavDashboardIcon,
   NavReportsIcon,
   NavRunsIcon,
+  NavWorkspaceIcon,
   NavSchedulesIcon,
   NavScenariosIcon,
   NavSettingsIcon,
@@ -23,12 +25,13 @@ import {
 } from './components/icons.js';
 import { apiFetch } from './lib/api.js';
 
-type Page = 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings';
+type Page = 'workspace' | 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings';
 
 interface AuthenticatedUser {
   id: string;
   username: string;
   role: string;
+  workspaceEligible: boolean;
 }
 
 type TourPlacement = 'top' | 'bottom';
@@ -123,13 +126,17 @@ const TOUR_STEPS: TourStep[] = [
 
 const TOUR_STORAGE_PREFIX = 'aria-evaluator:dashboard-tour';
 
-function getInitialPage(): Page {
+function getRequestedPage(): Page | null {
   if (typeof window === 'undefined') return 'dashboard';
   const page = new URLSearchParams(window.location.search).get('page');
-  if (page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'schedules' || page === 'settings') {
+  if (page === 'workspace' || page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'schedules' || page === 'settings') {
     return page;
   }
-  return 'dashboard';
+  return null;
+}
+
+function getInitialPage(): Page {
+  return getRequestedPage() ?? 'workspace';
 }
 
 function tourStorageKey(userId: string): string {
@@ -317,6 +324,7 @@ function GuidedTourOverlay({
 }
 
 const NAV: { id: Page; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'workspace', label: 'Workspace', icon: NavWorkspaceIcon },
   { id: 'dashboard', label: 'Dashboard', icon: NavDashboardIcon },
   { id: 'scenarios', label: 'Scenarios', icon: NavScenariosIcon },
   { id: 'runs', label: 'Runs', icon: NavRunsIcon },
@@ -345,18 +353,26 @@ export default function App() {
 
   const handleAuthenticated = useCallback((nextUser: AuthenticatedUser) => {
     setUser(nextUser);
+    if (!getRequestedPage()) {
+      setPage(nextUser.workspaceEligible ? 'workspace' : 'dashboard');
+    }
   }, []);
 
   async function handleLogout(): Promise<void> {
+    let redirectTo = '/';
     try {
-      await apiFetch('/api/auth/logout', { method: 'POST' });
+      const response = await apiFetch('/api/auth/logout', { method: 'POST' }) as { redirectTo?: string };
+      redirectTo = response.redirectTo ?? redirectTo;
     } catch {
       // ignore logout errors and reset local auth state
     }
     setTourOpen(false);
     setTourStepIndex(0);
     setUser(null);
-    setPage('dashboard');
+    setPage('workspace');
+    if (typeof window !== 'undefined') {
+      window.location.assign(redirectTo);
+    }
   }
 
   useEffect(() => {
@@ -378,6 +394,12 @@ export default function App() {
 
     setTourStepIndex(0);
     setTourOpen(true);
+  }, [page, user]);
+
+  useEffect(() => {
+    if (user && !user.workspaceEligible && page === 'workspace') {
+      setPage('dashboard');
+    }
   }, [page, user]);
 
   const closeTour = useCallback(() => {
@@ -415,7 +437,7 @@ export default function App() {
             className="flex flex-1 items-center justify-center gap-1 overflow-x-auto px-2 scrollbar-none"
             aria-label="Primary"
           >
-            {NAV.map((n) => (
+            {NAV.filter((n) => user.workspaceEligible || n.id !== 'workspace').map((n) => (
               (() => {
               const Icon = n.icon;
               return (
@@ -460,6 +482,7 @@ export default function App() {
       </header>
 
       <main className="flex-1 max-w-8xl mx-auto w-full px-4 py-8 sm:px-6 lg:px-8">
+        {page === 'workspace' && user.workspaceEligible && <WorkspacePage onOpenDashboard={() => setPage('dashboard')} />}
         {page === 'dashboard' && <Dashboard onNavigate={setPage} onNewRun={handleNewRun} />}
         {page === 'scenarios' && <ScenariosPage />}
         {page === 'runs' && <RunsPage autoOpenModal={openRunModal} onModalAutoOpened={() => setOpenRunModal(false)} />}

@@ -224,3 +224,13 @@ variable "control_plane_internal_secret" {
   default     = ""
   sensitive   = true
 }
+
+variable "website_url" {
+  description = <<-EOT
+    Base URL of the ARIA marketing website, injected as ARIA_WEBSITE_URL.
+    Used for sign-out redirect and other links that return the user to the
+    main website.  Leave empty to use the application default.
+  EOT
+  type        = string
+  default     = ""
+}

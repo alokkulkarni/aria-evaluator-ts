@@ -28,6 +28,7 @@ module "tenant" {
   log_retention_days_override      = var.log_retention_days_override
   control_plane_internal_url       = var.control_plane_internal_url
   control_plane_internal_secret    = var.control_plane_internal_secret
+  website_url                      = var.website_url
   tags                             = var.tags
 }
 

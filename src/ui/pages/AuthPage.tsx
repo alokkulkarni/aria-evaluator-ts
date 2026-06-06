@@ -6,6 +6,7 @@ interface AuthenticatedUser {
   id: string;
   username: string;
   role: string;
+  workspaceEligible: boolean;
 }
 
 interface AuthPageProps {

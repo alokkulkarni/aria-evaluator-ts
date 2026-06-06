@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { createTenant, registerUser } from '@/lib/api'
+import { createSSOToken, createTenant, registerUser } from '@/lib/api'
 import { getPlanById, PLANS } from '@/lib/plans'
 import { getRegionById, getRegionsForTier, REGIONS } from '@/lib/regions'
 import { cn } from '@/lib/utils'
@@ -135,13 +135,19 @@ export function SignUpWizard() {
         billingPeriod: state.billingPeriod,
       }, authToken)
 
+      if (authToken) {
+        const launch = await createSSOToken(authToken)
+        window.location.assign(launch.ssoUrl ?? launch.instanceUrl ?? '/api/launch-instance')
+        return
+      }
+
       if (provision.ssoUrl || provision.instanceUrl) {
-        window.location.assign(provision.ssoUrl ?? provision.instanceUrl ?? '/dashboard')
+        window.location.assign('/api/launch-instance')
         return
       }
       setState((current) => ({ ...current, confirmed: true }))
       await new Promise((resolve) => setTimeout(resolve, 1800))
-      router.push('/dashboard')
+      router.push('/api/launch-instance')
     } catch (error) {
       setProvisioning(false)
       setSubmitError(error instanceof Error ? error.message : 'We could not start provisioning your workspace.')

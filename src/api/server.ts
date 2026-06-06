@@ -25,6 +25,7 @@ import { regressionRouter } from './routes/regression.js';
 import { experimentsRouter } from './routes/experiments.js';
 import { observabilityRouter } from './routes/observability.js';
 import { schedulesRouter } from './routes/schedules.js';
+import { workspaceRouter } from './routes/workspace.js';
 import { startScheduleExecutor, stopScheduleExecutor } from '../jobs/schedule-executor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -130,6 +131,7 @@ app.use('/api/experiments', experimentsRouter);
 app.use('/api/transcripts', transcriptsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/workspace', workspaceRouter);
 app.use('/api/openapi', openapiRouter);
 
 // ── Static file serving ────────────────────────────────────────────────────────

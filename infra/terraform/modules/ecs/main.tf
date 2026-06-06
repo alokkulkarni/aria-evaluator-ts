@@ -21,6 +21,7 @@ locals {
   base_environment = concat(
     [
       { name = "NODE_ENV", value = "production" },
+      { name = "ARIA_DEPLOY_ENV", value = var.environment },
       { name = "API_PORT", value = tostring(var.container_port) },
       { name = "AWS_S3_STATE_BUCKET", value = var.state_bucket_name },
       { name = "AWS_S3_STATE_PREFIX", value = var.s3_state_prefix },
@@ -37,6 +38,7 @@ locals {
     var.god_mode_enabled ? [{ name = "ARIA_GOD_MODE", value = "true" }] : [],
     var.control_plane_internal_url != "" ? [{ name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_internal_url }] : [],
     var.control_plane_internal_secret != "" ? [{ name = "CONTROL_PLANE_INTERNAL_SECRET", value = var.control_plane_internal_secret }] : [],
+    var.website_url != "" ? [{ name = "ARIA_WEBSITE_URL", value = var.website_url }] : [],
   )
 
   all_environment = concat(local.base_environment, var.extra_environment_vars)

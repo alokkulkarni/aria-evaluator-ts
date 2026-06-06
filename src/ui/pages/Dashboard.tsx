@@ -125,389 +125,335 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
     return { attackBlockRate, avgQualityScore, violationsBlocked: securityBlocked, completionRate, completedCount, topInsight };
   }, [runs, qualityRuns, securityRuns, total, failed]);
 
-  const recent = runs.slice(0, 8);
+  const recent = runs.slice(0, 5);
+
+  const readinessBadgeClass =
+    readiness.attackBlockRate != null && readiness.attackBlockRate >= 80 && (readiness.avgQualityScore ?? 0) >= 70
+      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+      : readiness.attackBlockRate != null && readiness.attackBlockRate < 60
+        ? 'bg-rose-50 text-rose-700 ring-rose-200'
+        : 'bg-amber-50 text-amber-700 ring-amber-200';
+
+  const readinessLabel =
+    readiness.attackBlockRate != null && readiness.attackBlockRate >= 80 && (readiness.avgQualityScore ?? 0) >= 70
+      ? 'Ship candidate'
+      : readiness.attackBlockRate != null && readiness.attackBlockRate < 60
+        ? 'Action required'
+        : 'Needs review';
+
+  const suggestedAction =
+    readiness.attackBlockRate != null && readiness.attackBlockRate < 80
+      ? 'Re-run adversarial tests and tighten refusal policy.'
+      : readiness.avgQualityScore != null && readiness.avgQualityScore < 70
+        ? 'Review failing quality scenarios and adjust judge thresholds.'
+        : 'All metrics within acceptable thresholds.';
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-7 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-        <div data-tour-target="dashboard-hero" className="max-w-3xl space-y-3">
-          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Enterprise evaluation hub</p>
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h2>
-          <p className="text-sm leading-6 text-slate-200/80">Agent quality evaluation overview</p>
-        </div>
-
-        <div className="mt-6 flex flex-wrap gap-2 text-xs text-slate-100/90">
-          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Total runs {total}</span>
-          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Passed {passed}</span>
-          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Failed {failed}</span>
-          <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">Live observability</span>
-        </div>
-      </section>
-
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-tour-target="dashboard-summary">
-        <StatCard label="Avg Score" value={String(avgScore)} sub="/10" color="blue" />
-        <StatCard label="Total Runs" value={String(total)} color="slate" />
-        <StatCard label="Passed" value={String(passed)} color="green" />
-        <StatCard label="Failed" value={String(failed)} color="red" />
-      </div>
-
-      {/* ── Executive Overview ─────────────────────────────────────────────── */}
-      <section data-tour-target="dashboard-release-readiness">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="flex h-[calc(100vh-theme(spacing.16))] flex-col gap-3 overflow-auto lg:overflow-hidden">
+      {/* ── Header row: title + stat pills + quick actions ────────────────── */}
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-5 py-3 text-white shadow-lg" data-tour-target="dashboard-hero">
+        <div className="flex items-center gap-4">
           <div>
-            <h3 className="font-semibold text-slate-900">Release Readiness</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Based on last 100 runs</p>
+            <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-300/80">Enterprise evaluation hub</p>
+            <h2 className="text-xl font-semibold tracking-tight">Dashboard</h2>
           </div>
-          {!loading && (
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
-              readiness.attackBlockRate != null && readiness.attackBlockRate >= 80 && (readiness.avgQualityScore ?? 0) >= 70
-                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                : readiness.attackBlockRate != null && readiness.attackBlockRate < 60
-                  ? 'bg-rose-50 text-rose-700 ring-rose-200'
-                  : 'bg-amber-50 text-amber-700 ring-amber-200'
-            }`}>
-              {readiness.attackBlockRate != null && readiness.attackBlockRate >= 80 && (readiness.avgQualityScore ?? 0) >= 70
-                ? 'Ship candidate'
-                : readiness.attackBlockRate != null && readiness.attackBlockRate < 60
-                  ? 'Action required'
-                  : 'Needs review'}
-            </span>
-          )}
-        </div>
-
-        {loading ? (
-          <div className="card py-10 text-center text-sm text-slate-400">Loading…</div>
-        ) : (
-          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-            {/* Left: KPIs + completeness + insights */}
-            <div className="card space-y-5">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <KpiCard
-                  label="Attack Block Rate"
-                  value={readiness.attackBlockRate != null ? `${readiness.attackBlockRate}%` : '—'}
-                  tone={readiness.attackBlockRate == null ? 'neutral' : readiness.attackBlockRate >= 80 ? 'green' : readiness.attackBlockRate >= 60 ? 'amber' : 'red'}
-                  sub={securityRuns.length > 0 ? `${readiness.violationsBlocked}/${securityRuns.length} security runs` : 'No security runs'}
-                />
-                <KpiCard
-                  label="Avg Quality Score"
-                  value={readiness.avgQualityScore != null ? `${readiness.avgQualityScore}%` : '—'}
-                  tone={readiness.avgQualityScore == null ? 'neutral' : readiness.avgQualityScore >= 70 ? 'green' : readiness.avgQualityScore >= 50 ? 'amber' : 'red'}
-                  sub={qualityRuns.length > 0 ? `Over ${qualityRuns.length} quality runs` : 'No quality runs'}
-                />
-                <KpiCard
-                  label="Violations Blocked"
-                  value={String(readiness.violationsBlocked)}
-                  tone={readiness.violationsBlocked > 0 ? 'green' : securityRuns.length > 0 ? 'red' : 'neutral'}
-                  sub="Security attacks stopped"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm text-slate-600">
-                  <span>Run completion rate</span>
-                  <span className="font-semibold text-slate-900">
-                    {readiness.completionRate != null ? `${readiness.completedCount} / ${total}` : '—'}
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-2 rounded-full bg-cyan-500 transition-all"
-                    style={{ width: readiness.completionRate != null ? `${readiness.completionRate}%` : '0%' }}
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-slate-950 p-4 text-white">
-                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-cyan-300/80">Top insight</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-200">{readiness.topInsight}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Suggested action</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {readiness.attackBlockRate != null && readiness.attackBlockRate < 80
-                      ? 'Re-run the adversarial test pack and tighten refusal policy before approving release.'
-                      : readiness.avgQualityScore != null && readiness.avgQualityScore < 70
-                        ? 'Review failing quality scenarios and adjust judge threshold calibration.'
-                        : 'Continue monitoring. All metrics are within acceptable thresholds.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Judge comparison by run type */}
-            <div className="card space-y-5">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.28em] text-blue-600">Judge breakdown</p>
-                <h4 className="mt-1 text-base font-semibold text-slate-900">Pass rate by scenario type</h4>
-              </div>
-              <div className="space-y-4">
-                {[
-                  {
-                    label: 'Quality',
-                    count: qualityRuns.length,
-                    rate: qualityRuns.length > 0
-                      ? Math.round((qualityRuns.filter(r => r.evalResult?.passed === true).length / qualityRuns.length) * 100)
-                      : null,
-                    color: 'bg-emerald-500',
-                  },
-                  {
-                    label: 'Security',
-                    count: securityRuns.length,
-                    rate: securityRuns.length > 0
-                      ? Math.round((securityRuns.filter(r => r.evalResult?.passed === true).length / securityRuns.length) * 100)
-                      : null,
-                    color: 'bg-cyan-500',
-                  },
-                  {
-                    label: 'All runs',
-                    count: total,
-                    rate: total > 0 ? Math.round((passed / total) * 100) : null,
-                    color: 'bg-blue-500',
-                  },
-                ].map((item) => (
-                  <div key={item.label}>
-                    <div className="mb-1.5 flex items-center justify-between text-sm">
-                      <span className="text-slate-600">
-                        {item.label}
-                        <span className="ml-1.5 text-xs text-slate-400">({item.count})</span>
-                      </span>
-                      <span className="font-semibold text-slate-900">{item.rate != null ? `${item.rate}%` : '—'}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-100">
-                      <div
-                        className={`h-2 rounded-full transition-all ${item.color}`}
-                        style={{ width: item.rate != null ? `${item.rate}%` : '0%' }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs text-slate-500 leading-5">
-                <span className="font-semibold text-slate-700">Note:</span> Security pass = attack blocked.
-                Quality pass = score ≥ 6/10. Mixed-type runs are excluded from type breakdowns.
-              </div>
-            </div>
+          <div className="hidden items-center gap-1.5 text-[11px] text-slate-100/90 sm:flex" data-tour-target="dashboard-summary">
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Runs {total}</span>
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Passed {passed}</span>
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Failed {failed}</span>
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Avg {avgScore}/10</span>
           </div>
-        )}
-      </section>
-
-      <div className="card" data-tour-target="dashboard-observability">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Observability (last 24h)</h3>
         </div>
-
-        {metricsLoading ? (
-          <div className="py-8 text-center text-sm text-slate-400">Loading telemetry…</div>
-        ) : !metrics ? (
-          <div className="py-8 text-center text-sm text-slate-400">Telemetry unavailable.</div>
-        ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Failure rate</p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {metrics.totals.failureRatePercent?.toFixed(1) ?? '—'}%
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Avg latency</p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {metrics.totals.avgLatencyMs != null ? formatLatency(metrics.totals.avgLatencyMs) : '—'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">P95 latency</p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {metrics.totals.p95LatencyMs != null ? formatLatency(metrics.totals.p95LatencyMs) : '—'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Judge tokens</p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {formatTokenCount(metrics.totals.judgeTokenTotalEstimate)}
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  Scenario turns: {formatTokenCount(metrics.totals.scenarioTokenTotalEstimate)}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <h4 className="mb-2 text-sm font-semibold text-slate-700">Provider breakdown</h4>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
-                      <th className="pb-2 font-medium">Provider</th>
-                      <th className="pb-2 font-medium">Runs</th>
-                      <th className="pb-2 font-medium">Failed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {metrics.providers.slice(0, 5).map((provider) => (
-                      <tr key={provider.provider} className="border-b border-slate-50 last:border-0">
-                        <td className="py-2.5 font-medium text-slate-800">{provider.provider}</td>
-                        <td className="py-2.5">{provider.runCount}</td>
-                        <td className="py-2.5">{provider.failedRuns}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div>
-                <h4 className="mb-2 text-sm font-semibold text-slate-700">Failure classes</h4>
-                {metrics.failures.length === 0 ? (
-                  <div className="py-4 text-sm text-slate-400">No failures in this window.</div>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="pb-2 font-medium">Class</th>
-                        <th className="pb-2 font-medium">Count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {metrics.failures.slice(0, 5).map((failure) => (
-                        <tr key={failure.failureClass} className="border-b border-slate-50 last:border-0">
-                          <td className="py-2.5 font-medium text-slate-800">{failure.failureClass}</td>
-                          <td className="py-2.5">{failure.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="card" data-tour-target="dashboard-recent-runs">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Recent Runs</h3>
-          <button onClick={() => onNavigate('runs')} className="text-sm font-medium text-blue-700 hover:underline">
-            <span className="inline-flex items-center gap-1">
-              View all
-              <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
-            </span>
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="py-8 text-center text-sm text-slate-400">Loading…</div>
-        ) : recent.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-400">
-            No runs yet.{' '}
-            <button onClick={() => onNewRun ? onNewRun() : onNavigate('runs')} className="font-medium text-blue-700 hover:underline">
-              <span className="inline-flex items-center gap-1">
-                Start one
-                <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-            </button>
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="pb-2 font-medium">Scenario</th>
-                <th className="pb-2 font-medium">Channel</th>
-                <th className="pb-2 font-medium">Status</th>
-                <th className="pb-2 font-medium">Score</th>
-                <th className="pb-2 font-medium">Tokens</th>
-                <th className="pb-2 font-medium">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recent.map((r) => (
-                <tr key={r.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2.5 font-medium text-slate-800">{r.scenarioName}</td>
-                  <td className="py-2.5">
-                    <span className={r.channel === 'voice' ? 'badge-voice' : 'badge-chat'}>
-                      {r.channel}
-                    </span>
-                  </td>
-                  <td className="py-2.5">
-                    <StatusBadge status={r.status} />
-                  </td>
-                  <td className="py-2.5">
-                    {r.evalResult ? (
-                      <div className="flex items-center gap-1.5">
-                        {r.evalResult.scenarioType === 'security' && (
-                          <span title="Security test" className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold text-purple-700 ring-1 ring-purple-200 bg-purple-50">
-                            <RunSecurityIcon className="h-3 w-3" aria-hidden="true" />
-                            Security
-                          </span>
-                        )}
-                        <span className={r.evalResult.passed ? 'font-semibold text-green-700' : 'font-semibold text-red-600'}>
-                          {r.evalResult.overallScore.toFixed(1)}/10
-                        </span>
-                      </div>
-                    ) : '—'}
-                  </td>
-                  <td className="py-2.5">
-                    {(r.evalResult != null) || r.telemetry?.tokenTotalEstimate != null ? (
-                      <div className="space-y-0.5">
-                        <p className="text-xs font-semibold text-slate-800">
-                          Judge {r.evalResult != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate ?? 0) : '—'}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          Scenario {r.telemetry?.tokenTotalEstimate != null ? formatTokenCount(r.telemetry.tokenTotalEstimate) : '—'}
-                        </p>
-                      </div>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 text-slate-400">{new Date(r.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="card" data-tour-target="dashboard-actions">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Quick Actions</h3>
-          <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Fast paths</p>
-        </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="flex items-center gap-1.5" data-tour-target="dashboard-actions">
           {[
-            { label: 'Browse Scenarios', icon: NavScenariosIcon, page: 'scenarios' as const, newRun: false },
+            { label: 'Scenarios', icon: NavScenariosIcon, page: 'scenarios' as const, newRun: false },
             { label: 'New Run', icon: NavRunsIcon, page: 'runs' as const, newRun: true },
-            { label: 'View Transcripts', icon: NavTranscriptsIcon, page: 'transcripts' as const, newRun: false },
-            { label: 'View Reports', icon: NavReportsIcon, page: 'reports' as const, newRun: false },
+            { label: 'Transcripts', icon: NavTranscriptsIcon, page: 'transcripts' as const, newRun: false },
+            { label: 'Reports', icon: NavReportsIcon, page: 'reports' as const, newRun: false },
           ].map((a) => (
             <button
               key={a.label}
               onClick={() => a.newRun && onNewRun ? onNewRun() : onNavigate(a.page)}
-              className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-4 text-center text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
+              className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white ring-1 ring-white/10 transition hover:bg-white/20"
             >
-              <span className="flex items-center justify-center gap-2">
-                <a.icon className="h-4 w-4 text-blue-600" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5">
+                <a.icon className="h-3.5 w-3.5 text-cyan-300" aria-hidden="true" />
                 {a.label}
               </span>
             </button>
           ))}
         </div>
-      </div>
+      </section>
+
+      {/* ── Main body: 3-column grid (lg+), stacked below ────────────────── */}
+      {loading ? (
+        <div className="card flex-1 flex items-center justify-center text-sm text-slate-400">Loading…</div>
+      ) : (
+        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1.1fr_1.6fr_0.85fr]">
+          {/* ── LEFT COLUMN: Release Readiness + Observability ──────────── */}
+          <div className="flex min-h-0 flex-col gap-3">
+            {/* Release Readiness */}
+            <div className="card flex-1 space-y-3 overflow-auto" data-tour-target="dashboard-release-readiness">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Release Readiness</h3>
+                  <p className="text-[10px] text-slate-400">Based on last 100 runs</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ring-1 ${readinessBadgeClass}`}>
+                  {readinessLabel}
+                </span>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <KpiCard
+                  label="Attack Block Rate"
+                  value={readiness.attackBlockRate != null ? `${readiness.attackBlockRate}%` : '—'}
+                  tone={readiness.attackBlockRate == null ? 'neutral' : readiness.attackBlockRate >= 80 ? 'green' : readiness.attackBlockRate >= 60 ? 'amber' : 'red'}
+                  sub={securityRuns.length > 0 ? `${readiness.violationsBlocked}/${securityRuns.length} security` : 'No security runs'}
+                />
+                <KpiCard
+                  label="Avg Quality Score"
+                  value={readiness.avgQualityScore != null ? `${readiness.avgQualityScore}%` : '—'}
+                  tone={readiness.avgQualityScore == null ? 'neutral' : readiness.avgQualityScore >= 70 ? 'green' : readiness.avgQualityScore >= 50 ? 'amber' : 'red'}
+                  sub={qualityRuns.length > 0 ? `${qualityRuns.length} quality runs` : 'No quality runs'}
+                />
+                <KpiCard
+                  label="Violations Blocked"
+                  value={String(readiness.violationsBlocked)}
+                  tone={readiness.violationsBlocked > 0 ? 'green' : securityRuns.length > 0 ? 'red' : 'neutral'}
+                  sub="Attacks stopped"
+                />
+              </div>
+
+              {/* Completion bar */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span>Completion rate</span>
+                  <span className="font-semibold text-slate-900">
+                    {readiness.completionRate != null ? `${readiness.completedCount}/${total}` : '—'}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-100">
+                  <div
+                    className="h-1.5 rounded-full bg-cyan-500 transition-all"
+                    style={{ width: readiness.completionRate != null ? `${readiness.completionRate}%` : '0%' }}
+                  />
+                </div>
+              </div>
+
+              {/* Insight + Action compact */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-950 p-3 text-white">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-cyan-300/80">Insight</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-200">{readiness.topInsight}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200/80 bg-white p-3">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">Action</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{suggestedAction}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Observability (compact) */}
+            <div className="card space-y-2" data-tour-target="dashboard-observability">
+              <h3 className="text-sm font-semibold text-slate-900">Observability <span className="text-[10px] font-normal text-slate-400">(24h)</span></h3>
+              {metricsLoading ? (
+                <div className="py-3 text-center text-xs text-slate-400">Loading…</div>
+              ) : !metrics ? (
+                <div className="py-3 text-center text-xs text-slate-400">Unavailable</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    <MiniMetric label="Fail %" value={metrics.totals.failureRatePercent != null ? `${metrics.totals.failureRatePercent.toFixed(1)}%` : '—%'} />
+                    <MiniMetric label="Avg Lat." value={metrics.totals.avgLatencyMs != null ? formatLatency(metrics.totals.avgLatencyMs) : '—'} />
+                    <MiniMetric label="P95 Lat." value={metrics.totals.p95LatencyMs != null ? formatLatency(metrics.totals.p95LatencyMs) : '—'} />
+                    <MiniMetric label="Judge Tok." value={formatTokenCount(metrics.totals.judgeTokenTotalEstimate)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <p className="mb-1 font-semibold text-slate-700">Providers</p>
+                      {metrics.providers.length === 0 ? (
+                        <p className="text-slate-400">—</p>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {metrics.providers.slice(0, 3).map((p) => (
+                            <div key={p.provider} className="flex justify-between">
+                              <span className="text-slate-700 truncate">{p.provider}</span>
+                              <span className="text-slate-500">{p.runCount} runs{p.failedRuns > 0 ? `, ${p.failedRuns} fail` : ''}</span>
+                            </div>
+                          ))}
+                          {metrics.providers.length > 3 && <p className="text-slate-400">+{metrics.providers.length - 3} more</p>}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="mb-1 font-semibold text-slate-700">Failures</p>
+                      {metrics.failures.length === 0 ? (
+                        <p className="text-slate-400">None</p>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {metrics.failures.slice(0, 3).map((f) => (
+                            <div key={f.failureClass} className="flex justify-between">
+                              <span className="text-slate-700 truncate">{f.failureClass}</span>
+                              <span className="text-slate-500">{f.count}</span>
+                            </div>
+                          ))}
+                          {metrics.failures.length > 3 && <p className="text-slate-400">+{metrics.failures.length - 3} more</p>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ── CENTER COLUMN: Recent Runs ──────────────────────────────── */}
+          <div className="card flex min-h-0 flex-col" data-tour-target="dashboard-recent-runs">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">Recent Runs</h3>
+              <button onClick={() => onNavigate('runs')} className="text-xs font-medium text-blue-700 hover:underline">
+                <span className="inline-flex items-center gap-1">
+                  View all <ChevronRightIcon className="h-3 w-3" aria-hidden="true" />
+                </span>
+              </button>
+            </div>
+
+            {recent.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
+                No runs yet.{' '}
+                <button onClick={() => onNewRun ? onNewRun() : onNavigate('runs')} className="ml-1 font-medium text-blue-700 hover:underline">
+                  Start one →
+                </button>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-left text-[10px] uppercase tracking-wide text-slate-500">
+                      <th className="pb-1.5 font-medium">Scenario</th>
+                      <th className="pb-1.5 font-medium">Ch.</th>
+                      <th className="pb-1.5 font-medium">Status</th>
+                      <th className="pb-1.5 font-medium">Score</th>
+                      <th className="pb-1.5 font-medium">Tokens</th>
+                      <th className="pb-1.5 font-medium">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map((r) => (
+                      <tr key={r.id} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2 font-medium text-slate-800 max-w-[200px] truncate" title={r.scenarioName}>{r.scenarioName}</td>
+                        <td className="py-2">
+                          <span className={r.channel === 'voice' ? 'badge-voice' : 'badge-chat'}>
+                            {r.channel}
+                          </span>
+                        </td>
+                        <td className="py-2">
+                          <StatusBadge status={r.status} />
+                        </td>
+                        <td className="py-2">
+                          {r.evalResult ? (
+                            <div className="flex items-center gap-1">
+                              {r.evalResult.scenarioType === 'security' && (
+                                <span title="Security test" className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold text-purple-700 ring-1 ring-purple-200 bg-purple-50">
+                                  <RunSecurityIcon className="h-2.5 w-2.5" aria-hidden="true" />
+                                  Sec
+                                </span>
+                              )}
+                              <span className={r.evalResult.passed ? 'font-semibold text-green-700' : 'font-semibold text-red-600'}>
+                                {r.evalResult.overallScore.toFixed(1)}/10
+                              </span>
+                            </div>
+                          ) : '—'}
+                        </td>
+                        <td className="py-2">
+                          {(r.evalResult != null) || r.telemetry?.tokenTotalEstimate != null ? (
+                            <div className="space-y-0">
+                              <p className="text-[10px] font-semibold text-slate-800">
+                                J {r.evalResult != null ? formatTokenCount(r.evalResult.judgeTokenTotalEstimate ?? 0) : '—'}
+                              </p>
+                              <p className="text-[10px] text-slate-500">
+                                S {r.telemetry?.tokenTotalEstimate != null ? formatTokenCount(r.telemetry.tokenTotalEstimate) : '—'}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-slate-400">{new Date(r.createdAt).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT COLUMN: Judge Breakdown ───────────────────────────── */}
+          <div className="card flex min-h-0 flex-col space-y-3 overflow-auto">
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-blue-600">Judge breakdown</p>
+              <h4 className="mt-0.5 text-sm font-semibold text-slate-900">Pass rate by type</h4>
+            </div>
+            <div className="space-y-3">
+              {[
+                {
+                  label: 'Quality',
+                  count: qualityRuns.length,
+                  rate: qualityRuns.length > 0
+                    ? Math.round((qualityRuns.filter(r => r.evalResult?.passed === true).length / qualityRuns.length) * 100)
+                    : null,
+                  color: 'bg-emerald-500',
+                },
+                {
+                  label: 'Security',
+                  count: securityRuns.length,
+                  rate: securityRuns.length > 0
+                    ? Math.round((securityRuns.filter(r => r.evalResult?.passed === true).length / securityRuns.length) * 100)
+                    : null,
+                  color: 'bg-cyan-500',
+                },
+                {
+                  label: 'All runs',
+                  count: total,
+                  rate: total > 0 ? Math.round((passed / total) * 100) : null,
+                  color: 'bg-blue-500',
+                },
+              ].map((item) => (
+                <div key={item.label}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-slate-600">
+                      {item.label}
+                      <span className="ml-1 text-[10px] text-slate-400">({item.count})</span>
+                    </span>
+                    <span className="font-semibold text-slate-900">{item.rate != null ? `${item.rate}%` : '—'}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${item.color}`}
+                      style={{ width: item.rate != null ? `${item.rate}%` : '0%' }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5 text-[10px] text-slate-500 leading-4">
+              <span className="font-semibold text-slate-700">Note:</span> Security pass = attack blocked.
+              Quality pass = score ≥ 6/10. Mixed-type runs excluded from breakdowns.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
-  const colors: Record<string, string> = {
-    blue: 'text-blue-700', green: 'text-green-700', red: 'text-red-600', slate: 'text-slate-800',
-  };
+function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="card">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className={`mt-1 text-3xl font-bold ${colors[color] ?? 'text-slate-800'}`}>
-        {value}{sub && <span className="text-base font-normal text-slate-400">{sub}</span>}
-      </p>
+    <div className="rounded-xl border border-slate-200 bg-white/80 p-2">
+      <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-sm font-semibold text-slate-900">{value}</p>
     </div>
   );
 }
@@ -517,13 +463,13 @@ function KpiCard({ label, value, tone, sub }: { label: string; value: string; to
     green: 'bg-emerald-500', amber: 'bg-amber-400', red: 'bg-rose-500', neutral: 'bg-slate-300',
   };
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <div className="mt-3 flex items-center gap-2">
-        <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${dotColors[tone]}`} />
-        <p className="text-2xl font-semibold text-slate-900">{value}</p>
+    <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dotColors[tone]}`} />
+        <p className="text-lg font-semibold text-slate-900">{value}</p>
       </div>
-      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
+      {sub && <p className="mt-0.5 text-[10px] text-slate-500">{sub}</p>}
     </div>
   );
 }

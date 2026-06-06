@@ -206,6 +206,7 @@ module "ecs" {
   god_mode_secret_arn                = var.god_mode_secret_arn
   control_plane_internal_url         = var.control_plane_internal_url
   control_plane_internal_secret      = var.control_plane_internal_secret
+  website_url                        = var.website_url
   tags = merge(local.common_tags, {
     "aria:resource_type" = "compute"
   })

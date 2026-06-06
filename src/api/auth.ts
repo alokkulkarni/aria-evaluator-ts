@@ -4,6 +4,7 @@ import { Router } from 'express';
 
 import { prisma } from '../db/client.js';
 import { recordAuditEventSafe } from './audit-log.js';
+import { getWebsiteSignOutUrl } from './control-plane.js';
 
 const SECURE_SESSION_COOKIE_NAME = '__Host-aria_session';
 const DEV_SESSION_COOKIE_NAME = 'aria_session';
@@ -31,6 +32,9 @@ export interface AuthContext {
   username: string;
   role: string;
   sessionId: string;
+  email: string | null;
+  ssoSubject: string | null;
+  workspaceEligible: boolean;
   requirePasswordChange: boolean;
 }
 
@@ -472,6 +476,9 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       username: session.user.username,
       role: session.user.role,
       sessionId: session.id,
+      email: session.user.email,
+      ssoSubject: session.user.ssoSubject,
+      workspaceEligible: !!session.user.ssoSubject,
       requirePasswordChange: isTemporaryPasswordHash(session.user.passwordHash),
     };
 
@@ -562,7 +569,7 @@ authRouter.post('/bootstrap', async (req, res) => {
           role: 'admin',
           lastLoginAt: new Date(),
         },
-        select: { id: true, username: true, role: true },
+        select: { id: true, username: true, role: true, email: true, ssoSubject: true },
       });
     });
 
@@ -573,6 +580,9 @@ authRouter.post('/bootstrap', async (req, res) => {
       username: createdUser.username,
       role: createdUser.role,
       sessionId: session.sessionId,
+      email: createdUser.email,
+      ssoSubject: createdUser.ssoSubject,
+      workspaceEligible: !!createdUser.ssoSubject,
       requirePasswordChange: false,
     };
     await recordAuditEventSafe(req, 'auth.bootstrap', createdUser.id, {
@@ -583,7 +593,12 @@ authRouter.post('/bootstrap', async (req, res) => {
     res.status(201).json({
       ok: true,
       requirePasswordChange: false,
-      user: createdUser,
+      user: {
+        id: createdUser.id,
+        username: createdUser.username,
+        role: createdUser.role,
+        workspaceEligible: !!createdUser.ssoSubject,
+      },
     });
   } catch (err) {
     if ((err as Error).message === 'BOOTSTRAP_ALREADY_COMPLETED') {
@@ -614,7 +629,7 @@ authRouter.post('/login', async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { username },
-      select: { id: true, username: true, role: true, passwordHash: true },
+      select: { id: true, username: true, role: true, email: true, ssoSubject: true, passwordHash: true },
     });
     if (!user || !verifyPassword(user.passwordHash, password)) {
       registerFailedAttempt(ipRateKey);
@@ -639,6 +654,9 @@ authRouter.post('/login', async (req, res) => {
       username: user.username,
       role: user.role,
       sessionId: session.sessionId,
+      email: user.email,
+      ssoSubject: user.ssoSubject,
+      workspaceEligible: !!user.ssoSubject,
       requirePasswordChange,
     };
     await recordAuditEventSafe(req, 'auth.login', user.id, {
@@ -653,6 +671,7 @@ authRouter.post('/login', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
+        workspaceEligible: !!user.ssoSubject,
       },
     });
   } catch (err) {
@@ -678,7 +697,7 @@ authRouter.post('/change-password', async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id: auth.userId },
-      select: { id: true, username: true, role: true, passwordHash: true },
+      select: { id: true, username: true, role: true, email: true, ssoSubject: true, passwordHash: true },
     });
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -723,6 +742,7 @@ authRouter.post('/change-password', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
+        workspaceEligible: !!user.ssoSubject,
       },
     });
   } catch (err) {
@@ -744,7 +764,7 @@ authRouter.post('/logout', async (req, res) => {
       });
     }
     clearSessionCookie(res);
-    res.json({ ok: true });
+    res.json({ ok: true, redirectTo: getWebsiteSignOutUrl() });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -763,6 +783,7 @@ authRouter.get('/session', (req, res) => {
       id: auth.userId,
       username: auth.username,
       role: auth.role,
+      workspaceEligible: auth.workspaceEligible,
     },
   });
 });

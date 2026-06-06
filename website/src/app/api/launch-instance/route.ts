@@ -1,25 +1,32 @@
 import { NextResponse } from 'next/server'
 
 import { auth } from '@/auth'
-import { serverApiFetch } from '@/lib/api'
+import { ApiError, serverApiFetch } from '@/lib/api'
 
 export async function GET(request: Request) {
   const session = await auth()
   const authToken = session?.user?.accessToken
 
   if (!authToken) {
-    return NextResponse.redirect(new URL('/sign-in?return=/dashboard', request.url))
+    return NextResponse.redirect(new URL('/sign-in?return=/api/launch-instance', request.url))
   }
 
-  const launch = await serverApiFetch<{ ssoUrl?: string | null; instanceUrl?: string | null }>('/instance/sso-token', {
-    method: 'POST',
-    authToken,
-  })
+  try {
+    const launch = await serverApiFetch<{ ssoUrl?: string | null; instanceUrl?: string | null }>('/instance/sso-token', {
+      method: 'POST',
+      authToken,
+    })
 
-  const target = launch.ssoUrl ?? launch.instanceUrl
-  if (!target) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    const target = launch.ssoUrl ?? launch.instanceUrl
+    if (!target) {
+      return NextResponse.redirect(new URL('/sign-up?step=plan', request.url))
+    }
+
+    return NextResponse.redirect(new URL(target))
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      return NextResponse.redirect(new URL('/sign-up?step=plan', request.url))
+    }
+    throw error
   }
-
-  return NextResponse.redirect(new URL(target))
 }

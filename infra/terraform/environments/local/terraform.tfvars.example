@@ -108,3 +108,8 @@ local_scenarios_dir = "/Users/alokkulkarni/Documents/Development/aria-evaluator-
 #   local_db_path = "/Users/<your-username>/repos/aria-evaluator-ts/prisma/data/aria-evaluator.db"
 
 local_db_path = ""
+
+# ── Website URL (sign-out redirect target) ────────────────────────────────────
+# Where the user is redirected after signing out.
+# Default: http://localhost:3000 (local marketing website)
+website_url = "http://localhost:3000"
