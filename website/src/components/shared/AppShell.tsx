@@ -2,6 +2,7 @@
 
 import { Footer } from '@/components/marketing/Footer'
 import { Navbar } from '@/components/marketing/Navbar'
+import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner'
 import { usePathname } from 'next/navigation'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {showNavbar ? <Navbar /> : null}
       <main className="min-h-[calc(100vh-4rem)]">{children}</main>
       {showFooter ? <Footer /> : null}
+      <CookieConsentBanner />
     </div>
   )
 }

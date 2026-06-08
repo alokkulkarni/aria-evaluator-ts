@@ -1,0 +1,43 @@
+# ── Website Production Deployment ──────────────────────────────────────────────
+# Copy this file to terraform.tfvars and fill in real values before deploying.
+
+# ── Container Image ───────────────────────────────────────────────────────────
+# Terraform creates the ECR repository automatically. On first deploy, use a
+# placeholder image. After apply, get the ECR URI from the output and push your
+# real image:
+#
+#   ECR_URI=$(terraform output -raw ecr_repository_url)
+#   docker build -t $ECR_URI:latest ../../website
+#   aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin $ECR_URI
+#   docker push $ECR_URI:latest
+#   aws ecs update-service --cluster aria-website-prod --service aria-website-prod-app --force-new-deployment
+#
+# For first apply, use a placeholder:
+container_image = "nginx:latest"
+# After first deploy, switch to: container_image = "ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/aria-website-prod:latest"
+
+# ── Auth Secrets (use TF_VAR_ env vars in CI/CD instead of hardcoding) ────────
+# nextauth_secret      = "..."
+# google_client_id     = "..."
+# google_client_secret = "..."
+# github_client_id     = "..."
+# github_client_secret = "..."
+
+# ── Domain & TLS ──────────────────────────────────────────────────────────────
+# 1. Register domain in Route53 (already done: ariaeval.io)
+# 2. Get the Hosted Zone ID from Route53 console
+# 3. Request ACM certs in BOTH us-east-1 (for CloudFront) and eu-west-2 (for ALB)
+#    - Domain: ariaeval.io  SANs: *.ariaeval.io
+# 4. Validate certs via DNS (Route53 auto-validation)
+
+domain_name               = "ariaeval.io"
+route53_zone_id           = ""    # e.g. "Z0123456789ABCDEFGHIJ"
+acm_certificate_arn_us_east_1 = "" # e.g. "arn:aws:acm:us-east-1:ACCOUNT:certificate/UUID"
+acm_certificate_arn_regional  = "" # e.g. "arn:aws:acm:eu-west-2:ACCOUNT:certificate/UUID"
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+# alarm_sns_topic_arn = "arn:aws:sns:eu-west-2:ACCOUNT:aria-alarms"
+
+# ── CloudTrail ────────────────────────────────────────────────────────────────
+# cloudtrail_bucket_suffix = "prod"
+# cloudtrail_kms_key_arn   = ""

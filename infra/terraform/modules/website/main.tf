@@ -533,8 +533,8 @@ resource "aws_ecs_task_definition" "app" {
       ]
       environment = [
         { name = "NODE_ENV", value = "production" },
-        { name = "ARIA_DEPLOY_ENV",                 value = var.environment },
-        { name = "PORT",                            value = tostring(var.container_port) },
+        { name = "ARIA_DEPLOY_ENV", value = var.environment },
+        { name = "PORT", value = tostring(var.container_port) },
         { name = "HOSTNAME", value = "0.0.0.0" },
         { name = "NEXTAUTH_URL", value = local.app_url },
         { name = "NEXT_PUBLIC_APP_URL", value = local.app_url },
@@ -783,6 +783,59 @@ resource "aws_wafv2_web_acl" "cloudfront" {
   })
 }
 
+# ── CloudFront Function: block direct *.cloudfront.net access ──────────────────
+# When a custom domain is configured, requests arriving via the raw CloudFront
+# distribution URL (d12345.cloudfront.net) are redirected to the custom domain.
+# This ensures all public traffic uses ariaeval.io and the CF URL is never exposed.
+
+resource "aws_cloudfront_function" "domain_redirect" {
+  count   = var.domain_name != "" ? 1 : 0
+  name    = "${local.name_prefix}-domain-redirect"
+  runtime = "cloudfront-js-2.0"
+  comment = "Redirect *.cloudfront.net requests to ${var.domain_name}"
+  publish = true
+
+  code = <<-JSEOF
+    function handler(event) {
+      var request = event.request;
+      var host = request.headers.host.value;
+
+      // If the Host header contains cloudfront.net, redirect to custom domain
+      if (host.indexOf('cloudfront.net') !== -1) {
+        var uri = request.uri;
+        var qs = '';
+        if (request.querystring && Object.keys(request.querystring).length > 0) {
+          var parts = [];
+          for (var key in request.querystring) {
+            var val = request.querystring[key];
+            if (val.multiValue) {
+              for (var i = 0; i < val.multiValue.length; i++) {
+                parts.push(key + '=' + val.multiValue[i].value);
+              }
+            } else if (val.value !== '') {
+              parts.push(key + '=' + val.value);
+            } else {
+              parts.push(key);
+            }
+          }
+          if (parts.length > 0) qs = '?' + parts.join('&');
+        }
+
+        return {
+          statusCode: 301,
+          statusDescription: 'Moved Permanently',
+          headers: {
+            'location': { value: 'https://${var.domain_name}' + uri + qs },
+            'cache-control': { value: 'max-age=86400' }
+          }
+        };
+      }
+
+      return request;
+    }
+  JSEOF
+}
+
 # ── CloudFront ─────────────────────────────────────────────────────────────────
 
 resource "aws_cloudfront_distribution" "main" {
@@ -829,6 +882,14 @@ resource "aws_cloudfront_distribution" "main" {
     default_ttl            = 0
     max_ttl                = 0
     compress               = true
+
+    dynamic "function_association" {
+      for_each = var.domain_name != "" ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.domain_redirect[0].arn
+      }
+    }
   }
 
   # Static assets — aggressive caching (1 day)

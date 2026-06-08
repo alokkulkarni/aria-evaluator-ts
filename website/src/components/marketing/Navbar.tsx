@@ -72,7 +72,7 @@ export function Navbar() {
       <div className="max-w-8xl mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-3">
           <AriaLogo />
-          <span className="text-sm font-bold text-white sm:text-base">ARIA Evaluator</span>
+          <span className="text-base font-bold text-white sm:text-lg">ARIA Evaluator</span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
@@ -81,7 +81,7 @@ export function Navbar() {
               key={item.label}
               href={item.href}
               className={cn(
-                'rounded-full px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 hover:text-white',
+                'rounded-full px-3 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white',
                 isActive(item.href, item.match) && 'bg-white/12 text-white ring-1 ring-white/15',
               )}
             >
@@ -97,7 +97,7 @@ export function Navbar() {
               aria-haspopup="true"
               onClick={() => setResourcesOpen((open) => !open)}
               className={cn(
-                'flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 hover:text-white',
+                'flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white',
                 (isResourcesActive || resourcesOpen) && 'bg-white/12 text-white ring-1 ring-white/15',
               )}
             >
@@ -143,7 +143,7 @@ export function Navbar() {
           <Link href="/sign-in" className="rounded-full border border-white/10 px-3.5 py-2 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white">
             Sign in
           </Link>
-          <Link href="/sign-up" className="rounded-full bg-cyan-400 px-4 py-1.5 text-xs font-semibold text-slate-950 hover:bg-cyan-300">
+          <Link href="/sign-up" className="rounded-full bg-cyan-400 px-4 py-1.5 text-sm font-semibold text-slate-950 hover:bg-cyan-300">
             Get Started
           </Link>
         </div>
