@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils'
 import { RegionPicker } from '@/components/shared/RegionPicker'
 import type { BillingPeriod, PricingTier, SignUpState } from '@/types'
 
+const isWaitlistMode = process.env.NEXT_PUBLIC_SIGNUP_MODE === 'waitlist'
+
 const accountSchema = z
   .object({
     name: z.string().min(2, 'Enter your full name'),
@@ -50,7 +52,7 @@ export function SignUpWizard() {
 
   const planParam = searchParams.get('plan')
   const periodParam = searchParams.get('period')
-  const initialPlan = isPricingTier(planParam) ? planParam : 'free'
+  const initialPlan = isWaitlistMode ? 'free' : (isPricingTier(planParam) ? planParam : 'free')
   const initialPeriod: BillingPeriod = periodParam === 'annual' ? 'annual' : 'monthly'
 
   const [state, setState] = useState<SignUpState>({
@@ -349,15 +351,20 @@ export function SignUpWizard() {
               {PLANS.map((plan) => {
                 const selected = state.selectedPlan === plan.id
                 const price = plan.price[state.billingPeriod]
+                const isPaidPlan = plan.id !== 'free'
+                const isLocked = isWaitlistMode && isPaidPlan
 
                 return (
                   <button
                     key={plan.id}
                     type="button"
-                    onClick={() => setState((current) => ({ ...current, selectedPlan: plan.id }))}
+                    onClick={() => !isLocked && setState((current) => ({ ...current, selectedPlan: plan.id }))}
+                    disabled={isLocked}
                     className={cn(
                       'rounded-2xl border p-5 text-left transition',
-                      selected ? 'border-blue-500 bg-blue-50 ring-4 ring-blue-500/10' : 'border-slate-200 bg-white/90 hover:border-slate-300',
+                      isLocked && 'opacity-60 cursor-not-allowed',
+                      selected && !isLocked ? 'border-blue-500 bg-blue-50 ring-4 ring-blue-500/10' : 'border-slate-200 bg-white/90 hover:border-slate-300',
+                      isLocked && 'hover:border-slate-200',
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -365,7 +372,11 @@ export function SignUpWizard() {
                         <h3 className="text-lg font-semibold text-slate-900">{plan.name}</h3>
                         <p className="mt-1 text-sm text-slate-500">{plan.tagline}</p>
                       </div>
-                      {selected ? <CheckCircle2 className="h-5 w-5 text-blue-600" /> : null}
+                      {isLocked ? (
+                        <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200/70">
+                          Coming Soon
+                        </span>
+                      ) : selected ? <CheckCircle2 className="h-5 w-5 text-blue-600" /> : null}
                     </div>
                     <div className="mt-4 flex items-end gap-1">
                       <span className="text-3xl font-bold tracking-tight text-slate-900">

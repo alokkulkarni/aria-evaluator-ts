@@ -52,6 +52,7 @@ export interface AuthContext {
   ssoSubject: string | null;
   workspaceEligible: boolean;
   requirePasswordChange: boolean;
+  suspended: boolean;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -506,6 +507,7 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       ssoSubject: session.user.ssoSubject,
       workspaceEligible: !!session.user.ssoSubject,
       requirePasswordChange: isTemporaryPasswordHash(session.user.passwordHash),
+      suspended: session.user.suspended,
     };
 
     const shouldRefreshLastSeen = !session.lastSeenAt
@@ -535,6 +537,19 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       requirePasswordChange: true,
     });
     return;
+  }
+  // GDPR Art. 18: suspended accounts can only manage their own account
+  if (auth.suspended) {
+    const accountPaths = ['/api/auth/account', '/api/auth/session', '/api/auth/sessions', '/api/auth/logout'];
+    const isAccountRoute = accountPaths.some((p) => req.path.startsWith(p));
+    if (!isAccountRoute) {
+      res.status(403).json({
+        error: 'Account suspended',
+        message: 'Your account processing is restricted (GDPR Art. 18). Contact support or unrestrict your account.',
+        suspended: true,
+      });
+      return;
+    }
   }
   next();
 }
@@ -610,6 +625,7 @@ authRouter.post('/bootstrap', async (req, res) => {
       ssoSubject: createdUser.ssoSubject,
       workspaceEligible: !!createdUser.ssoSubject,
       requirePasswordChange: false,
+      suspended: false,
     };
     await recordAuditEventSafe(req, 'auth.bootstrap', createdUser.id, {
       username: createdUser.username,
@@ -656,7 +672,7 @@ authRouter.post('/login', async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { username },
-      select: { id: true, username: true, role: true, email: true, ssoSubject: true, passwordHash: true },
+      select: { id: true, username: true, role: true, email: true, ssoSubject: true, passwordHash: true, suspended: true },
     });
     if (!user || !verifyPassword(user.passwordHash, sanitizedPassword)) {
       registerFailedAttempt(ipRateKey);
@@ -698,6 +714,7 @@ authRouter.post('/login', async (req, res) => {
       ssoSubject: user.ssoSubject,
       workspaceEligible: !!user.ssoSubject,
       requirePasswordChange,
+      suspended: user.suspended,
     };
     await recordAuditEventSafe(req, 'auth.login', user.id, {
       username: user.username,
@@ -938,6 +955,31 @@ authRouter.get('/account/export', async (req, res) => {
       take: 1000,
     });
 
+    // Include evaluation data (runs, scores) for full data portability
+    const evaluationRuns = await prisma.run.findMany({
+      where: {
+        job: { is: null },  // filter to user-visible runs
+      },
+      select: {
+        id: true,
+        scenarioName: true,
+        channel: true,
+        status: true,
+        startedAt: true,
+        completedAt: true,
+        evalResult: {
+          select: {
+            overallScore: true,
+            passed: true,
+            summary: true,
+            judgeModel: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
     await recordAuditEventSafe(req, 'gdpr.data_export', auth.userId, {
       username: auth.username,
     });
@@ -953,6 +995,10 @@ authRouter.get('/account/export', async (req, res) => {
       },
       activeSessions: sessions.length,
       auditLog: auditLogs,
+      evaluationData: {
+        runs: evaluationRuns,
+        totalRuns: evaluationRuns.length,
+      },
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -1002,6 +1048,63 @@ authRouter.delete('/account', async (req, res) => {
       ok: true,
       message: 'Account and personal data have been deleted. Anonymized audit logs are retained for compliance.',
     });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ── GDPR: Restriction of processing (Art. 18) ───────────────────────────────
+
+authRouter.post('/account/restrict', async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: auth.userId },
+      data: { suspended: true, suspendedAt: new Date() },
+    });
+
+    // Invalidate all sessions except current (user needs to see the confirmation)
+    await prisma.authSession.deleteMany({
+      where: { userId: auth.userId, id: { not: auth.sessionId } },
+    });
+
+    await recordAuditEventSafe(req, 'gdpr.processing_restricted', auth.userId, {
+      username: auth.username,
+      article: 'Art. 18 — Right to restriction of processing',
+    });
+
+    res.json({
+      ok: true,
+      message: 'Processing of your data has been restricted. Your account is suspended and data will only be stored, not actively processed.',
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+authRouter.post('/account/unrestrict', async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: auth.userId },
+      data: { suspended: false, suspendedAt: null },
+    });
+
+    await recordAuditEventSafe(req, 'gdpr.processing_unrestricted', auth.userId, {
+      username: auth.username,
+    });
+
+    res.json({ ok: true, message: 'Processing restriction has been lifted. Your account is fully active.' });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

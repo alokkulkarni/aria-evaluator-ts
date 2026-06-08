@@ -23,6 +23,8 @@ model User {
   ssoSubject   String?       @unique
   passwordHash String
   role         String        @default("admin")
+  suspended    Boolean       @default(false)   // GDPR Art. 18 — restriction of processing
+  suspendedAt  DateTime?
   lastLoginAt  DateTime?
   sessions     AuthSession[]
   auditLogs    AuditLog[]

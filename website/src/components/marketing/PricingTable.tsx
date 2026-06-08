@@ -1,12 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { Check } from 'lucide-react'
+import { Check, Clock } from 'lucide-react'
 import { useState } from 'react'
 
 import { formatPlanPrice, PLANS } from '@/lib/plans'
 import { cn } from '@/lib/utils'
 import type { BillingPeriod } from '@/types'
+
+const isWaitlistMode = process.env.NEXT_PUBLIC_SIGNUP_MODE === 'waitlist'
 
 export function PricingTable() {
   const [period, setPeriod] = useState<BillingPeriod>('monthly')
@@ -45,6 +47,8 @@ export function PricingTable() {
           const isPopular = Boolean(plan.popular)
           const priceLabel = price === -1 ? 'Custom' : price === 0 ? 'Free' : `$${price}`
           const suffix = price > 0 ? '/mo' : ''
+          const isPaidPlan = plan.id !== 'free'
+          const isLocked = isWaitlistMode && isPaidPlan
 
           return (
             <article
@@ -52,13 +56,18 @@ export function PricingTable() {
               className={cn(
                 'card flex h-full flex-col justify-between gap-6',
                 isPopular && 'ring-2 ring-[var(--brand)] shadow-[0_24px_60px_rgba(11,31,77,0.15)]',
+                isLocked && 'opacity-75',
               )}
             >
               <div className="space-y-5">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-xl font-semibold text-slate-900">{plan.name}</h3>
-                    {isPopular ? (
+                    {isLocked ? (
+                      <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200/70">
+                        Coming Soon
+                      </span>
+                    ) : isPopular ? (
                       <span className="rounded-full bg-cyan-400 px-3 py-1 text-xs font-semibold text-slate-950">Most popular</span>
                     ) : null}
                   </div>
@@ -85,7 +94,12 @@ export function PricingTable() {
                 </ul>
               </div>
 
-              {plan.id === 'enterprise_unlimited' ? (
+              {isLocked ? (
+                <span className="btn-secondary justify-center rounded-xl cursor-not-allowed flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Coming Soon
+                </span>
+              ) : plan.id === 'enterprise_unlimited' ? (
                 <Link href="/contact" className="btn-secondary justify-center rounded-xl">
                   Contact sales
                 </Link>

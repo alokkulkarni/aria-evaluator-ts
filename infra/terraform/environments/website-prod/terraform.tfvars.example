@@ -25,12 +25,16 @@
 #        --force-new-deployment
 #
 # 3. Build & deploy static frontend:
-#      cd website && npm run build:static
+#      cd website
+#      NEXT_PUBLIC_SIGNUP_MODE=waitlist npm run build:static
 #      S3_BUCKET=$(terraform output -raw s3_bucket_name)
 #      aws s3 sync out/ s3://$S3_BUCKET --delete
 #      aws cloudfront create-invalidation \
 #        --distribution-id $(terraform output -raw cloudfront_distribution_id) \
 #        --paths "/*"
+#
+#    NOTE: NEXT_PUBLIC_SIGNUP_MODE=waitlist restricts signups to Free tier only.
+#    Set to "open" when paid plans are ready to launch.
 
 # ── Auth Backend Image Tag ────────────────────────────────────────────────────
 # ECR repository is created by Terraform. Push your image then set the tag:
