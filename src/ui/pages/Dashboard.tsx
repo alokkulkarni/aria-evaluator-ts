@@ -161,7 +161,7 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
             <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Runs {total}</span>
             <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Passed {passed}</span>
             <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Failed {failed}</span>
-            <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Avg {avgScore}/10</span>
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 ring-1 ring-white/10">Avg {avgScore === '—' ? 'N/A' : `${avgScore}/10`}</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5" data-tour-target="dashboard-actions">
