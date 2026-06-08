@@ -1,15 +1,18 @@
-import { auth } from '@/auth'
+'use client'
+
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 
 import { InstanceStatusCard } from '@/components/dashboard/InstanceStatusCard'
 import { UsageBar } from '@/components/dashboard/UsageBar'
-import { MOCK_INSTANCE, MOCK_NEXT_BILLING, MOCK_TEAM } from '@/lib/mock-data'
-import { serverApiFetch } from '@/lib/api'
+import { MOCK_NEXT_BILLING, MOCK_TEAM } from '@/lib/mock-data'
+import { apiFetch } from '@/lib/api'
 import { getPlanById } from '@/lib/plans'
 import { getRegionById } from '@/lib/regions'
 import type { InstanceInfo } from '@/types'
 
-const statusLabel: Record<typeof MOCK_INSTANCE.status, string> = {
+const statusLabel: Record<InstanceInfo['status'], string> = {
   not_provisioned: 'Not provisioned',
   provisioning: 'Provisioning',
   running: 'Active',
@@ -18,7 +21,7 @@ const statusLabel: Record<typeof MOCK_INSTANCE.status, string> = {
   error: 'Error',
 }
 
-const statusBadge: Record<typeof MOCK_INSTANCE.status, string> = {
+const statusBadge: Record<InstanceInfo['status'], string> = {
   not_provisioned: 'badge-info',
   provisioning: 'badge-pending',
   running: 'badge-active',
@@ -27,57 +30,61 @@ const statusBadge: Record<typeof MOCK_INSTANCE.status, string> = {
   error: 'badge-error',
 }
 
-async function getInstanceInfo(authToken?: string): Promise<InstanceInfo> {
-  if (!authToken) {
-    return {
-      status: 'not_provisioned',
-      plan: 'individual',
-      region: 'eu-west-2',
-      usage: {
-        runsThisMonth: 0,
-        maxRuns: 0,
-        scenariosUsed: 0,
-        maxScenarios: 0,
-      },
-    }
-  }
-
-  const tenant = await serverApiFetch<{
-    tenantId: string | null
-    status: InstanceInfo['status']
-    plan: InstanceInfo['plan'] | null
-    region: string | null
-    billingPeriod: 'monthly' | 'annual' | null
-    instanceUrl: string | null
-    usage: InstanceInfo['usage']
-    provisionedAt?: string
-  }>('/tenant/me', { authToken })
-
-  if (!tenant.tenantId || !tenant.plan || !tenant.region) {
-    return {
-      status: 'not_provisioned',
-      plan: 'individual',
-      region: 'eu-west-2',
-      usage: tenant.usage,
-    }
-  }
-
-  return {
-    status: tenant.status,
-    plan: tenant.plan,
-    region: tenant.region,
-    provisionedAt: tenant.provisionedAt,
-    instanceUrl: tenant.instanceUrl ?? undefined,
-    usage: tenant.usage,
-  }
+const DEFAULT_INSTANCE: InstanceInfo = {
+  status: 'not_provisioned',
+  plan: 'individual',
+  region: 'eu-west-2',
+  usage: { runsThisMonth: 0, maxRuns: 0, scenariosUsed: 0, maxScenarios: 0 },
 }
 
-export default async function DashboardPage() {
-  const session = await auth()
-  const instance = await getInstanceInfo(session?.user?.accessToken)
+export default function DashboardPage() {
+  const { data: session, status: sessionStatus } = useSession()
+  const [instance, setInstance] = useState<InstanceInfo>(DEFAULT_INSTANCE)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (sessionStatus !== 'authenticated' || !session?.user?.accessToken) {
+      setLoading(false)
+      return
+    }
+
+    apiFetch<{
+      tenantId: string | null
+      status: InstanceInfo['status']
+      plan: InstanceInfo['plan'] | null
+      region: string | null
+      usage: InstanceInfo['usage']
+      provisionedAt?: string
+      instanceUrl?: string | null
+    }>('/tenant/me', { authToken: session.user.accessToken })
+      .then((tenant) => {
+        if (!tenant.tenantId || !tenant.plan || !tenant.region) {
+          setInstance({ ...DEFAULT_INSTANCE, usage: tenant.usage })
+        } else {
+          setInstance({
+            status: tenant.status,
+            plan: tenant.plan,
+            region: tenant.region,
+            provisionedAt: tenant.provisionedAt,
+            instanceUrl: tenant.instanceUrl ?? undefined,
+            usage: tenant.usage,
+          })
+        }
+      })
+      .catch(() => setInstance(DEFAULT_INSTANCE))
+      .finally(() => setLoading(false))
+  }, [session, sessionStatus])
   const plan = getPlanById(instance.plan)
   const region = getRegionById(instance.region)
   const nextBilling = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(MOCK_NEXT_BILLING))
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-sm text-slate-400">Loading workspace…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

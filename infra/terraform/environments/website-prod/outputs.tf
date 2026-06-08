@@ -1,41 +1,46 @@
+# ── Frontend outputs ──────────────────────────────────────────────────────────
+
 output "website_url" {
   description = "Production website URL"
-  value       = module.website.website_url
+  value       = module.frontend.website_url
 }
 
-output "cloudfront_url" {
-  value = module.website.cloudfront_url
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain"
+  value       = module.frontend.cloudfront_domain_name
 }
 
 output "cloudfront_distribution_id" {
   description = "Used for cache invalidation in CI/CD"
-  value       = module.website.cloudfront_distribution_id
+  value       = module.frontend.cloudfront_distribution_id
 }
 
-output "ecr_repository_url" {
-  description = "Push production Docker image here"
-  value       = module.website.ecr_repository_url
+output "s3_bucket_name" {
+  description = "S3 bucket for static website files — deploy with: aws s3 sync out/ s3://<bucket>"
+  value       = module.frontend.s3_bucket_name
 }
 
-output "ecs_cluster_name" {
-  value = module.website.ecs_cluster_name
+# ── Auth Backend outputs ──────────────────────────────────────────────────────
+
+output "auth_ecr_repository_url" {
+  description = "Push auth backend Docker image here"
+  value       = module.auth_backend.ecr_repository_url
 }
 
-output "ecs_service_name" {
-  value = module.website.ecs_service_name
+output "auth_ecs_cluster_name" {
+  value = module.auth_backend.ecs_cluster_name
 }
 
-output "alb_dns_name" {
-  value = module.website.alb_dns_name
+output "auth_ecs_service_name" {
+  value = module.auth_backend.ecs_service_name
 }
 
-output "log_group_name" {
-  value = module.website.log_group_name
+output "auth_alb_dns_name" {
+  value = module.auth_backend.alb_dns_name
 }
 
-output "app_secrets_arn" {
-  description = "Secrets Manager ARN — update OAuth credentials here post-deploy"
-  value       = module.website.app_secrets_arn
+output "auth_log_group_name" {
+  value = module.auth_backend.log_group_name
 }
 
 # ── CloudTrail outputs ────────────────────────────────────────────────────────

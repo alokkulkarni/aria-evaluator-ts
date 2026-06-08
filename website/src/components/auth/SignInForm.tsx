@@ -7,6 +7,7 @@ import { signIn } from 'next-auth/react'
 import { FormEvent, useState } from 'react'
 
 import { AriaLogo } from '@/components/shared/AriaLogo'
+import { hashPasswordForTransit } from '@/lib/crypto'
 
 export function SignInForm() {
   const router = useRouter()
@@ -31,9 +32,10 @@ export function SignInForm() {
     setSubmitting(true)
     setError(null)
 
+    const hashedPassword = await hashPasswordForTransit(password)
     const result = await signIn('credentials', {
       email,
-      password,
+      password: hashedPassword,
       redirect: false,
       callbackUrl: returnTo,
     })

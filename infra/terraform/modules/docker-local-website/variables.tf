@@ -131,3 +131,17 @@ variable "extra_environment_vars" {
   }))
   default = []
 }
+
+# ── Auth Backend (split architecture) ──────────────────────────────────────────
+
+variable "enable_auth_backend" {
+  description = "Set to true to run the auth backend as a separate container"
+  type        = bool
+  default     = false
+}
+
+variable "auth_backend_host_port" {
+  description = "Host port for the auth backend container"
+  type        = number
+  default     = 3001
+}

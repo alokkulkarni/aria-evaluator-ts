@@ -1,20 +1,40 @@
-# ── Website Production Deployment ──────────────────────────────────────────────
+# ── Website Production Deployment (Split Architecture) ─────────────────────────
 # Copy this file to terraform.tfvars and fill in real values before deploying.
+#
+# Architecture:
+#   CloudFront (ariaeval.io)
+#   ├── /* (default)     → S3 bucket (static website export)
+#   ├── /api/*           → ALB → ECS Fargate (auth backend)
+#   └── /_next/static/*  → S3 bucket (long-cached assets)
 
-# ── Container Image ───────────────────────────────────────────────────────────
-# Terraform creates the ECR repository automatically. On first deploy, use a
-# placeholder image. After apply, get the ECR URI from the output and push your
-# real image:
+# ── Deploy Steps ──────────────────────────────────────────────────────────────
 #
-#   ECR_URI=$(terraform output -raw ecr_repository_url)
-#   docker build -t $ECR_URI:latest ../../website
-#   aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin $ECR_URI
-#   docker push $ECR_URI:latest
-#   aws ecs update-service --cluster aria-website-prod --service aria-website-prod-app --force-new-deployment
+# 1. First-time setup:
+#      cd infra/terraform/environments/website-prod
+#      terraform init
+#      terraform apply
 #
-# For first apply, use a placeholder:
-container_image = "nginx:latest"
-# After first deploy, switch to: container_image = "ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/aria-website-prod:latest"
+# 2. Build & push auth backend image:
+#      ECR_URI=$(terraform output -raw auth_ecr_repository_url)
+#      cd website/auth-backend && docker build -t $ECR_URI:latest .
+#      aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin $ECR_URI
+#      docker push $ECR_URI:latest
+#      aws ecs update-service \
+#        --cluster $(terraform output -raw auth_ecs_cluster_name) \
+#        --service $(terraform output -raw auth_ecs_service_name) \
+#        --force-new-deployment
+#
+# 3. Build & deploy static frontend:
+#      cd website && npm run build:static
+#      S3_BUCKET=$(terraform output -raw s3_bucket_name)
+#      aws s3 sync out/ s3://$S3_BUCKET --delete
+#      aws cloudfront create-invalidation \
+#        --distribution-id $(terraform output -raw cloudfront_distribution_id) \
+#        --paths "/*"
+
+# ── Auth Backend Image Tag ────────────────────────────────────────────────────
+# ECR repository is created by Terraform. Push your image then set the tag:
+auth_backend_image_tag = "latest"
 
 # ── Auth Secrets (use TF_VAR_ env vars in CI/CD instead of hardcoding) ────────
 # nextauth_secret      = "..."
@@ -26,14 +46,13 @@ container_image = "nginx:latest"
 # ── Domain & TLS ──────────────────────────────────────────────────────────────
 # 1. Register domain in Route53 (already done: ariaeval.io)
 # 2. Get the Hosted Zone ID from Route53 console
-# 3. Request ACM certs in BOTH us-east-1 (for CloudFront) and eu-west-2 (for ALB)
+# 3. Request ACM cert in us-east-1 (for CloudFront + WAF)
 #    - Domain: ariaeval.io  SANs: *.ariaeval.io
-# 4. Validate certs via DNS (Route53 auto-validation)
+# 4. Validate cert via DNS (Route53 auto-validation)
 
-domain_name               = "ariaeval.io"
-route53_zone_id           = ""    # e.g. "Z0123456789ABCDEFGHIJ"
+domain_name                   = "ariaeval.io"
+route53_zone_id               = ""    # e.g. "Z0123456789ABCDEFGHIJ"
 acm_certificate_arn_us_east_1 = "" # e.g. "arn:aws:acm:us-east-1:ACCOUNT:certificate/UUID"
-acm_certificate_arn_regional  = "" # e.g. "arn:aws:acm:eu-west-2:ACCOUNT:certificate/UUID"
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 # alarm_sns_topic_arn = "arn:aws:sns:eu-west-2:ACCOUNT:aria-alarms"

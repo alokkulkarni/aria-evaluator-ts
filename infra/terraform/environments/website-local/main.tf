@@ -22,5 +22,9 @@ module "docker_local_website" {
 
   control_plane_url = var.control_plane_url
 
+  # Enable the split auth backend container
+  enable_auth_backend    = var.enable_auth_backend
+  auth_backend_host_port = var.auth_backend_host_port
+
   extra_environment_vars = var.extra_environment_vars
 }

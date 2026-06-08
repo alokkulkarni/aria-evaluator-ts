@@ -153,3 +153,89 @@ resource "docker_container" "app" {
     value = "main-website"
   }
 }
+
+# ── Auth Backend (split architecture) ──────────────────────────────────────────
+# Optional: set var.enable_auth_backend = true to run the auth backend as a
+# separate container alongside the main website. This mirrors the prod
+# architecture where static pages are served from S3/CloudFront and API routes
+# are handled by a dedicated ECS service.
+
+resource "null_resource" "build_auth_image" {
+  count = var.enable_auth_backend ? 1 : 0
+
+  triggers = {
+    dockerfile_sha   = filesha1("${local.effective_build_context}/auth-backend/Dockerfile")
+    package_lock_sha = filesha1("${local.effective_build_context}/auth-backend/package-lock.json")
+    force_rebuild    = var.force_rebuild
+  }
+
+  provisioner "local-exec" {
+    environment = {
+      DOCKER_BUILDKIT = "1"
+    }
+
+    command = <<-EOT
+      docker build \
+        --tag "${var.app_name}-auth-backend" \
+        --file "${local.effective_build_context}/auth-backend/Dockerfile" \
+        "${local.effective_build_context}/auth-backend"
+    EOT
+  }
+}
+
+resource "docker_container" "auth_backend" {
+  count = var.enable_auth_backend ? 1 : 0
+  name  = "${local.name_prefix}-auth"
+  image = "${var.app_name}-auth-backend"
+
+  restart = "unless-stopped"
+
+  networks_advanced {
+    name = docker_network.app.name
+  }
+
+  ports {
+    internal = 3001
+    external = var.auth_backend_host_port
+    protocol = "tcp"
+  }
+
+  env = [
+    "NODE_ENV=production",
+    "ARIA_DEPLOY_ENV=${var.environment}",
+    "PORT=3001",
+    "HOSTNAME=0.0.0.0",
+    "NEXTAUTH_URL=${var.nextauth_url}",
+    "CONTROL_PLANE_INTERNAL_URL=${local.effective_control_plane_url}",
+    "NEXTAUTH_SECRET=${var.nextauth_secret}",
+    "GOOGLE_CLIENT_ID=${var.google_client_id}",
+    "GOOGLE_CLIENT_SECRET=${var.google_client_secret}",
+    "GITHUB_CLIENT_ID=${var.github_client_id}",
+    "GITHUB_CLIENT_SECRET=${var.github_client_secret}",
+  ]
+
+  healthcheck {
+    test         = ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+    interval     = "30s"
+    timeout      = "10s"
+    start_period = "60s"
+    retries      = 3
+  }
+
+  labels {
+    label = "managed-by"
+    value = "terraform"
+  }
+
+  labels {
+    label = "environment"
+    value = var.environment
+  }
+
+  labels {
+    label = "component"
+    value = "auth-backend"
+  }
+
+  depends_on = [null_resource.build_auth_image]
+}

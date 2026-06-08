@@ -4,6 +4,7 @@ data "aws_availability_zones" "available" { state = "available" }
 
 locals {
   availability_zones = slice(data.aws_availability_zones.available.names, 0, 2)
+  public_url         = "https://${module.frontend.cloudfront_domain_name}"
 
   common_tags = merge(
     var.tags,
@@ -14,57 +15,58 @@ locals {
   )
 }
 
-module "website" {
-  source = "../../modules/website"
+# ── Auth Backend (ECS Fargate behind ALB) ─────────────────────────────────────
 
-  providers = {
-    aws           = aws
-    aws.us_east_1 = aws.us_east_1
-  }
+module "auth_backend" {
+  source = "../../modules/website-auth"
 
   app_name    = "aria"
   environment = "dev"
-  aws_region  = var.aws_region
+  public_url  = local.public_url
 
-  # Networking
-  vpc_cidr            = "10.50.0.0/16"
-  public_subnet_cidrs = ["10.50.1.0/24", "10.50.2.0/24"]
+  # Separate VPC for auth backend
+  vpc_cidr            = "10.51.0.0/16"
+  public_subnet_cidrs = ["10.51.1.0/24", "10.51.2.0/24"]
   availability_zones  = local.availability_zones
 
-  # Container — update after first docker push
-  container_image = var.container_image
-
-  # Compute (smaller for dev cost savings)
+  # Dev: minimal sizing
   cpu           = 256
   memory        = 512
   desired_count = 1
-  min_capacity  = 1
-  max_capacity  = 2
+  image_tag     = var.auth_backend_image_tag
 
-  # Auth secrets (set via environment variables or .tfvars — never hardcode)
+  # Auth secrets
   nextauth_secret      = var.nextauth_secret
   google_client_id     = var.google_client_id
   google_client_secret = var.google_client_secret
   github_client_id     = var.github_client_id
   github_client_secret = var.github_client_secret
 
-  # Domain — leave empty in dev, use CloudFront default domain
-  domain_name                   = ""
-  route53_zone_id               = ""
-  acm_certificate_arn_us_east_1 = ""
-  acm_certificate_arn_regional  = ""
-
-  # CloudFront
-  price_class = "PriceClass_100"
-
-  # Control plane API URL (same-origin proxy on the website forwards here)
-  control_plane_url = var.control_plane_url
-
-  # Logging
+  control_plane_url  = var.control_plane_url
   log_retention_days = 14
 
-  # No alarms in dev
-  alarm_sns_topic_arn = ""
+  tags = local.common_tags
+}
+
+# ── Static Frontend (S3 + CloudFront) ─────────────────────────────────────────
+
+module "frontend" {
+  source = "../../modules/website-frontend"
+
+  providers = {
+    aws = aws.us_east_1
+  }
+
+  app_name    = "aria"
+  environment = "dev"
+
+  # No custom domain in dev — use CloudFront default URL
+  domain_name     = ""
+  route53_zone_id = ""
+
+  # Wire auth backend ALB as second CloudFront origin
+  auth_backend_alb_dns       = module.auth_backend.alb_dns_name
+  auth_backend_origin_secret = module.auth_backend.origin_secret
 
   tags = local.common_tags
 }

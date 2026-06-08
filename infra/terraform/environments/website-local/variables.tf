@@ -80,3 +80,15 @@ variable "extra_environment_vars" {
   }))
   default = []
 }
+
+variable "enable_auth_backend" {
+  description = "Run the auth backend as a separate container alongside the website"
+  type        = bool
+  default     = true
+}
+
+variable "auth_backend_host_port" {
+  description = "Host port for the auth backend container"
+  type        = number
+  default     = 3001
+}

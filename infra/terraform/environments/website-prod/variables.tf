@@ -4,15 +4,10 @@ variable "aws_region" {
   default     = "eu-west-2"
 }
 
-variable "public_subnet_cidrs" {
-  description = "CIDRs for 3 public subnets across AZs"
-  type        = list(string)
-  default     = ["10.60.1.0/24", "10.60.2.0/24", "10.60.3.0/24"]
-}
-
-variable "container_image" {
-  description = "Full URI of the production Next.js container image"
+variable "auth_backend_image_tag" {
+  description = "Docker image tag for the auth backend container (pushed to ECR via CI/CD)"
   type        = string
+  default     = "latest"
 }
 
 # ── Auth Secrets (supply via CI/CD pipeline env vars, never commit) ────────────
@@ -63,12 +58,6 @@ variable "acm_certificate_arn_us_east_1" {
   default     = ""
 }
 
-variable "acm_certificate_arn_regional" {
-  description = "ACM certificate ARN in the deployment region (for ALB)"
-  type        = string
-  default     = ""
-}
-
 # ── Notifications ──────────────────────────────────────────────────────────────
 
 variable "alarm_sns_topic_arn" {
@@ -80,7 +69,7 @@ variable "alarm_sns_topic_arn" {
 # ── Control Plane ──────────────────────────────────────────────────────────────
 
 variable "control_plane_url" {
-  description = "Control plane API URL (Phase 1)"
+  description = "Control plane API URL"
   type        = string
   default     = ""
 }

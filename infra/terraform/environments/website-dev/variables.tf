@@ -4,10 +4,10 @@ variable "aws_region" {
   default     = "eu-west-2"
 }
 
-variable "container_image" {
-  description = "Full URI of the Next.js container image (e.g. <account>.dkr.ecr.eu-west-2.amazonaws.com/aria-website-dev:latest)"
+variable "auth_backend_image_tag" {
+  description = "Docker image tag for the auth backend container"
   type        = string
-  default     = "public.ecr.aws/nginx/nginx:1.25-alpine" # placeholder until first build
+  default     = "latest"
 }
 
 variable "nextauth_secret" {
@@ -54,7 +54,7 @@ variable "tags" {
 }
 
 variable "cloudtrail_bucket_suffix" {
-  description = "Short unique suffix for the CloudTrail S3 bucket (e.g. last 6 digits of account ID)"
+  description = "Short unique suffix for the CloudTrail S3 bucket"
   type        = string
   default     = "dev"
 }

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="50%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#bg)"/>
+  <!-- Main sparkle (Lucide Sparkles large star, scaled 0.8× centered in 32×32) -->
+  <path
+    transform="translate(6.4,6.4) scale(0.8)"
+    d="M12 3l-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"
+    fill="white"
+    opacity="0.95"
+  />
+  <!-- Small accent sparkle top-left (5,5 in 24px space → 10.4,10.4) -->
+  <circle cx="10.4" cy="10.4" r="1.4" fill="rgba(255,255,255,0.65)"/>
+  <!-- Small accent sparkle bottom-right (19,19 in 24px space → 21.6,21.6) -->
+  <circle cx="21.6" cy="21.6" r="1.4" fill="rgba(255,255,255,0.65)"/>
+</svg>

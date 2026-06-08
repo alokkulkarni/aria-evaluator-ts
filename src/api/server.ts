@@ -113,6 +113,60 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '2mb' }));
 
+// ── Security headers ──────────────────────────────────────────────────────────
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  if (process.env['NODE_ENV'] === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https:",
+      "connect-src 'self'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; '),
+  );
+  next();
+});
+
+// ── Request body sanitization — strip sensitive fields from logs ───────────────
+const SENSITIVE_BODY_FIELDS = new Set([
+  'password', 'newPassword', 'currentPassword', 'confirmPassword',
+  'secret', 'token', 'bootstrapToken', 'accessToken', 'refreshToken',
+  'apiKey', 'privateKey',
+]);
+
+function sanitizeBodyForLogging(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+    result[key] = SENSITIVE_BODY_FIELDS.has(key) ? '[redacted]' : value;
+  }
+  return result;
+}
+
+// Override console.log/warn/error in production to prevent accidental password leaks
+if (process.env['NODE_ENV'] === 'production') {
+  const originalError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const sanitized = args.map((arg) =>
+      typeof arg === 'string' ? arg.replace(/password['":\s]*['"]?[^'"}\s,]*/gi, 'password:[redacted]') : arg
+    );
+    originalError(...sanitized);
+  };
+}
+
 // ── API routes ─────────────────────────────────────────────────────────────────
 // SSO ingestion route — must be mounted BEFORE attachAuthContext so the
 // unauthenticated redirect from the website hits here first.

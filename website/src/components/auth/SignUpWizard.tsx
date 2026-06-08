@@ -7,6 +7,7 @@ import { signIn } from 'next-auth/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { createSSOToken, createTenant, registerUser } from '@/lib/api'
+import { hashPasswordForTransit } from '@/lib/crypto'
 import { getPlanById, PLANS } from '@/lib/plans'
 import { getRegionById, getRegionsForTier, REGIONS } from '@/lib/regions'
 import { cn } from '@/lib/utils'
@@ -18,8 +19,14 @@ const accountSchema = z
     name: z.string().min(2, 'Enter your full name'),
     company: z.string().optional(),
     email: z.string().email('Enter a valid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string().min(8, 'Confirm your password'),
+    password: z
+      .string()
+      .min(12, 'Password must be at least 12 characters')
+      .regex(/[a-z]/, 'Must include a lowercase letter')
+      .regex(/[A-Z]/, 'Must include an uppercase letter')
+      .regex(/\d/, 'Must include a number')
+      .regex(/[^A-Za-z0-9]/, 'Must include a special character'),
+    confirmPassword: z.string().min(12, 'Confirm your password'),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: 'Passwords must match',
@@ -119,10 +126,11 @@ export function SignUpWizard() {
     try {
       let authToken: string | undefined
       if (!state.authProvider || state.authProvider === 'email') {
+        const hashedPassword = await hashPasswordForTransit(state.password)
         const registration = await registerUser({
           name: state.name,
           email: state.email,
-          password: state.password,
+          password: hashedPassword,
           company: state.company,
         })
         authToken = registration.token

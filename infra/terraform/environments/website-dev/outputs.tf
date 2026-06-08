@@ -1,28 +1,42 @@
+# ── Frontend outputs ──────────────────────────────────────────────────────────
+
 output "website_url" {
   description = "Public URL of the dev website"
-  value       = module.website.website_url
+  value       = module.frontend.website_url
 }
 
-output "cloudfront_url" {
-  description = "CloudFront distribution URL"
-  value       = module.website.cloudfront_url
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain"
+  value       = module.frontend.cloudfront_domain_name
 }
 
-output "ecr_repository_url" {
-  description = "Push your Next.js Docker image to this ECR repo"
-  value       = module.website.ecr_repository_url
+output "cloudfront_distribution_id" {
+  description = "Used for cache invalidation"
+  value       = module.frontend.cloudfront_distribution_id
 }
 
-output "ecs_cluster_name" {
-  value = module.website.ecs_cluster_name
+output "s3_bucket_name" {
+  description = "S3 bucket for static website files"
+  value       = module.frontend.s3_bucket_name
 }
 
-output "ecs_service_name" {
-  value = module.website.ecs_service_name
+# ── Auth Backend outputs ──────────────────────────────────────────────────────
+
+output "auth_ecr_repository_url" {
+  description = "Push auth backend Docker image here"
+  value       = module.auth_backend.ecr_repository_url
 }
 
-output "log_group_name" {
-  value = module.website.log_group_name
+output "auth_ecs_cluster_name" {
+  value = module.auth_backend.ecs_cluster_name
+}
+
+output "auth_ecs_service_name" {
+  value = module.auth_backend.ecs_service_name
+}
+
+output "auth_log_group_name" {
+  value = module.auth_backend.log_group_name
 }
 
 # ── CloudTrail outputs ────────────────────────────────────────────────────────

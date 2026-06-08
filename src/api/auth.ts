@@ -11,10 +11,26 @@ const DEV_SESSION_COOKIE_NAME = 'aria_session';
 const parsedSessionTtlHours = Number.parseInt(process.env['AUTH_SESSION_TTL_HOURS'] ?? '168', 10);
 const SESSION_TTL_HOURS = Number.isNaN(parsedSessionTtlHours) ? 168 : Math.max(1, parsedSessionTtlHours);
 const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min idle timeout (SOC2 CC6.1)
+const MAX_CONCURRENT_SESSIONS = 5;
 const PASSWORD_MIN_LENGTH = 12;
 const USERNAME_PATTERN = /^[A-Za-z0-9_.-]{3,64}$/;
+const PASSWORD_COMPLEXITY_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
 const PASSWORD_HASH_VERSION = 'v1';
 const TEMP_PASSWORD_HASH_VERSION = 'v1tmp';
+const CLIENT_HASH_PREFIX = 'sha256:';
+
+/**
+ * Strips the client-side SHA-256 prefix if present.
+ * The client hashes the plaintext password before transit (defense-in-depth).
+ * The server then applies scrypt on the received value (hash or plaintext).
+ */
+function normalizeClientPassword(raw: string): string {
+  if (raw.startsWith(CLIENT_HASH_PREFIX)) {
+    return raw.slice(CLIENT_HASH_PREFIX.length);
+  }
+  return raw;
+}
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 5;
@@ -198,6 +214,8 @@ function normalizeUsername(rawUsername: string | undefined): string | null {
 function normalizePassword(rawPassword: string | undefined): string | null {
   const value = rawPassword ?? '';
   if (value.length < PASSWORD_MIN_LENGTH) return null;
+  // Skip complexity check for client-hashed passwords (already validated on client)
+  if (!value.startsWith(CLIENT_HASH_PREFIX) && !PASSWORD_COMPLEXITY_PATTERN.test(value)) return null;
   return value;
 }
 
@@ -471,6 +489,14 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       return;
     }
 
+    // Idle timeout: expire session if no activity for SESSION_IDLE_TIMEOUT_MS
+    if (session.lastSeenAt && (Date.now() - session.lastSeenAt.getTime()) > SESSION_IDLE_TIMEOUT_MS) {
+      await prisma.authSession.delete({ where: { id: session.id } });
+      clearSessionCookie(res);
+      next();
+      return;
+    }
+
     (req as AuthenticatedRequest).auth = {
       userId: session.userId,
       username: session.user.username,
@@ -543,6 +569,7 @@ authRouter.post('/bootstrap', async (req, res) => {
       res.status(400).json({ error: 'Invalid username or password' });
       return;
     }
+    const sanitizedPassword = normalizeClientPassword(password);
 
     const configuredBootstrapToken = process.env['AUTH_BOOTSTRAP_TOKEN']?.trim();
     const providedBootstrapToken = (req.get('x-bootstrap-token') ?? rawBootstrapToken ?? '').trim();
@@ -565,8 +592,7 @@ authRouter.post('/bootstrap', async (req, res) => {
       return tx.user.create({
         data: {
           username,
-          passwordHash: hashPassword(password),
-          role: 'admin',
+          passwordHash: hashPassword(sanitizedPassword),          role: 'admin',
           lastLoginAt: new Date(),
         },
         select: { id: true, username: true, role: true, email: true, ssoSubject: true },
@@ -618,6 +644,7 @@ authRouter.post('/login', async (req, res) => {
       res.status(400).json({ error: 'Invalid username or password' });
       return;
     }
+    const sanitizedPassword = normalizeClientPassword(password);
 
     const requestIp = getRequestIp(req);
     const ipRateKey = `ip:${requestIp}`;
@@ -631,7 +658,7 @@ authRouter.post('/login', async (req, res) => {
       where: { username },
       select: { id: true, username: true, role: true, email: true, ssoSubject: true, passwordHash: true },
     });
-    if (!user || !verifyPassword(user.passwordHash, password)) {
+    if (!user || !verifyPassword(user.passwordHash, sanitizedPassword)) {
       registerFailedAttempt(ipRateKey);
       registerFailedAttempt(userRateKey);
       res.status(401).json({ error: 'Invalid username or password' });
@@ -641,6 +668,19 @@ authRouter.post('/login', async (req, res) => {
     clearRateLimit(ipRateKey);
     clearRateLimit(userRateKey);
     const requirePasswordChange = isTemporaryPasswordHash(user.passwordHash);
+
+    // Enforce max concurrent sessions — evict oldest if at limit
+    const existingSessions = await prisma.authSession.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (existingSessions.length >= MAX_CONCURRENT_SESSIONS) {
+      const toEvict = existingSessions.slice(0, existingSessions.length - MAX_CONCURRENT_SESSIONS + 1);
+      await prisma.authSession.deleteMany({
+        where: { id: { in: toEvict.map((s) => s.id) } },
+      });
+    }
 
     const session = await createSessionForUser(user.id);
     await prisma.user.update({
@@ -688,12 +728,13 @@ authRouter.post('/change-password', async (req, res) => {
     }
 
     const { currentPassword: rawCurrentPassword, newPassword: rawNewPassword } = req.body as LoginBody;
-    const currentPassword = rawCurrentPassword ?? '';
+    const currentPassword = normalizeClientPassword(rawCurrentPassword ?? '');
     const newPassword = normalizePassword(rawNewPassword);
     if (!currentPassword || !newPassword) {
       res.status(400).json({ error: `New password must be at least ${PASSWORD_MIN_LENGTH} characters` });
       return;
     }
+    const sanitizedNewPassword = normalizeClientPassword(newPassword);
 
     const user = await prisma.user.findUnique({
       where: { id: auth.userId },
@@ -707,7 +748,7 @@ authRouter.post('/change-password', async (req, res) => {
       res.status(401).json({ error: 'Current password is incorrect' });
       return;
     }
-    if (verifyPassword(user.passwordHash, newPassword)) {
+    if (verifyPassword(user.passwordHash, sanitizedNewPassword)) {
       res.status(400).json({ error: 'New password must be different from the current password' });
       return;
     }
@@ -715,7 +756,7 @@ authRouter.post('/change-password', async (req, res) => {
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        passwordHash: hashPassword(newPassword),
+        passwordHash: hashPassword(sanitizedNewPassword),
         lastLoginAt: new Date(),
       },
     });
@@ -786,6 +827,184 @@ authRouter.get('/session', (req, res) => {
       workspaceEligible: auth.workspaceEligible,
     },
   });
+});
+
+// ── Active session management ────────────────────────────────────────────────
+
+authRouter.get('/sessions', async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const sessions = await prisma.authSession.findMany({
+      where: { userId: auth.userId },
+      select: {
+        id: true,
+        createdAt: true,
+        expiresAt: true,
+        lastSeenAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      currentSessionId: auth.sessionId,
+      maxConcurrent: MAX_CONCURRENT_SESSIONS,
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        current: s.id === auth.sessionId,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+        lastSeenAt: s.lastSeenAt,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+authRouter.delete('/sessions/:sessionId', async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const targetSessionId = req.params['sessionId'];
+    if (targetSessionId === auth.sessionId) {
+      res.status(400).json({ error: 'Cannot revoke current session. Use logout instead.' });
+      return;
+    }
+
+    const deleted = await prisma.authSession.deleteMany({
+      where: { id: targetSessionId, userId: auth.userId },
+    });
+
+    if (deleted.count === 0) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    await recordAuditEventSafe(req, 'auth.session_revoked', auth.userId, {
+      revokedSessionId: targetSessionId,
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ── GDPR: Data export (Art. 20 — right to data portability) ──────────────────
+
+authRouter.get('/account/export', async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        ssoSubject: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+    });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const sessions = await prisma.authSession.findMany({
+      where: { userId: auth.userId },
+      select: { id: true, createdAt: true, expiresAt: true, lastSeenAt: true },
+    });
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { userId: auth.userId },
+      select: { action: true, target: true, createdAt: true, ipAddress: true, userAgent: true },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+    });
+
+    await recordAuditEventSafe(req, 'gdpr.data_export', auth.userId, {
+      username: auth.username,
+    });
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="aria-data-export-${auth.userId}.json"`);
+    res.json({
+      exportedAt: new Date().toISOString(),
+      gdprArticle: 'Art. 20 — Right to data portability',
+      user: {
+        ...user,
+        passwordHash: '[redacted]',
+      },
+      activeSessions: sessions.length,
+      auditLog: auditLogs,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ── GDPR: Account deletion (Art. 17 — right to erasure) ─────────────────────
+
+authRouter.delete('/account', async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    // Record deletion audit event BEFORE deleting (retained for compliance)
+    await recordAuditEventSafe(req, 'gdpr.account_deletion_requested', auth.userId, {
+      username: auth.username,
+      role: auth.role,
+    });
+
+    // Delete all sessions
+    await prisma.authSession.deleteMany({ where: { userId: auth.userId } });
+
+    // Anonymize audit logs (retain for compliance but remove PII)
+    await prisma.auditLog.updateMany({
+      where: { userId: auth.userId },
+      data: {
+        userId: null,
+        ipAddress: null,
+        userAgent: null,
+      },
+    });
+
+    // Delete the user account
+    await prisma.user.delete({ where: { id: auth.userId } });
+
+    clearSessionCookie(res);
+
+    await recordAuditEventSafe(req, 'gdpr.account_deleted', undefined, {
+      deletedUserId: auth.userId,
+      deletedUsername: auth.username,
+    });
+
+    res.json({
+      ok: true,
+      message: 'Account and personal data have been deleted. Anonymized audit logs are retained for compliance.',
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // ── SSO helpers ────────────────────────────────────────────────────────────────
