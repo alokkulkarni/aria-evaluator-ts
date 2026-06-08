@@ -89,9 +89,10 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
   const qualityRuns = runs.filter((r) => r.evalResult?.scenarioType === 'quality');
   const securityRuns = runs.filter((r) => r.evalResult?.scenarioType === 'security');
 
+  const scoredRuns = runs.filter((r) => r.evalResult?.overallScore != null && r.evalResult.overallScore > 0);
   const avgScore =
-    qualityRuns.length > 0
-      ? (qualityRuns.reduce((a, b) => a + (b.evalResult?.overallScore ?? 0), 0) / qualityRuns.length).toFixed(1)
+    scoredRuns.length > 0
+      ? (scoredRuns.reduce((a, b) => a + (b.evalResult!.overallScore!), 0) / scoredRuns.length).toFixed(1)
       : '—';
 
   // Release readiness KPIs — scoped to the last 100 runs (API default limit).
