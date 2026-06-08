@@ -17,7 +17,7 @@ import type { Scenario } from '../../types/scenario.js';
 import { recordAuditEventSafe } from '../audit-log.js';
 import { registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings } from '../runtime-settings.js';
-import { getUtcMonthStart, getUsageLimits } from '../../shared/usage-limits.js';
+import { checkRunQuota } from '../../shared/quota-enforcement.js';
 
 export const runsRouter = Router();
 
@@ -617,35 +617,16 @@ runsRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: 'No scenarios found in selected file(s)' });
   }
 
-  const usageLimits = getUsageLimits();
-  if (usageLimits.enabled) {
-    if (usageLimits.maxScenariosPerRun >= 0 && selectedScenarios.length > usageLimits.maxScenariosPerRun) {
-      return res.status(402).json({
-        error: `Selected ${selectedScenarios.length} scenarios, but your plan allows up to ${usageLimits.maxScenariosPerRun} per run.`,
-        code: 'LIMIT_EXCEEDED',
-        limit: 'MAX_SCENARIOS_PER_RUN',
-        current: selectedScenarios.length,
-        maximum: usageLimits.maxScenariosPerRun,
-      });
-    }
-
-    if (usageLimits.maxRunsPerMonth >= 0) {
-      const runsThisMonth = await prisma.run.count({
-        where: {
-          NOT: { status: 'deleted' },
-          createdAt: { gte: getUtcMonthStart() },
-        },
-      });
-      if (runsThisMonth >= usageLimits.maxRunsPerMonth) {
-        return res.status(402).json({
-          error: `Monthly run limit reached (${runsThisMonth}/${usageLimits.maxRunsPerMonth}). Upgrade your plan to start another run.`,
-          code: 'LIMIT_EXCEEDED',
-          limit: 'MAX_RUNS_PER_MONTH',
-          current: runsThisMonth,
-          maximum: usageLimits.maxRunsPerMonth,
-        });
-      }
-    }
+  // Shared quota check — covers scenarios/run, runs/month, and models/provider limits
+  const quotaResult = await checkRunQuota(selectedScenarios.length, provider);
+  if (!quotaResult.allowed) {
+    return res.status(402).json({
+      error: quotaResult.error,
+      code: quotaResult.code,
+      limit: quotaResult.limit,
+      current: quotaResult.current,
+      maximum: quotaResult.maximum,
+    });
   }
 
   const runId = randomUUID();

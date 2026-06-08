@@ -26,6 +26,7 @@ import { experimentsRouter } from './routes/experiments.js';
 import { observabilityRouter } from './routes/observability.js';
 import { schedulesRouter } from './routes/schedules.js';
 import { workspaceRouter } from './routes/workspace.js';
+import { usageRouter } from './routes/usage.js';
 import { startScheduleExecutor, stopScheduleExecutor } from '../jobs/schedule-executor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -132,6 +133,7 @@ app.use('/api/transcripts', transcriptsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/workspace', workspaceRouter);
+app.use('/api/usage', usageRouter);
 app.use('/api/openapi', openapiRouter);
 
 // ── Static file serving ────────────────────────────────────────────────────────

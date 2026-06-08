@@ -4,6 +4,7 @@ import type { RunJobPayload } from './run-job-payload.js';
 import { randomUUID } from 'node:crypto';
 import { addMinutes, addHours, addDays, addMonths } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { checkRunQuota } from '../shared/quota-enforcement.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,13 @@ async function executeSchedule(
 
   if (targetScenarios.length === 0) {
     console.warn(`[schedule-executor] No scenarios found for schedule ${schedule.id}`);
+    return;
+  }
+
+  // Enforce plan quotas before queuing scheduled runs
+  const quotaResult = await checkRunQuota(targetScenarios.length, schedule.provider ?? 'connect');
+  if (!quotaResult.allowed) {
+    console.warn(`[schedule-executor] Schedule ${schedule.id} skipped — quota exceeded: ${quotaResult.error}`);
     return;
   }
 

@@ -66,6 +66,12 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<ObservabilityMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
+  const [usage, setUsage] = useState<{
+    tier: string | null;
+    enabled: boolean;
+    limits: { maxScenariosPerRun: number; maxRunsPerMonth: number; maxModels: number };
+    usage: { runsThisMonth: number; distinctProviderCount: number; distinctProviders: string[] };
+  } | null>(null);
 
   useEffect(() => {
     apiFetch('/api/runs')
@@ -79,6 +85,12 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
       .then((d: ObservabilityMetrics) => setMetrics(d))
       .catch(() => {})
       .finally(() => setMetricsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    apiFetch('/api/usage')
+      .then((d: typeof usage) => setUsage(d))
+      .catch(() => {});
   }, []);
 
   const total = runs.length;
@@ -307,9 +319,36 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                 </>
               )}
             </div>
-          </div>
 
-          {/* ── CENTER COLUMN: Recent Runs ──────────────────────────────── */}
+            {/* Plan Usage (only shown when limits are enabled) */}
+            {usage && usage.enabled && (
+              <div className="card space-y-2" data-tour-target="dashboard-plan-usage">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-900">Plan Usage</h3>
+                  <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 ring-1 ring-cyan-200">
+                    {usage.tier ? usage.tier.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Unknown'}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <UsageBar
+                    label="Runs / month"
+                    current={usage.usage.runsThisMonth}
+                    max={usage.limits.maxRunsPerMonth}
+                  />
+                  <UsageBar
+                    label="AI providers"
+                    current={usage.usage.distinctProviderCount}
+                    max={usage.limits.maxModels}
+                  />
+                  <UsageBar
+                    label="Scenarios / run"
+                    current={null}
+                    max={usage.limits.maxScenariosPerRun}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
           <div className="card flex min-h-0 flex-col" data-tour-target="dashboard-recent-runs">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">Recent Runs</h3>
@@ -471,6 +510,26 @@ function KpiCard({ label, value, tone, sub }: { label: string; value: string; to
         <p className="text-lg font-semibold text-slate-900">{value}</p>
       </div>
       {sub && <p className="mt-0.5 text-[10px] text-slate-500">{sub}</p>}
+    </div>
+  );
+}
+
+/** Compact usage bar showing current / max for a plan limit. */
+function UsageBar({ label, current, max }: { label: string; current: number | null; max: number }) {
+  const unlimited = max < 0;
+  const pct = unlimited || current == null ? 0 : max > 0 ? Math.min(100, (current / max) * 100) : 0;
+  const tone = pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-400' : 'bg-cyan-500';
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center justify-between text-[10px] text-slate-600">
+        <span>{label}</span>
+        <span className="font-semibold text-slate-900">
+          {current != null ? current : '—'} / {unlimited ? '∞' : max}
+        </span>
+      </div>
+      <div className="h-1 rounded-full bg-slate-100">
+        <div className={`h-1 rounded-full ${tone} transition-all`} style={{ width: unlimited ? '0%' : `${pct}%` }} />
+      </div>
     </div>
   );
 }
