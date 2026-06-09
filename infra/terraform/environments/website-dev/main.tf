@@ -9,7 +9,7 @@ locals {
   common_tags = merge(
     var.tags,
     {
-      "aria:region"        = data.aws_region.current.name
+      "aria:region"        = data.aws_region.current.region
       "aria:pricing_track" = "platform"
     },
   )

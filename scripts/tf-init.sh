@@ -267,7 +267,7 @@ echo "🔧 Backend configuration:"
 echo "   Bucket:   $BUCKET"
 echo "   Key:      $STATE_KEY"
 echo "   Region:   $REGION"
-echo "   Lock:     $LOCKS_TABLE"
+echo "   Locking:  use_lockfile=true"
 [[ -n "$KMS_KEY" && "$KMS_KEY" != "REPLACE_WITH"* ]] && echo "   KMS:      $KMS_KEY"
 echo ""
 
@@ -275,7 +275,7 @@ terraform init -reconfigure \
   -backend-config="bucket=$BUCKET" \
   -backend-config="key=$STATE_KEY" \
   -backend-config="region=$REGION" \
-  -backend-config="dynamodb_table=$LOCKS_TABLE" \
+  -backend-config="use_lockfile=true" \
   -backend-config="encrypt=true" \
   ${KMS_ARG}
 
