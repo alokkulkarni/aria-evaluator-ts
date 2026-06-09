@@ -56,7 +56,18 @@ resource "null_resource" "build_and_deploy_website" {
       npm ci --prefer-offline
 
       echo "==> Building static website (signup_mode=${var.signup_mode})..."
-      NEXT_PUBLIC_SIGNUP_MODE=${var.signup_mode} npm run build
+
+      # For static export, temporarily move API routes (they belong to auth-backend)
+      if [ -d src/app/api ]; then
+        mv src/app/api src/app/_api_backup
+      fi
+
+      NEXT_PUBLIC_SIGNUP_MODE=${var.signup_mode} NEXT_BUILD_MODE=export npm run build
+
+      # Restore API routes
+      if [ -d src/app/_api_backup ]; then
+        mv src/app/_api_backup src/app/api
+      fi
 
       echo "==> Syncing to S3: ${module.frontend.s3_bucket_name}..."
       aws s3 sync out/ "s3://${module.frontend.s3_bucket_name}/" --delete --region ${var.aws_region}
