@@ -23,10 +23,10 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(new URL(target))
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
+  } catch (err: unknown) {
+    if (err instanceof ApiError && err.status === 409) {
       return NextResponse.redirect(new URL('/sign-up?step=plan', request.url))
     }
-    throw error
+    throw err
   }
 }

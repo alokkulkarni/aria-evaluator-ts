@@ -41,3 +41,15 @@ output "sns_topic_arn" {
 output "cf_origin_secret_arn" {
   value = module.tenant.cf_origin_secret_arn
 }
+
+# ── Instance identification outputs (used by provisioning pipeline) ────────────
+
+output "evaluator_instance_id" {
+  description = "Unique identifier for this evaluator instance"
+  value       = module.tenant.ecs_service_name
+}
+
+output "evaluator_instance_url" {
+  description = "URL to access this evaluator instance"
+  value       = "https://${module.tenant.cloudfront_domain_name}"
+}

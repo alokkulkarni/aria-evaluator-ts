@@ -105,3 +105,33 @@ variable "cloudtrail_alert_sns_topic_arn" {
   type        = string
   default     = ""
 }
+
+# ── Provisioning infrastructure variables ──────────────────────────────────────
+
+variable "terraform_state_bucket" {
+  description = "S3 bucket for Terraform remote state (used by CodeBuild for per-user infrastructure)"
+  type        = string
+}
+
+variable "terraform_state_kms_key_arn" {
+  description = "KMS key ARN for encrypting Terraform state bucket"
+  type        = string
+}
+
+variable "github_repo_url" {
+  description = "GitHub repository URL for evaluator-app-prod Terraform code"
+  type        = string
+  default     = "https://github.com/alokkulkarni/aria-evaluator-ts.git"
+}
+
+variable "github_branch" {
+  description = "GitHub branch for CodeBuild to clone"
+  type        = string
+  default     = "main"
+}
+
+variable "allowed_origins" {
+  description = "CORS allowed origins for provisioning API"
+  type        = list(string)
+  default     = ["http://localhost:3000", "https://ariaeval.io"]
+}

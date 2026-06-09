@@ -1,0 +1,9 @@
+{
+  "name": "provisioner-lambda",
+  "version": "1.0.0",
+  "description": "Lambda for provisioning evaluator instances",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1400.0"
+  }
+}

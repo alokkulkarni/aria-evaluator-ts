@@ -1,0 +1,98 @@
+version: 0.2
+
+# CodeBuild buildspec for provisioning evaluator instances
+# Triggered by Lambda with user_id and plan_type parameters
+# Clones repo and runs: terraform apply -var user_id=<uuid> -var plan_type=<plan>
+
+phases:
+  pre_build:
+    commands:
+      - echo "Installing Terraform..."
+      - wget -q https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_linux_amd64.zip
+      - unzip -q terraform_1.7.0_linux_amd64.zip -d /usr/local/bin/
+      - rm terraform_1.7.0_linux_amd64.zip
+      - terraform version
+      
+      - echo "Installing AWS CLI v2..."
+      - curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      - unzip -q awscliv2.zip
+      - ./aws/install
+      - rm -rf awscliv2.zip aws/
+      
+      - echo "Configuring git for repo access..."
+      - git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+
+  build:
+    commands:
+      - echo "Cloning evaluator-app-prod terraform code..."
+      - git clone --depth 1 --branch $GITHUB_BRANCH $GITHUB_REPO /tmp/repo
+      - cd /tmp/repo/infra/terraform/environments/prod
+      
+      - echo "Initializing Terraform with remote state..."
+      - |
+        terraform init \
+          -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
+          -backend-config="key=users/$USER_ID/terraform.tfstate" \
+          -backend-config="region=$AWS_REGION" \
+          -backend-config="encrypt=true" \
+          -reconfigure
+      
+      - echo "Validating Terraform configuration..."
+      - terraform validate
+      
+      - echo "Planning Terraform apply for user $USER_ID with plan $PLAN_TYPE..."
+      - |
+        terraform plan \
+          -var="user_id=$USER_ID" \
+          -var="plan_type=$PLAN_TYPE" \
+          -var="environment=prod" \
+          -var="tenant_id=$USER_ID" \
+          -out=/tmp/tfplan
+      
+      - echo "Applying Terraform configuration..."
+      - |
+        terraform apply \
+          -auto-approve \
+          /tmp/tfplan
+      
+      - echo "Capturing output..."
+      - terraform output -json > /tmp/outputs.json
+      - cat /tmp/outputs.json
+
+  post_build:
+    commands:
+      - echo "Updating DynamoDB with instance mapping..."
+      - |
+        INSTANCE_ID=$(jq -r '.evaluator_instance_id.value' /tmp/outputs.json)
+        INSTANCE_URL=$(jq -r '.evaluator_instance_url.value' /tmp/outputs.json)
+        
+        aws dynamodb put-item \
+          --table-name $USER_INSTANCE_TABLE \
+          --item "{
+            \"user_id\": {\"S\": \"$USER_ID\"},
+            \"instance_id\": {\"S\": \"$INSTANCE_ID\"},
+            \"instance_url\": {\"S\": \"$INSTANCE_URL\"},
+            \"plan_type\": {\"S\": \"$PLAN_TYPE\"},
+            \"status\": {\"S\": \"active\"},
+            \"created_at\": {\"N\": \"$(date +%s)\"},
+            \"last_login\": {\"N\": \"0\"}
+          }" \
+          --region $AWS_REGION
+      
+      - echo "Provisioning complete!"
+      - echo "Instance ID: $INSTANCE_ID"
+      - echo "Instance URL: $INSTANCE_URL"
+
+artifacts:
+  files:
+    - /tmp/outputs.json
+  discard-paths: yes
+  name: ProvisioningOutput
+
+cache:
+  paths:
+    - '/root/.terraform/**/*'
+
+# Log output
+on_failure:
+  - command: echo "Provisioning failed! Check logs above for details."

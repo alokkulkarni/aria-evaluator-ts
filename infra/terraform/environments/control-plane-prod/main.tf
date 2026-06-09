@@ -173,3 +173,75 @@ module "cloudtrail" {
 
   tags = local.common_tags
 }
+
+# ── DynamoDB for user instance tracking ────────────────────────────────────────
+
+resource "aws_dynamodb_table" "user_instances" {
+  name           = "${var.app_name}-user-instances"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "user_id"
+  range_key      = null
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "${var.app_name}-status-index"
+    hash_key        = "status"
+    projection_type = "ALL"
+  }
+
+  attribute {
+    name = "status"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  ttl {
+    attribute_name = "expiration_time"
+    enabled        = true
+  }
+
+  tags = local.common_tags
+}
+
+# ── CodeBuild project for provisioning ────────────────────────────────────────
+
+module "provisioning_codebuild" {
+  source = "../../modules/provisioning-codebuild"
+
+  app_name                         = var.app_name
+  aws_region                       = data.aws_region.current.name
+  aws_account_id                   = data.aws_caller_identity.current.account_id
+  terraform_state_bucket           = var.terraform_state_bucket
+  terraform_state_bucket_arn       = "arn:aws:s3:::${var.terraform_state_bucket}"
+  terraform_state_kms_key_arn      = var.terraform_state_kms_key_arn
+  user_instance_table_arn          = aws_dynamodb_table.user_instances.arn
+  user_instance_table_name         = aws_dynamodb_table.user_instances.name
+  ecr_repository_arn               = "arn:aws:ecr:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:repository/${var.app_name}"
+  github_repo_url                  = var.github_repo_url
+  github_branch                    = var.github_branch
+
+  tags = local.common_tags
+}
+
+# ── Lambda provisioning function ───────────────────────────────────────────────
+
+module "provisioning_lambda" {
+  source = "../../modules/provisioning-lambda"
+
+  app_name                     = var.app_name
+  aws_region                   = data.aws_region.current.name
+  codebuild_project_name       = module.provisioning_codebuild.codebuild_project_name
+  codebuild_project_arn        = module.provisioning_codebuild.codebuild_project_arn
+  user_instance_table_name     = aws_dynamodb_table.user_instances.name
+  user_instance_table_arn      = aws_dynamodb_table.user_instances.arn
+  allowed_origins              = var.allowed_origins
+
+  tags = local.common_tags
+}
