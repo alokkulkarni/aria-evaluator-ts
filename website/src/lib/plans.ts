@@ -4,14 +4,14 @@ export const PLANS: Plan[] = [
   {
     id: 'free',
     name: 'Free',
-    tagline: 'Try ARIA with no commitment',
+    tagline: 'Explore the full platform — limited usage',
     price: { monthly: 0, annual: 0 },
     maxScenarios: 10,
     maxRuns: 5,
     maxModels: 1,
     suspendHours: 1,
     regions: 'limited',
-    features: ['10 scenarios per run', '5 runs / month', '1 AI model', 'Basic reporting', 'Community support', '1-hour auto-suspend'],
+    features: ['10 scenarios per run', '5 runs / month', '1 AI model', 'All features included', 'Observability & cost tracking', 'Advanced reporting', 'Community support', '1-hour auto-suspend'],
   },
   {
     id: 'individual',
