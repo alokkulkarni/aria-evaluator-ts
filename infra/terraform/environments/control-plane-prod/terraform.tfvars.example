@@ -14,3 +14,17 @@ image_tag = "latest"
 
 # CloudTrail alarm topic (create or re-use an existing SNS topic)
 cloudtrail_alert_sns_topic_arn = ""
+
+# Provisioning infrastructure — Lambda triggers CodeBuild to provision user instances
+terraform_state_bucket      = "aria-evaluator-tf-state-BUCKET_SUFFIX"
+terraform_state_kms_key_arn = "REPLACE_WITH_KMS_KEY_ARN"
+
+# GitHub repo and branch for CodeBuild (clones to run terraform apply)
+github_repo_url = "https://github.com/alokkulkarni/aria-evaluator-ts.git"
+github_branch   = "main"
+
+# CORS allowed origins for provisioning API
+allowed_origins = [
+  "http://localhost:3000",
+  "https://ariaeval.io"
+]

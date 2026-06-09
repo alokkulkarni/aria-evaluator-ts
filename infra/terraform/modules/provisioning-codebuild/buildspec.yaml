@@ -2,7 +2,7 @@ version: 0.2
 
 # CodeBuild buildspec for provisioning evaluator instances
 # Triggered by Lambda with user_id and plan_type parameters
-# Clones repo and runs: terraform apply -var user_id=<uuid> -var plan_type=<plan>
+# Clones repo and runs: terraform apply -var tenant_id=<uuid> -var pricing_tier=<plan>
 
 phases:
   pre_build:
@@ -43,10 +43,10 @@ phases:
       - echo "Planning Terraform apply for user ${USER_ID} with plan ${PLAN_TYPE}..."
       - |
         terraform plan \
-          -var="user_id=${USER_ID}" \
-          -var="plan_type=${PLAN_TYPE}" \
-          -var="environment=prod" \
           -var="tenant_id=${USER_ID}" \
+          -var="pricing_tier=${PLAN_TYPE}" \
+          -var="pricing_track=$([ '${PLAN_TYPE}' = 'free' ] && echo 'individual' || echo 'enterprise')" \
+          -var="environment=prod" \
           -out=/tmp/tfplan
       
       - echo "Applying Terraform configuration..."
