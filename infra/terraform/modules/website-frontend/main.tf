@@ -93,17 +93,29 @@ resource "aws_cloudfront_function" "domain_redirect" {
 
   code = <<-JS
     function handler(event) {
-      var host = event.request.headers.host ? event.request.headers.host.value : '';
+      var request = event.request;
+      var host = request.headers.host ? request.headers.host.value : '';
+
       if (host.endsWith('.cloudfront.net')) {
         return {
           statusCode: 301,
           statusDescription: 'Moved Permanently',
           headers: {
-            location: { value: 'https://${var.domain_name}' + event.request.uri }
+            location: { value: 'https://${var.domain_name}' + request.uri }
           }
         };
       }
-      return event.request;
+
+      // Static export routing: map extensionless routes to generated *.html files.
+      var uri = request.uri || '/';
+      if (uri !== '/' && !uri.includes('.', uri.lastIndexOf('/'))) {
+        if (uri.endsWith('/')) {
+          uri = uri.slice(0, -1);
+        }
+        request.uri = uri + '.html';
+      }
+
+      return request;
     }
   JS
 }
