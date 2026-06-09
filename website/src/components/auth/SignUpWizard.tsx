@@ -74,7 +74,14 @@ export function SignUpWizard() {
 
   const availableRegions = useMemo(() => getRegionsForTier(state.selectedPlan ?? 'free'), [state.selectedPlan])
   const disabledRegions = useMemo(
-    () => REGIONS.filter((region) => !availableRegions.some((available) => available.id === region.id)).map((region) => region.id),
+    () => {
+      const tierDisabled = REGIONS.filter((region) => !availableRegions.some((available) => available.id === region.id)).map((region) => region.id)
+      if (isWaitlistMode) {
+        // In waitlist mode, only UK (eu-west-2) is available
+        return REGIONS.filter((r) => r.id !== 'eu-west-2').map((r) => r.id)
+      }
+      return tierDisabled
+    },
     [availableRegions],
   )
 
