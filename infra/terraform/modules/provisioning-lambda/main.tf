@@ -90,8 +90,8 @@ resource "aws_lambda_function" "provisioner" {
   environment {
     variables = {
       CODEBUILD_PROJECT_NAME = var.codebuild_project_name
-      USER_INSTANCE_TABLE     = var.user_instance_table_name
-      AWS_REGION              = var.aws_region
+      USER_INSTANCE_TABLE    = var.user_instance_table_name
+      AWS_REGION             = var.aws_region
     }
   }
 
@@ -122,11 +122,11 @@ resource "aws_apigatewayv2_api" "provisioner_api" {
 }
 
 resource "aws_apigatewayv2_integration" "lambda_integration" {
-  api_id             = aws_apigatewayv2_api.provisioner_api.id
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
+  api_id                 = aws_apigatewayv2_api.provisioner_api.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
   payload_format_version = "2.0"
-  target             = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.provisioner.arn}/invocations"
+  target                 = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.provisioner.arn}/invocations"
 }
 
 resource "aws_apigatewayv2_route" "provision_route" {
@@ -174,14 +174,14 @@ resource "aws_apigatewayv2_stage" "provisioner_stage" {
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn
     format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      resourcePath   = "$context.resourcePath"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
+      requestId          = "$context.requestId"
+      ip                 = "$context.identity.sourceIp"
+      requestTime        = "$context.requestTime"
+      httpMethod         = "$context.httpMethod"
+      resourcePath       = "$context.resourcePath"
+      status             = "$context.status"
+      protocol           = "$context.protocol"
+      responseLength     = "$context.responseLength"
       integrationLatency = "$context.integration.latency"
     })
   }

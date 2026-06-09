@@ -3,7 +3,7 @@ data "aws_caller_identity" "current" {}
 locals {
   repo_root = abspath("${path.module}/../../../..")
   # Use pre-built image URI from CI/CD if provided, otherwise build locally
-  use_prebuilt = var.image_uri != ""
+  use_prebuilt       = var.image_uri != ""
   resolved_image_uri = local.use_prebuilt ? var.image_uri : module.docker_build[0].image_uri
 }
 

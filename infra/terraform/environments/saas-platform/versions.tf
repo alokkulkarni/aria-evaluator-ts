@@ -8,7 +8,7 @@ terraform {
     }
   }
 
-  backend "s3" {}  # Configured via -backend-config flags at init time
+  backend "s3" {} # Configured via -backend-config flags at init time
 }
 
 provider "aws" {

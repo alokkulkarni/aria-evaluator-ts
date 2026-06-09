@@ -19,10 +19,10 @@ locals {
   effective_control_plane_url = (
     var.environment == "local"
     ? replace(
-        replace(var.control_plane_url, "localhost", "host.docker.internal"),
-        "127.0.0.1",
-        "host.docker.internal",
-      )
+      replace(var.control_plane_url, "localhost", "host.docker.internal"),
+      "127.0.0.1",
+      "host.docker.internal",
+    )
     : var.control_plane_url
   )
 
@@ -30,8 +30,8 @@ locals {
   # Build from the typed list — NextAuth, OAuth secrets and optional extras.
   base_env = [
     { name = "NODE_ENV", value = "production" },
-    { name = "ARIA_DEPLOY_ENV",                 value = var.environment },
-    { name = "PORT",                            value = tostring(var.container_port) },
+    { name = "ARIA_DEPLOY_ENV", value = var.environment },
+    { name = "PORT", value = tostring(var.container_port) },
     { name = "HOSTNAME", value = "0.0.0.0" },
     { name = "NEXTAUTH_URL", value = var.nextauth_url },
     { name = "NEXT_PUBLIC_APP_URL", value = var.nextauth_url },

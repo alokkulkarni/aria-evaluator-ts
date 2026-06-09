@@ -19,7 +19,7 @@ terraform {
   # Backend configured automatically by scripts/tf-init.sh
   # For first-time local runs without S3: terraform init -backend=false
   # For S3 backend: ../../scripts/tf-init.sh
-  backend "s3" {}  # Configured via -backend-config flags at init time
+  backend "s3" {} # Configured via -backend-config flags at init time
 }
 
 provider "aws" {

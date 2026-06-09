@@ -1,8 +1,8 @@
 locals {
-  name_prefix  = "${var.app_name}-${var.environment}"
-  bucket_name  = "${local.name_prefix}-cloudtrail-${var.bucket_suffix}"
-  trail_name   = "${local.name_prefix}-trail"
-  use_kms      = var.kms_key_arn != ""
+  name_prefix   = "${var.app_name}-${var.environment}"
+  bucket_name   = "${local.name_prefix}-cloudtrail-${var.bucket_suffix}"
+  trail_name    = "${local.name_prefix}-trail"
+  use_kms       = var.kms_key_arn != ""
   create_alarms = var.alert_sns_topic_arn != ""
 
   common_tags = merge(

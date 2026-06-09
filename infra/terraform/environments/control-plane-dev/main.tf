@@ -140,7 +140,7 @@ module "cloudtrail" {
   bucket_suffix  = var.bucket_suffix
   kms_key_arn    = var.kms_key_arn
 
-  is_multi_region               = false  # dev: home region only
+  is_multi_region               = false # dev: home region only
   include_global_service_events = true
   enable_log_file_validation    = true
   enable_s3_data_events         = true
@@ -149,7 +149,7 @@ module "cloudtrail" {
 
   enable_cloudwatch_logs        = true
   cloudwatch_log_retention_days = var.log_retention_days
-  s3_log_retention_days         = 90  # dev: 3 months
+  s3_log_retention_days         = 90 # dev: 3 months
 
   # No alarm SNS topic in dev — set var.cloudtrail_alert_sns_topic_arn to enable
   alert_sns_topic_arn = var.cloudtrail_alert_sns_topic_arn
