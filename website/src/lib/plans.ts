@@ -11,7 +11,7 @@ export const PLANS: Plan[] = [
     maxModels: 1,
     suspendHours: 1,
     regions: 'limited',
-    features: ['10 scenarios per run', '5 runs / month', '1 AI model', 'All features included', 'Observability & cost tracking', 'Advanced reporting', 'Community support', '1-hour auto-suspend'],
+    features: ['10 scenarios per run', '5 runs / month', '1 AI model', 'All features included', 'Observability & cost tracking', 'Advanced reporting', 'Community access', '1-hour auto-suspend'],
   },
   {
     id: 'individual',

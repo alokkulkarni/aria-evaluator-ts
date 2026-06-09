@@ -12,6 +12,7 @@ const navItems = [
   { label: 'Home', href: '/', match: '/' },
   { label: 'Features', href: '/#features' },
   { label: 'Pricing', href: '/pricing', match: '/pricing' },
+  { label: 'Community', href: '/community', match: '/community' },
   { label: 'Docs', href: '/docs', match: '/docs' },
 ]
 

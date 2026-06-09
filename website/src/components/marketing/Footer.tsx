@@ -8,6 +8,7 @@ const footerGroups = {
     { label: 'Pricing', href: '/pricing' },
     { label: 'Security', href: '/security' },
     { label: 'Docs', href: '/docs' },
+    { label: 'Community', href: '/community' },
   ],
   Company: [
     { label: 'About', href: '/about' },
