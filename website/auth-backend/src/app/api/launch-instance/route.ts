@@ -24,8 +24,10 @@ export async function GET(request: Request) {
 
     return NextResponse.redirect(new URL(target))
   } catch (err: unknown) {
-    if (err instanceof ApiError && err.status === 409) {
-      return NextResponse.redirect(new URL('/sign-up?step=plan', request.url))
+    if (err instanceof ApiError) {
+      if (err.status === 409) {
+        return NextResponse.redirect(new URL('/sign-up?step=plan', request.url))
+      }
     }
     throw err
   }
