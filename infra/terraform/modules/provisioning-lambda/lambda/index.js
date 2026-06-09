@@ -7,6 +7,34 @@ const PROJECT_NAME = process.env.CODEBUILD_PROJECT_NAME;
 const TABLE_NAME = process.env.USER_INSTANCE_TABLE;
 const AWS_REGION = process.env.AWS_REGION;
 
+// Helper function to validate authorization and extract user_id
+function validateAuthAndGetUserId(event, bodyUserId = null) {
+  const authHeader = event.headers?.authorization || event.headers?.Authorization;
+  if (!authHeader) {
+    return { valid: false, error: 'Missing authorization header' };
+  }
+
+  if (!authHeader.startsWith('Bearer ')) {
+    return { valid: false, error: 'Invalid authorization header format' };
+  }
+
+  const token = authHeader.substring(7);
+  if (!token) {
+    return { valid: false, error: 'Empty bearer token' };
+  }
+
+  // For MVP, we use user_id from the body or x-user-id header
+  // In production, extract from token JWT claims
+  const userIdFromHeader = event.headers?.['x-user-id'] || event.headers?.['X-User-Id'];
+  const userId = bodyUserId || userIdFromHeader;
+
+  if (!userId) {
+    return { valid: false, error: 'Missing user_id' };
+  }
+
+  return { valid: true, userId, token };
+}
+
 exports.handler = async (event) => {
   console.log('Provisioner Lambda invoked:', JSON.stringify(event));
 
@@ -53,21 +81,32 @@ async function provisionEvaluator(event) {
   const body = JSON.parse(event.body || '{}');
   const { user_id, plan_type } = body;
 
-  if (!user_id || !plan_type) {
+  // Validate auth and get user_id
+  const auth = validateAuthAndGetUserId(event, user_id);
+  if (!auth.valid) {
     return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Missing user_id or plan_type' }),
+      statusCode: 401,
+      body: JSON.stringify({ error: auth.error }),
     };
   }
 
-  console.log(`Provisioning evaluator for user ${user_id} with plan ${plan_type}`);
+  const userId = auth.userId;
+
+  if (!plan_type) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Missing plan_type' }),
+    };
+  }
+
+  console.log(`Provisioning evaluator for user ${userId} with plan ${plan_type}`);
 
   try {
     // Check if user already has an instance
     const existing = await dynamodb
       .getItem({
         TableName: TABLE_NAME,
-        Key: { user_id: { S: user_id } },
+        Key: { user_id: { S: userId } },
       })
       .promise();
 
@@ -87,7 +126,7 @@ async function provisionEvaluator(event) {
         await dynamodb
           .updateItem({
             TableName: TABLE_NAME,
-            Key: { user_id: { S: user_id } },
+            Key: { user_id: { S: userId } },
             UpdateExpression: 'SET #status = :status, last_login = :time',
             ExpressionAttributeNames: { '#status': 'status' },
             ExpressionAttributeValues: {
@@ -112,7 +151,7 @@ async function provisionEvaluator(event) {
       .startBuild({
         projectName: PROJECT_NAME,
         environmentVariablesOverride: [
-          { name: 'USER_ID', value: user_id, type: 'PLAINTEXT' },
+          { name: 'USER_ID', value: userId, type: 'PLAINTEXT' },
           { name: 'PLAN_TYPE', value: plan_type, type: 'PLAINTEXT' },
         ],
       })
@@ -126,7 +165,7 @@ async function provisionEvaluator(event) {
       .putItem({
         TableName: TABLE_NAME,
         Item: {
-          user_id: { S: user_id },
+          user_id: { S: userId },
           plan_type: { S: plan_type },
           status: { S: 'provisioning' },
           build_id: { S: buildId },
@@ -141,7 +180,7 @@ async function provisionEvaluator(event) {
       body: JSON.stringify({
         message: 'Instance provisioning started',
         build_id: buildId,
-        user_id: user_id,
+        user_id: userId,
       }),
     };
   } catch (error) {
@@ -188,17 +227,19 @@ async function getProvisionStatus(buildId) {
 
 async function getInstanceUrl(event) {
   try {
-    // Extract user_id from request (passed via query param or authorization header)
-    const userId = event.queryStringParameters?.userId || 
-                   event.headers['x-user-id'] ||
-                   event.requestContext?.authorizer?.principalId;
-
-    if (!userId) {
+    // Validate auth and get user_id
+    const userIdFromHeader = event.queryStringParameters?.userId || 
+                             event.headers['x-user-id'] || 
+                             event.headers['X-User-Id'];
+    const auth = validateAuthAndGetUserId(event, userIdFromHeader);
+    if (!auth.valid) {
       return {
         statusCode: 401,
-        body: JSON.stringify({ error: 'Missing user identification' }),
+        body: JSON.stringify({ error: auth.error }),
       };
     }
+
+    const userId = auth.userId;
 
     // Query DynamoDB for user instance
     const response = await dynamodb
@@ -239,17 +280,19 @@ async function getInstanceUrl(event) {
 
 async function reactivateInstance(event) {
   try {
-    // Extract user_id from request
-    const userId = event.queryStringParameters?.userId || 
-                   event.headers['x-user-id'] ||
-                   event.requestContext?.authorizer?.principalId;
-
-    if (!userId) {
+    // Parse request body
+    const body = JSON.parse(event.body || '{}');
+    
+    // Validate auth and get user_id
+    const auth = validateAuthAndGetUserId(event, body.user_id);
+    if (!auth.valid) {
       return {
         statusCode: 401,
-        body: JSON.stringify({ error: 'Missing user identification' }),
+        body: JSON.stringify({ error: auth.error }),
       };
     }
+
+    const userId = auth.userId;
 
     // Check if instance exists and is suspended
     const existing = await dynamodb

@@ -133,8 +133,6 @@ resource "aws_apigatewayv2_route" "provision_route" {
   api_id    = aws_apigatewayv2_api.provisioner_api.id
   route_key = "POST /provision-evaluator"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-
-  authorization_type = "AWS_IAM"
 }
 
 # Route for status check
@@ -142,8 +140,6 @@ resource "aws_apigatewayv2_route" "status_route" {
   api_id    = aws_apigatewayv2_api.provisioner_api.id
   route_key = "GET /provision-status/{buildId}"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-
-  authorization_type = "AWS_IAM"
 }
 
 # Route to get instance URL (for login routing)
@@ -151,8 +147,6 @@ resource "aws_apigatewayv2_route" "instance_url_route" {
   api_id    = aws_apigatewayv2_api.provisioner_api.id
   route_key = "GET /instance-url"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-
-  authorization_type = "AWS_IAM"
 }
 
 # Route to reactivate suspended instance
@@ -160,8 +154,6 @@ resource "aws_apigatewayv2_route" "reactivate_route" {
   api_id    = aws_apigatewayv2_api.provisioner_api.id
   route_key = "POST /reactivate-instance"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-
-  authorization_type = "AWS_IAM"
 }
 
 # ── API Gateway Stage ────────────────────────────────────────────────────────
