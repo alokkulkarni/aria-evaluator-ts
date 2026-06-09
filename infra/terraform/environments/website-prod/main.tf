@@ -3,10 +3,12 @@ data "aws_region" "current" {}
 data "aws_availability_zones" "available" { state = "available" }
 
 locals {
-  availability_zones = slice(data.aws_availability_zones.available.names, 0, 3)
-  repo_root          = abspath("${path.module}/../../../..")
-  website_root       = "${local.repo_root}/website"
-  public_url         = var.domain_name != "" ? "https://${var.domain_name}" : "https://${module.frontend.cloudfront_domain_name}"
+  availability_zones  = slice(data.aws_availability_zones.available.names, 0, 3)
+  repo_root           = abspath("${path.module}/../../../..")
+  website_root        = "${local.repo_root}/website"
+  public_url          = var.domain_name != "" ? "https://${var.domain_name}" : "https://${module.frontend.cloudfront_domain_name}"
+  use_prebuilt_auth   = var.auth_backend_image_uri != ""
+  resolved_auth_image = local.use_prebuilt_auth ? var.auth_backend_image_uri : module.docker_build_auth[0].image_uri
 
   common_tags = merge(
     var.tags,
@@ -18,8 +20,10 @@ locals {
 }
 
 # ── Build & push auth-backend Docker image to ECR ─────────────────────────────
+# Skipped when auth_backend_image_uri is provided (CI/CD pre-built image)
 
 module "docker_build_auth" {
+  count  = local.use_prebuilt_auth ? 0 : 1
   source = "../../modules/docker-build-push"
 
   ecr_repository_url = module.auth_backend.ecr_repository_url
@@ -31,8 +35,10 @@ module "docker_build_auth" {
 }
 
 # ── Build & deploy static website to S3 ───────────────────────────────────────
+# Skipped when skip_website_build is true (CI/CD handles S3 sync separately)
 
 resource "null_resource" "build_and_deploy_website" {
+  count = var.skip_website_build ? 0 : 1
   triggers = {
     package_lock_sha = filesha1("${local.website_root}/package-lock.json")
     force_rebuild    = var.force_rebuild
@@ -85,6 +91,7 @@ module "auth_backend" {
   memory        = 512
   desired_count = 2
   image_tag     = var.auth_backend_image_tag
+  image_uri     = local.use_prebuilt_auth ? var.auth_backend_image_uri : ""
 
   # Auth secrets
   nextauth_secret      = var.nextauth_secret

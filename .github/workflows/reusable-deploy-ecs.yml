@@ -1,0 +1,189 @@
+# ── Reusable: Deploy to ECS via Terraform ─────────────────────────────────────
+# Called by component CD workflows. Scans the image with Trivy, promotes it
+# from ghcr.io to ECR, then runs Terraform to deploy.
+
+name: "Reusable: Deploy to ECS"
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: "Component (evaluator, control-plane, website)"
+        required: true
+        type: string
+      environment:
+        description: "Target environment (dev, prod)"
+        required: true
+        type: string
+      image-tag:
+        description: "Image tag to deploy from ghcr.io"
+        required: true
+        type: string
+      tf-directory:
+        description: "Terraform environment directory (relative to repo root)"
+        required: true
+        type: string
+      aws-region:
+        description: "AWS region"
+        required: false
+        type: string
+        default: "eu-west-2"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: "Scan image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    env:
+      GHCR_IMAGE: ghcr.io/${{ github.repository }}/${{ inputs.component }}:${{ inputs.image-tag }}
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull "$GHCR_IMAGE"
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.GHCR_IMAGE }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: "trivy-${{ inputs.component }}-${{ inputs.environment }}"
+
+      - name: Trivy gate (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.GHCR_IMAGE }}
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL"
+
+  deploy:
+    name: "Deploy ${{ inputs.component }} → ${{ inputs.environment }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: scan
+
+    environment:
+      name: ${{ inputs.component }}-${{ inputs.environment }}
+
+    concurrency:
+      group: deploy-${{ inputs.component }}-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    permissions:
+      contents: read
+      packages: read
+      id-token: write  # AWS OIDC
+
+    env:
+      GHCR_IMAGE: ghcr.io/${{ github.repository }}/${{ inputs.component }}:${{ inputs.image-tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Promote image to ECR
+        env:
+          ECR_REPO: ${{ secrets.ECR_REPOSITORY_URL }}
+        run: |
+          # Install crane for efficient cross-registry copy
+          CRANE_VERSION="0.20.2"
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar xz crane
+          chmod +x crane
+
+          # Copy image from GHCR → ECR (preserves digest)
+          ./crane copy "$GHCR_IMAGE" "${ECR_REPO}:${{ inputs.image-tag }}"
+
+          # Also tag as the git SHA for traceability
+          ./crane copy "$GHCR_IMAGE" "${ECR_REPO}:sha-${GITHUB_SHA::7}"
+
+          # Capture the ECR image URI with digest
+          DIGEST=$(./crane digest "$GHCR_IMAGE")
+          echo "ECR_IMAGE_URI=${ECR_REPO}@${DIGEST}" >> "$GITHUB_ENV"
+          echo "ECR_IMAGE_TAG=${{ inputs.image-tag }}" >> "$GITHUB_ENV"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.6"
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.tf-directory }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+        run: |
+          chmod +x "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+          "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+
+      - name: Terraform Plan
+        working-directory: ${{ inputs.tf-directory }}
+        env:
+          TF_VAR_image_uri: ${{ env.ECR_IMAGE_URI }}
+          TF_VAR_image_tag: ${{ env.ECR_IMAGE_TAG }}
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_kms_key_arn: ${{ secrets.KMS_KEY_ARN }}
+          TF_VAR_ecr_repository_url: ${{ secrets.ECR_REPOSITORY_URL }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ${{ inputs.tf-directory }}
+        env:
+          TF_VAR_image_uri: ${{ env.ECR_IMAGE_URI }}
+          TF_VAR_image_tag: ${{ env.ECR_IMAGE_TAG }}
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_kms_key_arn: ${{ secrets.KMS_KEY_ARN }}
+          TF_VAR_ecr_repository_url: ${{ secrets.ECR_REPOSITORY_URL }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Post-deploy summary
+        run: |
+          echo "## ✅ Deployment Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Detail | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | \`${{ inputs.component }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | \`${{ inputs.environment }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image Tag | \`${{ inputs.image-tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Git SHA | \`${GITHUB_SHA::7}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ECR URI | \`${{ env.ECR_IMAGE_URI }}\` |" >> "$GITHUB_STEP_SUMMARY"

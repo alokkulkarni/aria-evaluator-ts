@@ -1,0 +1,182 @@
+# ── Reusable CI: Docker Build, SBOM, Sign ─────────────────────────────────────
+# Called by component CI workflows. Builds a Docker image, pushes to ghcr.io
+# (only on main/tags), generates SBOM via Syft, signs with Cosign.
+#
+# On PRs: build-only (no push) + Trivy filesystem scan
+# On main/tags: build + push + SBOM + sign + attestation
+
+name: "Reusable: Build & Publish Image"
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: "Component name (evaluator, control-plane, website, auth-backend)"
+        required: true
+        type: string
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: true
+        type: string
+      context:
+        description: "Docker build context directory"
+        required: false
+        type: string
+        default: "."
+      build-args:
+        description: "Docker build args (multiline KEY=VALUE)"
+        required: false
+        type: string
+        default: ""
+      platforms:
+        description: "Target platforms"
+        required: false
+        type: string
+        default: "linux/amd64"
+    outputs:
+      image-uri:
+        description: "Full image URI with tag"
+        value: ${{ jobs.build.outputs.image-uri }}
+      image-digest:
+        description: "Image digest (sha256:...)"
+        value: ${{ jobs.build.outputs.image-digest }}
+      image-tag:
+        description: "Primary image tag"
+        value: ${{ jobs.build.outputs.image-tag }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: "Build ${{ inputs.component }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write      # cosign OIDC
+      attestations: write  # GitHub attestations
+
+    outputs:
+      image-uri: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.push.outputs.digest }}
+      image-tag: ${{ steps.tag.outputs.tag }}
+
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}/${{ inputs.component }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute primary tag
+        id: tag
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          else
+            SAFE_BRANCH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)
+            echo "tag=branch-${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch,prefix=branch-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: type=gha,scope=${{ inputs.component }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.component }}
+          provenance: true
+          sbom: true
+
+      # ── SBOM Generation (only on push to main/tags) ─────────────────────────
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
+          artifact-name: sbom-${{ inputs.component }}.spdx.json
+          output-file: sbom-${{ inputs.component }}.spdx.json
+          format: spdx-json
+
+      - name: Upload SBOM artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ inputs.component }}
+          path: sbom-${{ inputs.component }}.spdx.json
+          retention-days: 90
+
+      # ── Cosign signing (only on push to main/tags) ──────────────────────────
+      - name: Install Cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with Cosign (keyless)
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}"
+
+      - name: Attest SBOM to image
+        if: github.event_name != 'pull_request'
+        run: |
+          cosign attest --yes --type spdxjson \
+            --predicate sbom-${{ inputs.component }}.spdx.json \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}"
+
+      # ── GitHub Attestation (SLSA provenance) ────────────────────────────────
+      - name: Generate attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      # ── PR-only: Trivy filesystem scan ──────────────────────────────────────
+      - name: Trivy filesystem scan (PR only)
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: ${{ inputs.context }}
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"

@@ -58,6 +58,12 @@ variable "image_tag" {
   default     = "latest"
 }
 
+variable "image_uri" {
+  description = "Pre-built image URI (e.g. from CI/CD). When set, skips local Docker build."
+  type        = string
+  default     = ""
+}
+
 variable "force_rebuild" {
   description = "Increment to force a Docker image rebuild even when Dockerfile hasn't changed"
   type        = number

@@ -421,7 +421,7 @@ resource "aws_ecs_task_definition" "auth" {
 
   container_definitions = jsonencode([{
     name      = "auth-backend"
-    image     = "${aws_ecr_repository.auth.repository_url}:${var.image_tag}"
+    image     = var.image_uri != "" ? var.image_uri : "${aws_ecr_repository.auth.repository_url}:${var.image_tag}"
     essential = true
 
     portMappings = [{

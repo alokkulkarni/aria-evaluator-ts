@@ -1,0 +1,44 @@
+# ── CD: Deploy Evaluator App ──────────────────────────────────────────────────
+# Manual workflow to deploy the evaluator app to dev or prod.
+# Scans the image before deployment, promotes from ghcr.io to ECR,
+# then runs Terraform to update the ECS service.
+
+name: "CD: Deploy Evaluator"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      image-tag:
+        description: "Image tag from ghcr.io (e.g. sha-abc1234, v1.0.0, latest)"
+        required: true
+        type: string
+        default: "latest"
+
+concurrency:
+  group: deploy-evaluator-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable-deploy-ecs.yml
+    with:
+      component: evaluator
+      environment: ${{ inputs.environment }}
+      image-tag: ${{ inputs.image-tag }}
+      tf-directory: infra/terraform/environments/${{ inputs.environment }}
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+      security-events: write
+    secrets: inherit

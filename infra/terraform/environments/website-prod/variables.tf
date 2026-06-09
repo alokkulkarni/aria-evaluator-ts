@@ -10,6 +10,18 @@ variable "auth_backend_image_tag" {
   default     = "latest"
 }
 
+variable "auth_backend_image_uri" {
+  description = "Pre-built auth backend image URI (e.g. from CI/CD). When set, skips local Docker build."
+  type        = string
+  default     = ""
+}
+
+variable "skip_website_build" {
+  description = "Set to true when deploying via CI/CD (website is already built and synced to S3 separately)"
+  type        = bool
+  default     = false
+}
+
 variable "force_rebuild" {
   description = "Increment to force a Docker image rebuild and website redeploy"
   type        = number

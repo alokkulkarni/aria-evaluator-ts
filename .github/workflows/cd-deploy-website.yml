@@ -1,0 +1,205 @@
+# ── CD: Deploy Website ────────────────────────────────────────────────────────
+# Manual workflow to deploy the website (static frontend + auth backend) to
+# dev or prod. Scans the auth-backend image, promotes to ECR, builds & syncs
+# static site to S3, then runs Terraform.
+
+name: "CD: Deploy Website"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      auth-backend-image-tag:
+        description: "Auth backend image tag from ghcr.io"
+        required: true
+        type: string
+        default: "latest"
+
+concurrency:
+  group: deploy-website-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Scan auth-backend image ─────────────────────────────────────────────────
+  scan:
+    name: "Scan auth-backend image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    env:
+      GHCR_IMAGE: ghcr.io/${{ github.repository }}/auth-backend:${{ inputs.auth-backend-image-tag }}
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull "$GHCR_IMAGE"
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.GHCR_IMAGE }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: "trivy-website-${{ inputs.environment }}"
+
+      - name: Gate on CRITICAL
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.GHCR_IMAGE }}
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL"
+
+  # ── Deploy ──────────────────────────────────────────────────────────────────
+  deploy:
+    name: "Deploy website → ${{ inputs.environment }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: scan
+
+    environment:
+      name: website-${{ inputs.environment }}
+
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-west-2' }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Promote auth-backend to ECR
+        env:
+          ECR_REPO: ${{ secrets.ECR_REPOSITORY_URL }}
+          GHCR_IMAGE: ghcr.io/${{ github.repository }}/auth-backend:${{ inputs.auth-backend-image-tag }}
+        run: |
+          CRANE_VERSION="0.20.2"
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar xz crane
+          chmod +x crane
+
+          ./crane copy "$GHCR_IMAGE" "${ECR_REPO}:auth-${{ inputs.auth-backend-image-tag }}"
+
+          DIGEST=$(./crane digest "$GHCR_IMAGE")
+          echo "AUTH_IMAGE_URI=${ECR_REPO}@${DIGEST}" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Build static website
+        working-directory: website
+        env:
+          NEXT_PUBLIC_SIGNUP_MODE: ${{ inputs.environment == 'prod' && 'waitlist' || 'open' }}
+        run: |
+          npm ci --prefer-offline
+          npm run build
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.6"
+
+      - name: Terraform Init
+        working-directory: infra/terraform/environments/website-${{ inputs.environment }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+        run: |
+          chmod +x "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+          "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+
+      - name: Terraform Apply
+        working-directory: infra/terraform/environments/website-${{ inputs.environment }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_kms_key_arn: ${{ secrets.KMS_KEY_ARN }}
+          TF_VAR_auth_backend_image_uri: ${{ env.AUTH_IMAGE_URI }}
+          TF_VAR_auth_backend_image_tag: ${{ inputs.auth-backend-image-tag }}
+          TF_VAR_skip_website_build: "true"
+          TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+          TF_VAR_route53_zone_id: ${{ secrets.ROUTE53_ZONE_ID }}
+          TF_VAR_acm_certificate_arn_us_east_1: ${{ secrets.ACM_CERT_ARN_US_EAST_1 }}
+          TF_VAR_nextauth_secret: ${{ secrets.NEXTAUTH_SECRET }}
+          TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TF_VAR_github_client_id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          TF_VAR_github_client_secret: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          TF_VAR_signup_mode: ${{ inputs.environment == 'prod' && 'waitlist' || 'open' }}
+        run: |
+          terraform plan -input=false -out=tfplan
+          terraform apply -input=false -auto-approve tfplan
+
+      - name: Sync static site to S3
+        run: |
+          S3_BUCKET=$(cd infra/terraform/environments/website-${{ inputs.environment }} && terraform output -raw frontend_s3_bucket_name 2>/dev/null || echo "")
+          CF_DIST=$(cd infra/terraform/environments/website-${{ inputs.environment }} && terraform output -raw frontend_cloudfront_distribution_id 2>/dev/null || echo "")
+
+          if [ -n "$S3_BUCKET" ]; then
+            echo "==> Syncing to S3: $S3_BUCKET"
+            aws s3 sync website/out/ "s3://${S3_BUCKET}/" --delete
+          fi
+
+          if [ -n "$CF_DIST" ]; then
+            echo "==> Invalidating CloudFront: $CF_DIST"
+            aws cloudfront create-invalidation \
+              --distribution-id "$CF_DIST" \
+              --paths "/*" \
+              --region us-east-1
+          fi
+
+      - name: Summary
+        run: |
+          echo "## ✅ Website Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Detail | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | \`${{ inputs.environment }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Auth Image | \`${{ inputs.auth-backend-image-tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Git SHA | \`${GITHUB_SHA::7}\` |" >> "$GITHUB_STEP_SUMMARY"

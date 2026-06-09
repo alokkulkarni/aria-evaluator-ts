@@ -1,0 +1,92 @@
+# ── Scheduled: Image Vulnerability Scanning ───────────────────────────────────
+# Scans all ARIA container images from ghcr.io twice per week (Monday & Thursday).
+# Reports findings to GitHub Security tab via SARIF upload.
+
+name: "Scan: Container Images"
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Monday  06:00 UTC
+    - cron: "0 6 * * 4"   # Thursday 06:00 UTC
+  workflow_dispatch: {}    # Allow manual runs
+
+permissions:
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  scan:
+    name: "Scan ${{ matrix.component }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - evaluator
+          - control-plane
+          - website
+          - auth-backend
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if image exists
+        id: check
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/${{ matrix.component }}:latest
+        run: |
+          if docker pull "$IMAGE" 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ Image $IMAGE not found, skipping scan"
+          fi
+
+      - name: Trivy scan (SARIF)
+        if: steps.check.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/${{ matrix.component }}:latest
+          format: "sarif"
+          output: "trivy-${{ matrix.component }}.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+
+      - name: Upload SARIF to Security tab
+        if: steps.check.outputs.exists == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.component }}.sarif
+          category: "scheduled-trivy-${{ matrix.component }}"
+
+      - name: Trivy summary (table)
+        if: steps.check.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/${{ matrix.component }}:latest
+          format: "table"
+          severity: "CRITICAL,HIGH"
+
+  # ── Summary ─────────────────────────────────────────────────────────────────
+  report:
+    name: "Scan Report"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: scan
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 🔍 Scheduled Image Scan Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Scan ran at: $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the **Security** tab for detailed findings." >> "$GITHUB_STEP_SUMMARY"

@@ -60,6 +60,12 @@ variable "image_tag" {
   default = "latest"
 }
 
+variable "image_uri" {
+  description = "Full pre-built image URI. When set, overrides ECR repo + image_tag."
+  type        = string
+  default     = ""
+}
+
 # ── Auth secrets ──────────────────────────────────────────────────────────────
 
 variable "nextauth_secret" {

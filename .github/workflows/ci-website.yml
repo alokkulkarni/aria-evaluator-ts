@@ -1,0 +1,109 @@
+# ── CI: Website (Static + Auth Backend) ───────────────────────────────────────
+# Lint, typecheck, build Docker images for the Next.js website (static export)
+# and the auth-backend (NextAuth.js on ECS).
+#
+# PRs:   lint + Docker build (no push) + Trivy filesystem scan
+# main:  lint + Docker build + push + SBOM + Cosign sign
+
+name: "CI: Website"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - ".github/workflows/ci-website.yml"
+      - ".github/workflows/reusable-ci-image.yml"
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "website/**"
+      - ".github/workflows/ci-website.yml"
+      - ".github/workflows/reusable-ci-image.yml"
+
+concurrency:
+  group: ci-website-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint ───────────────────────────────────────────────────────────────────────
+  lint:
+    name: "Lint & Typecheck"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Lint
+        working-directory: website
+        run: npm run lint
+
+  # ── Build website image (static export) ─────────────────────────────────────
+  build-website:
+    name: "Build website"
+    needs: lint
+    uses: ./.github/workflows/reusable-ci-image.yml
+    with:
+      component: website
+      dockerfile: ./website/Dockerfile
+      context: ./website
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+  # ── Build auth-backend image ────────────────────────────────────────────────
+  build-auth-backend:
+    name: "Build auth-backend"
+    needs: lint
+    uses: ./.github/workflows/reusable-ci-image.yml
+    with:
+      component: auth-backend
+      dockerfile: ./website/auth-backend/Dockerfile
+      context: ./website/auth-backend
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+  # ── CI Summary ──────────────────────────────────────────────────────────────
+  ci-summary:
+    name: "CI Summary"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, build-website, build-auth-backend]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## CI Results — Website" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Job | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lint | \`${{ needs.lint.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Website | \`${{ needs.build-website.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Auth Backend | \`${{ needs.build-auth-backend.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any job failed
+        if: contains(needs.*.result, 'failure')
+        run: exit 1

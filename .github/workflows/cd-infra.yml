@@ -1,0 +1,225 @@
+# ── CD: Infrastructure ────────────────────────────────────────────────────────
+# Manual workflow to provision/update infrastructure via Terraform.
+# Supports bootstrap (one-time) and per-component infrastructure for dev/prod.
+#
+# Bootstrap outputs (S3 bucket, ECR URL, KMS key) are captured and made
+# available for subsequent component deployments.
+
+name: "CD: Infrastructure"
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Infrastructure component to deploy"
+        required: true
+        type: choice
+        options:
+          - bootstrap
+          - control-plane
+          - evaluator
+          - website
+          - saas-platform
+      environment:
+        description: "Target environment (ignored for bootstrap)"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      terraform-action:
+        description: "Terraform action"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+        default: plan
+
+concurrency:
+  group: infra-${{ inputs.component }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Bootstrap (one-time shared infra) ───────────────────────────────────────
+  bootstrap:
+    name: "Bootstrap"
+    if: inputs.component == 'bootstrap'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    environment:
+      name: bootstrap
+
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      state-bucket: ${{ steps.outputs.outputs.state-bucket }}
+      ecr-url: ${{ steps.outputs.outputs.ecr-url }}
+      kms-key-arn: ${{ steps.outputs.outputs.kms-key-arn }}
+      locks-table: ${{ steps.outputs.outputs.locks-table }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-west-2' }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.6"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: infra/terraform/bootstrap
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        working-directory: infra/terraform/bootstrap
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_ses_sender_domain: ${{ secrets.SES_SENDER_DOMAIN }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        if: inputs.terraform-action == 'apply'
+        working-directory: infra/terraform/bootstrap
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_ses_sender_domain: ${{ secrets.SES_SENDER_DOMAIN }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Capture outputs
+        if: inputs.terraform-action == 'apply'
+        id: outputs
+        working-directory: infra/terraform/bootstrap
+        run: |
+          echo "state-bucket=$(terraform output -raw state_bucket_name)" >> "$GITHUB_OUTPUT"
+          echo "ecr-url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "kms-key-arn=$(terraform output -raw kms_key_arn)" >> "$GITHUB_OUTPUT"
+          echo "locks-table=$(terraform output -raw locks_table_name)" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: inputs.terraform-action == 'apply'
+        run: |
+          echo "## 🏗️ Bootstrap Outputs" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Output | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| State Bucket | \`${{ steps.outputs.outputs.state-bucket }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ECR URL | \`${{ steps.outputs.outputs.ecr-url }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| KMS Key | \`${{ steps.outputs.outputs.kms-key-arn }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Locks Table | \`${{ steps.outputs.outputs.locks-table }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Component Infrastructure ────────────────────────────────────────────────
+  infra:
+    name: "Infra: ${{ inputs.component }} → ${{ inputs.environment }}"
+    if: inputs.component != 'bootstrap'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    environment:
+      name: ${{ inputs.component }}-${{ inputs.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Terraform directory
+        id: dir
+        run: |
+          case "${{ inputs.component }}" in
+            evaluator)      DIR="infra/terraform/environments/${{ inputs.environment }}" ;;
+            control-plane)  DIR="infra/terraform/environments/control-plane-${{ inputs.environment }}" ;;
+            website)        DIR="infra/terraform/environments/website-${{ inputs.environment }}" ;;
+            saas-platform)  DIR="infra/terraform/environments/saas-platform" ;;
+          esac
+          echo "tf-dir=$DIR" >> "$GITHUB_OUTPUT"
+
+          if [ ! -d "$DIR" ]; then
+            echo "❌ Directory $DIR does not exist"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-west-2' }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.6"
+
+      - name: Terraform Init (via tf-init.sh)
+        working-directory: ${{ steps.dir.outputs.tf-dir }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_tenant_id: ${{ secrets.TENANT_ID }}
+        run: |
+          chmod +x "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+          "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+
+      - name: Terraform Plan
+        working-directory: ${{ steps.dir.outputs.tf-dir }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_kms_key_arn: ${{ secrets.KMS_KEY_ARN }}
+          TF_VAR_ecr_repository_url: ${{ secrets.ECR_REPOSITORY_URL }}
+          TF_VAR_tenant_id: ${{ secrets.TENANT_ID }}
+          TF_VAR_environment: ${{ inputs.environment }}
+          # Website-specific
+          TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+          TF_VAR_route53_zone_id: ${{ secrets.ROUTE53_ZONE_ID }}
+          TF_VAR_acm_certificate_arn_us_east_1: ${{ secrets.ACM_CERT_ARN_US_EAST_1 }}
+          TF_VAR_nextauth_secret: ${{ secrets.NEXTAUTH_SECRET }}
+          TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TF_VAR_github_client_id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          TF_VAR_github_client_secret: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        if: inputs.terraform-action == 'apply'
+        working-directory: ${{ steps.dir.outputs.tf-dir }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_kms_key_arn: ${{ secrets.KMS_KEY_ARN }}
+          TF_VAR_ecr_repository_url: ${{ secrets.ECR_REPOSITORY_URL }}
+          TF_VAR_tenant_id: ${{ secrets.TENANT_ID }}
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+          TF_VAR_route53_zone_id: ${{ secrets.ROUTE53_ZONE_ID }}
+          TF_VAR_acm_certificate_arn_us_east_1: ${{ secrets.ACM_CERT_ARN_US_EAST_1 }}
+          TF_VAR_nextauth_secret: ${{ secrets.NEXTAUTH_SECRET }}
+          TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TF_VAR_github_client_id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          TF_VAR_github_client_secret: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Summary
+        run: |
+          echo "## 🏗️ Infrastructure ${{ inputs.terraform-action }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Detail | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | \`${{ inputs.component }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | \`${{ inputs.environment }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Action | \`${{ inputs.terraform-action }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Directory | \`${{ steps.dir.outputs.tf-dir }}\` |" >> "$GITHUB_STEP_SUMMARY"

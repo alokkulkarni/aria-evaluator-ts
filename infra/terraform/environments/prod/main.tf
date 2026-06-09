@@ -2,11 +2,16 @@ data "aws_caller_identity" "current" {}
 
 locals {
   repo_root = abspath("${path.module}/../../../..")
+  # Use pre-built image URI from CI/CD if provided, otherwise build locally
+  use_prebuilt = var.image_uri != ""
+  resolved_image_uri = local.use_prebuilt ? var.image_uri : module.docker_build[0].image_uri
 }
 
 # ── Build & push evaluator Docker image to ECR ────────────────────────────────
+# Skipped when image_uri is provided (CI/CD pre-built image)
 
 module "docker_build" {
+  count  = local.use_prebuilt ? 0 : 1
   source = "../../modules/docker-build-push"
 
   ecr_repository_url = var.ecr_repository_url
@@ -26,7 +31,7 @@ module "tenant" {
   pricing_tier                     = var.pricing_tier
   pricing_track                    = var.pricing_track
   aws_region                       = var.aws_region
-  app_image_uri                    = module.docker_build.image_uri
+  app_image_uri                    = local.resolved_image_uri
   acm_certificate_arn              = var.acm_certificate_arn
   cloudfront_acm_certificate_arn   = var.cloudfront_acm_certificate_arn
   vpc_cidr                         = var.vpc_cidr

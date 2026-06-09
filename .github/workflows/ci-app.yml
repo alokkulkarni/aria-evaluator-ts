@@ -1,0 +1,121 @@
+# ── CI: Evaluator & Control-Plane ─────────────────────────────────────────────
+# Lint, typecheck, and build Docker images for the main evaluator app and
+# the control-plane service. Both share the same source tree but use different
+# Dockerfiles and entrypoints.
+#
+# PRs:   lint + typecheck + Docker build (no push) + Trivy filesystem scan
+# main:  lint + typecheck + Docker build + push + SBOM + Cosign sign
+
+name: "CI: App (Evaluator + Control-Plane)"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "Dockerfile"
+      - "Dockerfile.control-plane"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - ".github/workflows/ci-app.yml"
+      - ".github/workflows/reusable-ci-image.yml"
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "Dockerfile"
+      - "Dockerfile.control-plane"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - ".github/workflows/ci-app.yml"
+      - ".github/workflows/reusable-ci-image.yml"
+
+concurrency:
+  group: ci-app-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint & Typecheck ──────────────────────────────────────────────────────────
+  lint:
+    name: "Lint & Typecheck"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+  # ── Docker Build Matrix ───────────────────────────────────────────────────────
+  build-evaluator:
+    name: "Build evaluator"
+    needs: lint
+    uses: ./.github/workflows/reusable-ci-image.yml
+    with:
+      component: evaluator
+      dockerfile: ./Dockerfile
+      context: "."
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+  build-control-plane:
+    name: "Build control-plane"
+    needs: lint
+    uses: ./.github/workflows/reusable-ci-image.yml
+    with:
+      component: control-plane
+      dockerfile: ./Dockerfile.control-plane
+      context: "."
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+  # ── CI Summary ────────────────────────────────────────────────────────────────
+  ci-summary:
+    name: "CI Summary"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, build-evaluator, build-control-plane]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## CI Results — App" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Job | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lint | \`${{ needs.lint.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Evaluator | \`${{ needs.build-evaluator.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Control-Plane | \`${{ needs.build-control-plane.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any job failed
+        if: contains(needs.*.result, 'failure')
+        run: exit 1

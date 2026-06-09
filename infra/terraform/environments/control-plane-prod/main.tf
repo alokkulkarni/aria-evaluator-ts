@@ -5,6 +5,8 @@ data "aws_availability_zones" "available" { state = "available" }
 locals {
   availability_zones = slice(data.aws_availability_zones.available.names, 0, 2)
   repo_root          = abspath("${path.module}/../../../..")
+  use_prebuilt       = var.image_uri != ""
+  resolved_image_uri = local.use_prebuilt ? var.image_uri : module.docker_build[0].image_uri
 
   common_tags = merge(
     {
@@ -22,8 +24,10 @@ locals {
 }
 
 # ── Build & push control-plane Docker image to ECR ────────────────────────────
+# Skipped when image_uri is provided (CI/CD pre-built image)
 
 module "docker_build" {
+  count  = local.use_prebuilt ? 0 : 1
   source = "../../modules/docker-build-push"
 
   ecr_repository_url = var.ecr_repository_url
@@ -114,7 +118,7 @@ module "ecs" {
   app_name                      = var.app_name
   environment                   = var.environment
   aws_region                    = var.aws_region
-  app_image_uri                 = module.docker_build.image_uri
+  app_image_uri                 = local.resolved_image_uri
   container_port                = var.container_port
   cpu                           = var.cpu
   memory                        = var.memory
