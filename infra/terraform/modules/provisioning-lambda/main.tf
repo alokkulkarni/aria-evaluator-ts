@@ -114,7 +114,7 @@ resource "aws_apigatewayv2_api" "provisioner_api" {
 
   cors_configuration {
     allow_origins = var.allowed_origins
-    allow_methods = ["POST", "OPTIONS"]
+    allow_methods = ["POST", "GET", "OPTIONS"]
     allow_headers = ["Content-Type", "Authorization"]
   }
 
@@ -141,6 +141,24 @@ resource "aws_apigatewayv2_route" "provision_route" {
 resource "aws_apigatewayv2_route" "status_route" {
   api_id    = aws_apigatewayv2_api.provisioner_api.id
   route_key = "GET /provision-status/{buildId}"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+
+  authorization_type = "AWS_IAM"
+}
+
+# Route to get instance URL (for login routing)
+resource "aws_apigatewayv2_route" "instance_url_route" {
+  api_id    = aws_apigatewayv2_api.provisioner_api.id
+  route_key = "GET /instance-url"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+
+  authorization_type = "AWS_IAM"
+}
+
+# Route to reactivate suspended instance
+resource "aws_apigatewayv2_route" "reactivate_route" {
+  api_id    = aws_apigatewayv2_api.provisioner_api.id
+  route_key = "POST /reactivate-instance"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 
   authorization_type = "AWS_IAM"

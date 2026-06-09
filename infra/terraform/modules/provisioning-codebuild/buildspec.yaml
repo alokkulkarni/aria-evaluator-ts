@@ -25,28 +25,28 @@ phases:
   build:
     commands:
       - echo "Cloning evaluator-app-prod terraform code..."
-      - git clone --depth 1 --branch $GITHUB_BRANCH $GITHUB_REPO /tmp/repo
+      - git clone --depth 1 --branch ${GITHUB_BRANCH:-main} ${GITHUB_REPO:-https://github.com/alokkulkarni/aria-evaluator-ts.git} /tmp/repo
       - cd /tmp/repo/infra/terraform/environments/prod
       
       - echo "Initializing Terraform with remote state..."
       - |
         terraform init \
-          -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
-          -backend-config="key=users/$USER_ID/terraform.tfstate" \
-          -backend-config="region=$AWS_REGION" \
+          -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
+          -backend-config="key=users/${USER_ID}/terraform.tfstate" \
+          -backend-config="region=${AWS_REGION}" \
           -backend-config="encrypt=true" \
           -reconfigure
       
       - echo "Validating Terraform configuration..."
       - terraform validate
       
-      - echo "Planning Terraform apply for user $USER_ID with plan $PLAN_TYPE..."
+      - echo "Planning Terraform apply for user ${USER_ID} with plan ${PLAN_TYPE}..."
       - |
         terraform plan \
-          -var="user_id=$USER_ID" \
-          -var="plan_type=$PLAN_TYPE" \
+          -var="user_id=${USER_ID}" \
+          -var="plan_type=${PLAN_TYPE}" \
           -var="environment=prod" \
-          -var="tenant_id=$USER_ID" \
+          -var="tenant_id=${USER_ID}" \
           -out=/tmp/tfplan
       
       - echo "Applying Terraform configuration..."
@@ -67,17 +67,17 @@ phases:
         INSTANCE_URL=$(jq -r '.evaluator_instance_url.value' /tmp/outputs.json)
         
         aws dynamodb put-item \
-          --table-name $USER_INSTANCE_TABLE \
+          --table-name ${USER_INSTANCE_TABLE} \
           --item "{
-            \"user_id\": {\"S\": \"$USER_ID\"},
-            \"instance_id\": {\"S\": \"$INSTANCE_ID\"},
-            \"instance_url\": {\"S\": \"$INSTANCE_URL\"},
-            \"plan_type\": {\"S\": \"$PLAN_TYPE\"},
+            \"user_id\": {\"S\": \"${USER_ID}\"},
+            \"instance_id\": {\"S\": \"${INSTANCE_ID}\"},
+            \"instance_url\": {\"S\": \"${INSTANCE_URL}\"},
+            \"plan_type\": {\"S\": \"${PLAN_TYPE}\"},
             \"status\": {\"S\": \"active\"},
             \"created_at\": {\"N\": \"$(date +%s)\"},
             \"last_login\": {\"N\": \"0\"}
           }" \
-          --region $AWS_REGION
+          --region ${AWS_REGION}
       
       - echo "Provisioning complete!"
       - echo "Instance ID: $INSTANCE_ID"

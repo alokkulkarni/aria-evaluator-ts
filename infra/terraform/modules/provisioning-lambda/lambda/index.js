@@ -25,6 +25,16 @@ exports.handler = async (event) => {
       return await getProvisionStatus(buildId);
     }
 
+    // Route: GET /instance-url
+    if (httpMethod === 'GET' && path.endsWith('/instance-url')) {
+      return await getInstanceUrl(event);
+    }
+
+    // Route: POST /reactivate-instance
+    if (httpMethod === 'POST' && path.endsWith('/reactivate-instance')) {
+      return await reactivateInstance(event);
+    }
+
     return {
       statusCode: 404,
       body: JSON.stringify({ error: 'Route not found' }),
@@ -169,6 +179,128 @@ async function getProvisionStatus(buildId) {
     };
   } catch (error) {
     console.error('Status check error:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
+    };
+  }
+}
+
+async function getInstanceUrl(event) {
+  try {
+    // Extract user_id from request (passed via query param or authorization header)
+    const userId = event.queryStringParameters?.userId || 
+                   event.headers['x-user-id'] ||
+                   event.requestContext?.authorizer?.principalId;
+
+    if (!userId) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: 'Missing user identification' }),
+      };
+    }
+
+    // Query DynamoDB for user instance
+    const response = await dynamodb
+      .getItem({
+        TableName: TABLE_NAME,
+        Key: { user_id: { S: userId } },
+      })
+      .promise();
+
+    if (!response.Item) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          instance_url: null,
+          status: null,
+        }),
+      };
+    }
+
+    const instance = response.Item;
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        instance_url: instance.instance_url?.S || null,
+        status: instance.status?.S || null,
+        plan_type: instance.plan_type?.S || null,
+        instance_id: instance.instance_id?.S || null,
+      }),
+    };
+  } catch (error) {
+    console.error('Get instance URL error:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
+    };
+  }
+}
+
+async function reactivateInstance(event) {
+  try {
+    // Extract user_id from request
+    const userId = event.queryStringParameters?.userId || 
+                   event.headers['x-user-id'] ||
+                   event.requestContext?.authorizer?.principalId;
+
+    if (!userId) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: 'Missing user identification' }),
+      };
+    }
+
+    // Check if instance exists and is suspended
+    const existing = await dynamodb
+      .getItem({
+        TableName: TABLE_NAME,
+        Key: { user_id: { S: userId } },
+      })
+      .promise();
+
+    if (!existing.Item) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: 'No instance found for this user' }),
+      };
+    }
+
+    const status = existing.Item.status?.S;
+    if (status !== 'suspended') {
+      return {
+        statusCode: 409,
+        body: JSON.stringify({
+          error: `Cannot reactivate instance with status: ${status}`,
+          current_status: status,
+        }),
+      };
+    }
+
+    // Update instance status to active
+    await dynamodb
+      .updateItem({
+        TableName: TABLE_NAME,
+        Key: { user_id: { S: userId } },
+        UpdateExpression: 'SET #status = :status, last_login = :time',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': { S: 'active' },
+          ':time': { N: String(Math.floor(Date.now() / 1000)) },
+        },
+      })
+      .promise();
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: 'Instance reactivated successfully',
+        instance_url: existing.Item.instance_url?.S,
+        status: 'active',
+      }),
+    };
+  } catch (error) {
+    console.error('Reactivate instance error:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: error.message }),
