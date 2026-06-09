@@ -254,7 +254,7 @@ resource "aws_codebuild_project" "provisioner" {
 
   source {
     type      = "NO_SOURCE"
-    buildspec_override = file("${path.module}/buildspec.yaml")
+    buildspec = file("${path.module}/buildspec.yaml")
   }
 
   logs_config {

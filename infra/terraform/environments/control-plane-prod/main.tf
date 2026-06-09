@@ -180,10 +180,14 @@ resource "aws_dynamodb_table" "user_instances" {
   name           = "${var.app_name}-user-instances"
   billing_mode   = "PAY_PER_REQUEST"
   hash_key       = "user_id"
-  range_key      = null
 
   attribute {
     name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "status"
     type = "S"
   }
 
@@ -191,11 +195,6 @@ resource "aws_dynamodb_table" "user_instances" {
     name            = "${var.app_name}-status-index"
     hash_key        = "status"
     projection_type = "ALL"
-  }
-
-  attribute {
-    name = "status"
-    type = "S"
   }
 
   point_in_time_recovery {

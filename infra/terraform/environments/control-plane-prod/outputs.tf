@@ -28,12 +28,12 @@ output "cloudtrail_alarm_count" {
 
 output "provisioning_api_endpoint" {
   description = "API Gateway endpoint for instance provisioning"
-  value       = module.provisioning_lambda.api_endpoint_url
+  value       = module.provisioning_lambda.api_endpoint
 }
 
 output "provisioning_lambda_arn" {
   description = "ARN of the provisioning Lambda function"
-  value       = module.provisioning_lambda.lambda_arn
+  value       = module.provisioning_lambda.lambda_function_arn
 }
 
 output "user_instances_table_name" {
