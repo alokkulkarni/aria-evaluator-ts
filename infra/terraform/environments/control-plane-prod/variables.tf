@@ -135,3 +135,37 @@ variable "allowed_origins" {
   type        = list(string)
   default     = ["http://localhost:3000", "https://ariaeval.io"]
 }
+
+# ── Security & Authentication Variables ────────────────────────────────────────
+
+variable "cognito_user_pool_id" {
+  description = "Cognito User Pool ID for JWT validation (required for production)"
+  type        = string
+  default     = ""
+}
+
+variable "jwt_audience" {
+  description = "JWT audience claim value for token validation"
+  type        = string
+  default     = "aria-evaluator-api"
+}
+
+# ── Cost Guardrail Variables ───────────────────────────────────────────────────
+
+variable "max_instances_per_user" {
+  description = "Maximum number of active evaluator instances per user"
+  type        = number
+  default     = 2
+}
+
+variable "max_monthly_spend_per_user" {
+  description = "Maximum monthly spend per user in USD"
+  type        = number
+  default     = 1000
+}
+
+variable "cost_per_instance_hour" {
+  description = "Estimated hourly cost per evaluator instance in USD"
+  type        = number
+  default     = 0.50
+}

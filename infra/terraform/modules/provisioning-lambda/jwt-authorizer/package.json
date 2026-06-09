@@ -1,0 +1,9 @@
+{
+  "name": "jwt-authorizer",
+  "version": "1.0.0",
+  "description": "JWT authorizer for provisioning API",
+  "main": "index.js",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.0"
+  }
+}

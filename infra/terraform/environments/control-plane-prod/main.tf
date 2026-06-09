@@ -192,8 +192,9 @@ resource "aws_dynamodb_table" "user_instances" {
   }
 
   global_secondary_index {
-    name            = "${var.app_name}-status-index"
-    hash_key        = "status"
+    name            = "user_id-status-index"
+    hash_key        = "user_id"
+    range_key       = "status"
     projection_type = "ALL"
   }
 
@@ -206,7 +207,97 @@ resource "aws_dynamodb_table" "user_instances" {
     enabled        = true
   }
 
+  # Enable encryption at rest
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
+  }
+
+  # Enable streams for audit logging
+  stream_specification {
+    stream_view_type = "NEW_AND_OLD_IMAGES"
+  }
+
   tags = local.common_tags
+}
+
+# ── KMS Key for DynamoDB Encryption ──────────────────────────────────────────
+
+resource "aws_kms_key" "dynamodb" {
+  description             = "KMS key for DynamoDB encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  tags = local.common_tags
+}
+
+resource "aws_kms_alias" "dynamodb" {
+  name          = "alias/${var.app_name}-dynamodb"
+  target_key_id = aws_kms_key.dynamodb.key_id
+}
+
+# ── S3 Bucket for CloudTrail Logs ────────────────────────────────────────────
+
+resource "aws_s3_bucket" "cloudtrail_logs" {
+  bucket              = "${var.app_name}-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy       = false
+
+  tags = local.common_tags
+}
+
+resource "aws_s3_bucket_versioning" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# ── SNS Topic for Alarms ─────────────────────────────────────────────────────
+
+resource "aws_sns_topic" "provisioning_alarms" {
+  name              = "${var.app_name}-provisioning-alarms"
+  kms_master_key_id = "alias/aws/sns"
+
+  tags = local.common_tags
+}
+
+resource "aws_sns_topic_policy" "provisioning_alarms" {
+  arn = aws_sns_topic.provisioning_alarms.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchAlarms"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudwatch.amazonaws.com"
+        }
+        Action   = "SNS:Publish"
+        Resource = aws_sns_topic.provisioning_alarms.arn
+      }
+    ]
+  })
 }
 
 # ── CodeBuild project for provisioning ────────────────────────────────────────
@@ -242,5 +333,23 @@ module "provisioning_lambda" {
   user_instance_table_arn  = aws_dynamodb_table.user_instances.arn
   allowed_origins          = var.allowed_origins
 
+  # ── Security Configuration ────────────────────────────────────────────────
+  cognito_user_pool_id   = var.cognito_user_pool_id
+  jwt_audience           = var.jwt_audience
+  dynamodb_kms_key_arn   = aws_kms_key.dynamodb.arn
+  cloudtrail_s3_bucket   = aws_s3_bucket.cloudtrail_logs.id
+  alarm_sns_topic_arn    = aws_sns_topic.provisioning_alarms.arn
+
+  # ── Cost Guardrails ───────────────────────────────────────────────────────
+  max_instances_per_user    = var.max_instances_per_user
+  max_monthly_spend_per_user = var.max_monthly_spend_per_user
+  cost_per_instance_hour     = var.cost_per_instance_hour
+
   tags = local.common_tags
+
+  depends_on = [
+    aws_kms_key.dynamodb,
+    aws_s3_bucket.cloudtrail_logs,
+    aws_sns_topic.provisioning_alarms,
+  ]
 }

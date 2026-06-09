@@ -89,9 +89,13 @@ resource "aws_lambda_function" "provisioner" {
 
   environment {
     variables = {
-      CODEBUILD_PROJECT_NAME = var.codebuild_project_name
-      USER_INSTANCE_TABLE    = var.user_instance_table_name
-      AWS_REGION             = var.aws_region
+      CODEBUILD_PROJECT_NAME  = var.codebuild_project_name
+      USER_INSTANCE_TABLE     = var.user_instance_table_name
+      AWS_REGION              = var.aws_region
+      COGNITO_USER_POOL_ID    = var.cognito_user_pool_id
+      MAX_INSTANCES_PER_USER  = var.max_instances_per_user
+      MAX_MONTHLY_SPEND       = var.max_monthly_spend_per_user
+      COST_PER_INSTANCE_HOUR  = var.cost_per_instance_hour
     }
   }
 
@@ -125,35 +129,8 @@ resource "aws_apigatewayv2_integration" "lambda_integration" {
   api_id                 = aws_apigatewayv2_api.provisioner_api.id
   integration_type       = "AWS_PROXY"
   integration_method     = "POST"
+  integration_uri        = aws_lambda_function.provisioner.invoke_arn
   payload_format_version = "2.0"
-  target                 = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.provisioner.arn}/invocations"
-}
-
-resource "aws_apigatewayv2_route" "provision_route" {
-  api_id    = aws_apigatewayv2_api.provisioner_api.id
-  route_key = "POST /provision-evaluator"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-}
-
-# Route for status check
-resource "aws_apigatewayv2_route" "status_route" {
-  api_id    = aws_apigatewayv2_api.provisioner_api.id
-  route_key = "GET /provision-status/{buildId}"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-}
-
-# Route to get instance URL (for login routing)
-resource "aws_apigatewayv2_route" "instance_url_route" {
-  api_id    = aws_apigatewayv2_api.provisioner_api.id
-  route_key = "GET /instance-url"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-}
-
-# Route to reactivate suspended instance
-resource "aws_apigatewayv2_route" "reactivate_route" {
-  api_id    = aws_apigatewayv2_api.provisioner_api.id
-  route_key = "POST /reactivate-instance"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
 
 # ── API Gateway Stage ────────────────────────────────────────────────────────
@@ -206,3 +183,346 @@ resource "aws_lambda_permission" "api_gateway" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.provisioner_api.execution_arn}/*/*"
 }
+
+# ── JWT Authorizer ────────────────────────────────────────────────────────────
+
+resource "aws_apigatewayv2_authorizer" "jwt" {
+  api_id           = aws_apigatewayv2_api.provisioner_api.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "${local.lambda_name}-jwt-authorizer"
+
+  jwt_configuration {
+    audience = [var.jwt_audience]
+    issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${var.cognito_user_pool_id}"
+  }
+}
+
+# ── Routes with JWT Authorization ──────────────────────────────────────────────
+
+resource "aws_apigatewayv2_route" "provision_route_secured" {
+  api_id             = aws_apigatewayv2_api.provisioner_api.id
+  route_key          = "POST /provision-evaluator"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+  authorization_type = "JWT"
+}
+
+resource "aws_apigatewayv2_route" "status_route_secured" {
+  api_id             = aws_apigatewayv2_api.provisioner_api.id
+  route_key          = "GET /provision-status/{buildId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+  authorization_type = "JWT"
+}
+
+resource "aws_apigatewayv2_route" "instance_url_route_secured" {
+  api_id             = aws_apigatewayv2_api.provisioner_api.id
+  route_key          = "GET /instance-url"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+  authorization_type = "JWT"
+}
+
+resource "aws_apigatewayv2_route" "reactivate_route_secured" {
+  api_id             = aws_apigatewayv2_api.provisioner_api.id
+  route_key          = "POST /reactivate-instance"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+  authorization_type = "JWT"
+}
+
+# ── WAF for API Gateway ──────────────────────────────────────────────────────
+
+resource "aws_wafv2_web_acl" "provisioner_waf" {
+  name        = "${local.lambda_name}-waf"
+  description = "WAF rules for provisioning API"
+  scope       = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "RateLimitRule"
+    priority = 1
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = 2000
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.lambda_name}-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 2
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.lambda_name}-common-rules"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 3
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.lambda_name}-bad-inputs"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${local.lambda_name}-waf"
+    sampled_requests_enabled   = true
+  }
+
+  tags = var.tags
+}
+
+resource "aws_wafv2_web_acl_association" "provisioner_waf_association" {
+  resource_arn = aws_apigatewayv2_stage.provisioner_stage.arn
+  web_acl_arn  = aws_wafv2_web_acl.provisioner_waf.arn
+}
+
+# ── CloudWatch Alarms for Monitoring ─────────────────────────────────────────
+
+resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  alarm_name          = "${local.lambda_name}-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "5"
+  alarm_description   = "Alert when Lambda errors exceed threshold"
+  alarm_actions       = [var.alarm_sns_topic_arn]
+
+  dimensions = {
+    FunctionName = aws_lambda_function.provisioner.function_name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
+  alarm_name          = "${local.lambda_name}-throttles"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "Throttles"
+  namespace           = "AWS/Lambda"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "1"
+  alarm_description   = "Alert when Lambda is throttled"
+  alarm_actions       = [var.alarm_sns_topic_arn]
+
+  dimensions = {
+    FunctionName = aws_lambda_function.provisioner.function_name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_gateway_4xx_errors" {
+  alarm_name          = "${local.lambda_name}-4xx-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "4XXError"
+  namespace           = "AWS/ApiGateway"
+  period              = "300"
+  statistic           = "Sum"
+  threshold           = "20"
+  alarm_description   = "Alert when 4xx errors exceed threshold"
+  alarm_actions       = [var.alarm_sns_topic_arn]
+
+  dimensions = {
+    ApiName = aws_apigatewayv2_api.provisioner_api.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_gateway_5xx_errors" {
+  alarm_name          = "${local.lambda_name}-5xx-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "5XXError"
+  namespace           = "AWS/ApiGateway"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "1"
+  alarm_description   = "Alert when 5xx errors occur"
+  alarm_actions       = [var.alarm_sns_topic_arn]
+
+  dimensions = {
+    ApiName = aws_apigatewayv2_api.provisioner_api.name
+  }
+}
+
+# ── X-Ray Tracing for Provisioning Lambda ───────────────────────────────────
+
+resource "aws_iam_role_policy" "lambda_xray" {
+  name = "${local.lambda_name}-xray"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_layer_version" "xray_sdk" {
+  filename            = "${path.module}/xray-layer.zip"
+  layer_name          = "${local.lambda_name}-xray-layer"
+  compatible_runtimes = ["nodejs18.x"]
+
+  depends_on = [null_resource.create_xray_layer]
+
+  lifecycle {
+    ignore_changes = [source_code_hash]
+  }
+}
+
+resource "null_resource" "create_xray_layer" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      mkdir -p /tmp/xray-layer/nodejs
+      cd /tmp/xray-layer
+      npm init -y > /dev/null 2>&1
+      npm install --save aws-xray-sdk-core --prefix ./nodejs > /dev/null 2>&1
+      cd /tmp
+      zip -r -q ${path.module}/xray-layer.zip xray-layer/
+      echo "X-Ray layer created successfully"
+    EOT
+  }
+}
+
+# ── DynamoDB Encryption and Backup ────────────────────────────────────────────
+
+resource "aws_iam_role_policy" "lambda_kms" {
+  name = "${local.lambda_name}-kms"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = var.dynamodb_kms_key_arn
+      }
+    ]
+  })
+}
+
+# ── CloudTrail for Audit Logging ───────────────────────────────────────────
+
+resource "aws_cloudtrail" "provisioner_trail" {
+  name           = "${local.lambda_name}-trail"
+  s3_bucket_name = var.cloudtrail_s3_bucket
+
+  depends_on = [aws_s3_bucket_policy.cloudtrail_policy]
+
+  enable_log_file_validation = true
+  is_multi_region_trail      = true
+  include_global_service_events = true
+
+  event_selector {
+    read_write_type           = "All"
+    include_management_events = true
+
+    data_resource {
+      type   = "AWS::DynamoDB::Table"
+      values = ["arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.user_instance_table_name}"]
+    }
+
+    data_resource {
+      type   = "AWS::Lambda::Function"
+      values = ["arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${aws_lambda_function.provisioner.function_name}"]
+    }
+  }
+
+  tags = var.tags
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail_policy" {
+  bucket = var.cloudtrail_s3_bucket
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = "arn:aws:s3:::${var.cloudtrail_s3_bucket}"
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "arn:aws:s3:::${var.cloudtrail_s3_bucket}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+data "aws_caller_identity" "current" {}
