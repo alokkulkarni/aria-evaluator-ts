@@ -118,6 +118,12 @@ variable "terraform_state_kms_key_arn" {
   type        = string
 }
 
+variable "terraform_state_lock_table" {
+  description = "DynamoDB table for Terraform state locking"
+  type        = string
+  default     = "aria-evaluator-tf-locks"
+}
+
 variable "github_repo_url" {
   description = "GitHub repository URL for evaluator-app-prod Terraform code"
   type        = string

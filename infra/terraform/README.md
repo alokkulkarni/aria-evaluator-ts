@@ -57,6 +57,25 @@ terraform init \
 terraform apply -var-file=terraform.tfvars
 ```
 
+### Control-plane backend init (automated)
+
+For `environments/control-plane-prod`, backend values are read automatically from
+`terraform.tfvars` via helper script (you can still override via env vars):
+
+```bash
+cd infra/terraform/environments/control-plane-prod
+./init-backend.sh
+terraform plan -var-file=terraform.tfvars
+terraform apply -var-file=terraform.tfvars
+```
+
+Optional overrides:
+- `TERRAFORM_STATE_KEY` (defaults to `control-plane/prod/terraform.tfstate`)
+- `TERRAFORM_STATE_BUCKET`
+- `TERRAFORM_STATE_LOCK_TABLE`
+- `TERRAFORM_STATE_KMS_KEY_ARN`
+- `AWS_REGION`
+
 ## Production architecture highlights
 
 - Shared ECR and shared heartbeat table from bootstrap

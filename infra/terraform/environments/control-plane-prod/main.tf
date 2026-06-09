@@ -214,9 +214,8 @@ resource "aws_dynamodb_table" "user_instances" {
   }
 
   # Enable streams for audit logging
-  stream_specification {
-    stream_view_type = "NEW_AND_OLD_IMAGES"
-  }
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   tags = local.common_tags
 }
@@ -311,6 +310,7 @@ module "provisioning_codebuild" {
   terraform_state_bucket      = var.terraform_state_bucket
   terraform_state_bucket_arn  = "arn:aws:s3:::${var.terraform_state_bucket}"
   terraform_state_kms_key_arn = var.terraform_state_kms_key_arn
+  terraform_state_lock_table  = var.terraform_state_lock_table
   user_instance_table_arn     = aws_dynamodb_table.user_instances.arn
   user_instance_table_name    = aws_dynamodb_table.user_instances.name
   ecr_repository_arn          = "arn:aws:ecr:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:repository/${var.app_name}"

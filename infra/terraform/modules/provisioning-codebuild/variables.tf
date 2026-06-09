@@ -28,6 +28,11 @@ variable "terraform_state_kms_key_arn" {
   type        = string
 }
 
+variable "terraform_state_lock_table" {
+  description = "DynamoDB lock table for terraform state"
+  type        = string
+}
+
 variable "user_instance_table_arn" {
   description = "ARN of DynamoDB table tracking user instances"
   type        = string

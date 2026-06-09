@@ -4,6 +4,53 @@
 
 locals {
   codebuild_name = "${var.app_name}-provisioner"
+  codebuild_environment_variables = [
+    {
+      name  = "TERRAFORM_VERSION"
+      value = "1.7.0"
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "AWS_REGION"
+      value = var.aws_region
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "AWS_ACCOUNT_ID"
+      value = var.aws_account_id
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "TERRAFORM_STATE_BUCKET"
+      value = var.terraform_state_bucket
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "TERRAFORM_STATE_LOCK_TABLE"
+      value = var.terraform_state_lock_table
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "TERRAFORM_STATE_KMS_KEY_ARN"
+      value = var.terraform_state_kms_key_arn
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "USER_INSTANCE_TABLE"
+      value = var.user_instance_table_name
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "GITHUB_REPO"
+      value = var.github_repo_url
+      type  = "PLAINTEXT"
+    },
+    {
+      name  = "GITHUB_BRANCH"
+      value = var.github_branch
+      type  = "PLAINTEXT"
+    }
+  ]
 }
 
 # ── IAM role for CodeBuild ────────────────────────────────────────────────────
@@ -212,49 +259,23 @@ resource "aws_codebuild_project" "provisioner" {
     image                       = "aws/codebuild/standard:7.0"
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
-
-    environment_variables = [
-      {
-        name  = "TERRAFORM_VERSION"
-        value = "1.7.0"
-        type  = "PLAINTEXT"
-      },
-      {
-        name  = "AWS_REGION"
-        value = var.aws_region
-        type  = "PLAINTEXT"
-      },
-      {
-        name  = "AWS_ACCOUNT_ID"
-        value = var.aws_account_id
-        type  = "PLAINTEXT"
-      },
-      {
-        name  = "TERRAFORM_STATE_BUCKET"
-        value = var.terraform_state_bucket
-        type  = "PLAINTEXT"
-      },
-      {
-        name  = "USER_INSTANCE_TABLE"
-        value = var.user_instance_table_name
-        type  = "PLAINTEXT"
-      },
-      {
-        name  = "GITHUB_REPO"
-        value = var.github_repo_url
-        type  = "PLAINTEXT"
-      },
-      {
-        name  = "GITHUB_BRANCH"
-        value = var.github_branch
-        type  = "PLAINTEXT"
+    dynamic "environment_variable" {
+      for_each = local.codebuild_environment_variables
+      content {
+        name  = environment_variable.value.name
+        value = environment_variable.value.value
+        type  = environment_variable.value.type
       }
-    ]
+    }
   }
 
   source {
     type      = "NO_SOURCE"
     buildspec = file("${path.module}/buildspec.yaml")
+  }
+
+  artifacts {
+    type = "NO_ARTIFACTS"
   }
 
   logs_config {

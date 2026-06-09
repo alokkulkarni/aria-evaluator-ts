@@ -48,9 +48,9 @@ output "user_instances_table_arn" {
 
 # ── Security Infrastructure Outputs ────────────────────────────────────────────
 
-output "jwt_authorizer_function_arn" {
-  description = "ARN of JWT Authorizer Lambda function"
-  value       = module.provisioning_lambda.jwt_authorizer_function_arn
+output "jwt_authorizer_id" {
+  description = "API Gateway JWT Authorizer ID"
+  value       = module.provisioning_lambda.jwt_authorizer_id
 }
 
 output "api_waf_arn" {
