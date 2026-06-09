@@ -57,16 +57,22 @@ resource "null_resource" "build_and_deploy_website" {
 
       echo "==> Building static website (signup_mode=${var.signup_mode})..."
 
-      # For static export, temporarily move API routes (they belong to auth-backend)
+      # For static export, temporarily move API routes and middleware (they belong to auth-backend)
       if [ -d src/app/api ]; then
         mv src/app/api src/app/_api_backup
+      fi
+      if [ -f src/middleware.ts ]; then
+        mv src/middleware.ts src/_middleware_backup.ts
       fi
 
       NEXT_PUBLIC_SIGNUP_MODE=${var.signup_mode} NEXT_BUILD_MODE=export npm run build
 
-      # Restore API routes
+      # Restore API routes and middleware
       if [ -d src/app/_api_backup ]; then
         mv src/app/_api_backup src/app/api
+      fi
+      if [ -f src/_middleware_backup.ts ]; then
+        mv src/_middleware_backup.ts src/middleware.ts
       fi
 
       echo "==> Syncing to S3: ${module.frontend.s3_bucket_name}..."
