@@ -79,7 +79,7 @@ export default function ContactPage() {
           <p className="section-label">How to reach us effectively</p>
           <h2 className="mt-2 text-2xl font-semibold text-slate-900">Include the right details for faster help</h2>
           <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-600">
-            <li>Environment (local, dev, staging, production) and tenant or organization name.</li>
+            <li>Your organization name and workspace URL (if available).</li>
             <li>Clear symptom description, expected behavior, and when the issue started.</li>
             <li>Relevant request IDs, screenshots, error messages, or log snippets.</li>
             <li>Business impact level and any active incident timeline requirements.</li>
