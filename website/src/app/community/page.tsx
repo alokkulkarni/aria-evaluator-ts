@@ -75,34 +75,34 @@ const communities = [
 
 const colourMap: Record<string, { card: string; icon: string; badge: string }> = {
   cyan: {
-    card: 'hover:border-cyan-400/30',
-    icon: 'bg-cyan-400/10 text-cyan-400',
-    badge: 'bg-cyan-400/10 text-cyan-400',
+    card: 'hover:border-cyan-500/40 hover:shadow-cyan-500/5',
+    icon: 'bg-cyan-50 text-cyan-600',
+    badge: 'bg-cyan-50 text-cyan-700',
   },
   amber: {
-    card: 'hover:border-amber-400/30',
-    icon: 'bg-amber-400/10 text-amber-400',
-    badge: 'bg-amber-400/10 text-amber-400',
+    card: 'hover:border-amber-500/40 hover:shadow-amber-500/5',
+    icon: 'bg-amber-50 text-amber-600',
+    badge: 'bg-amber-50 text-amber-700',
   },
   rose: {
-    card: 'hover:border-rose-400/30',
-    icon: 'bg-rose-400/10 text-rose-400',
-    badge: 'bg-rose-400/10 text-rose-400',
+    card: 'hover:border-rose-500/40 hover:shadow-rose-500/5',
+    icon: 'bg-rose-50 text-rose-600',
+    badge: 'bg-rose-50 text-rose-700',
   },
   violet: {
-    card: 'hover:border-violet-400/30',
-    icon: 'bg-violet-400/10 text-violet-400',
-    badge: 'bg-violet-400/10 text-violet-400',
+    card: 'hover:border-violet-500/40 hover:shadow-violet-500/5',
+    icon: 'bg-violet-50 text-violet-600',
+    badge: 'bg-violet-50 text-violet-700',
   },
   emerald: {
-    card: 'hover:border-emerald-400/30',
-    icon: 'bg-emerald-400/10 text-emerald-400',
-    badge: 'bg-emerald-400/10 text-emerald-400',
+    card: 'hover:border-emerald-500/40 hover:shadow-emerald-500/5',
+    icon: 'bg-emerald-50 text-emerald-600',
+    badge: 'bg-emerald-50 text-emerald-700',
   },
   sky: {
-    card: 'hover:border-sky-400/30',
-    icon: 'bg-sky-400/10 text-sky-400',
-    badge: 'bg-sky-400/10 text-sky-400',
+    card: 'hover:border-sky-500/40 hover:shadow-sky-500/5',
+    icon: 'bg-sky-50 text-sky-600',
+    badge: 'bg-sky-50 text-sky-700',
   },
 }
 
@@ -148,7 +148,7 @@ export default function CommunityPage() {
           return (
             <article
               key={c.id}
-              className={`group rounded-2xl border border-white/10 bg-white/[0.02] p-6 transition ${colours.card}`}
+              className={`card group p-6 transition ${colours.card}`}
             >
               <div className="flex items-start gap-4">
                 <div
@@ -157,10 +157,10 @@ export default function CommunityPage() {
                   <Icon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1 space-y-2">
-                  <h2 className="text-lg font-semibold text-white">
+                  <h2 className="text-lg font-semibold text-slate-900">
                     {c.name}
                   </h2>
-                  <p className="text-sm leading-6 text-slate-400">
+                  <p className="text-sm leading-6 text-slate-600">
                     {c.description}
                   </p>
                 </div>
@@ -179,12 +179,12 @@ export default function CommunityPage() {
               </div>
 
               {/* Footer */}
-              <div className="mt-5 flex items-center justify-between border-t border-white/5 pt-4">
+              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
                 <div className="flex items-center gap-1.5 text-xs text-slate-500">
                   <Users className="h-3.5 w-3.5" />
                   {c.members}
                 </div>
-                <span className="flex items-center gap-1.5 text-xs font-medium text-cyan-400 opacity-0 transition group-hover:opacity-100">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-cyan-600 opacity-0 transition group-hover:opacity-100">
                   <MessageSquare className="h-3.5 w-3.5" />
                   Coming soon
                 </span>
@@ -195,8 +195,8 @@ export default function CommunityPage() {
       </section>
 
       {/* Why join */}
-      <section className="mt-16 rounded-2xl border border-white/10 bg-white/[0.02] p-8 sm:p-10">
-        <h2 className="text-2xl font-bold text-white">
+      <section className="mt-16 card p-8 sm:p-10">
+        <h2 className="text-2xl font-bold text-slate-900">
           Why join ARIA communities?
         </h2>
         <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -227,8 +227,8 @@ export default function CommunityPage() {
             },
           ].map((item) => (
             <div key={item.title} className="space-y-2">
-              <h3 className="text-sm font-semibold text-white">{item.title}</h3>
-              <p className="text-sm leading-6 text-slate-400">{item.body}</p>
+              <h3 className="text-sm font-semibold text-slate-900">{item.title}</h3>
+              <p className="text-sm leading-6 text-slate-600">{item.body}</p>
             </div>
           ))}
         </div>
