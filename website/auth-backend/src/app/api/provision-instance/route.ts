@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { auth } from '@/auth'
-import { ApiError, serverApiFetch } from '@/lib/api'
+import { serverApiFetch } from '@/lib/api'
 
 interface ProvisionRequest {
   plan_type?: string
@@ -11,6 +11,17 @@ interface ProvisionResponse {
   build_id: string
   user_id: string
   message: string
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('status' in error)) return undefined
+  const status = (error as { status: unknown }).status
+  return typeof status === 'number' ? status : undefined
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Request failed'
 }
 
 /**
@@ -74,14 +85,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: 202 })
   } catch (err: unknown) {
-    if (err instanceof ApiError) {
-      if (err.status === 409) {
-        return NextResponse.json(
-          { error: 'Instance already exists', statusCode: 409 },
-          { status: 409 }
-        )
-      }
-      return NextResponse.json({ error: err.message }, { status: err.status })
+    const status = getErrorStatus(err)
+    if (status === 409) {
+      return NextResponse.json(
+        { error: 'Instance already exists', statusCode: 409 },
+        { status: 409 }
+      )
+    }
+    if (typeof status === 'number') {
+      return NextResponse.json({ error: getErrorMessage(err) }, { status })
     }
 
     console.error('Provisioning error:', err)
@@ -137,8 +149,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (err: unknown) {
-    if (err instanceof ApiError) {
-      return NextResponse.json({ error: err.message }, { status: err.status })
+    const status = getErrorStatus(err)
+    if (typeof status === 'number') {
+      return NextResponse.json({ error: getErrorMessage(err) }, { status })
     }
 
     console.error('Status check error:', err)

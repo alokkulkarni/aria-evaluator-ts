@@ -3,20 +3,22 @@ FROM node:22-alpine AS base
 # ── Dependencies ──────────────────────────────────────────────────────────────
 FROM base AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
+COPY auth-backend/package.json auth-backend/package-lock.json* ./
 RUN npm ci --omit=dev
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
 
-# Copy shared source from parent website dir (needed for @shared/* imports)
-COPY ../src ./shared-src
+# Copy only shared files used by auth-backend via @shared/* aliases
+COPY src/auth.ts ./shared-src/auth.ts
+COPY src/lib ./shared-src/lib
 
-COPY package.json package-lock.json* ./
+COPY auth-backend/package.json auth-backend/package-lock.json* ./
 RUN npm ci
 
-COPY . .
+COPY auth-backend/ .
+RUN mkdir -p public
 RUN npm run build
 
 # ── Runtime ───────────────────────────────────────────────────────────────────

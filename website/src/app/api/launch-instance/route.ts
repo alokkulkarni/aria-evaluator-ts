@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { auth } from '@/auth'
-import { ApiError, serverApiFetch } from '@/lib/api'
+import { serverApiFetch } from '@/lib/api'
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -24,7 +24,13 @@ export async function GET(request: Request) {
 
     return NextResponse.redirect(new URL(target))
   } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      typeof (error as { status: unknown }).status === 'number' &&
+      (error as { status: number }).status === 409
+    ) {
       return NextResponse.redirect(new URL('/sign-up?step=plan', request.url))
     }
     throw error

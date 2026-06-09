@@ -178,7 +178,7 @@ resource "null_resource" "build_auth_image" {
       docker build \
         --tag "${var.app_name}-auth-backend" \
         --file "${local.effective_build_context}/auth-backend/Dockerfile" \
-        "${local.effective_build_context}/auth-backend"
+        "${local.effective_build_context}"
     EOT
   }
 }

@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { auth } from '@/auth'
-import { ApiError, serverApiFetch } from '@/lib/api'
+import { serverApiFetch } from '@/lib/api'
 
 interface GetInstanceResponse {
   instance_url?: string
   status?: string
   message?: string
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('status' in error)) return undefined
+  const status = (error as { status: unknown }).status
+  return typeof status === 'number' ? status : undefined
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Request failed'
 }
 
 /**
@@ -75,18 +86,18 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (err: unknown) {
-    if (err instanceof ApiError) {
-      // If endpoint doesn't exist, return null (instance not created)
-     if ((err as ApiError).status === 404) {
-        return NextResponse.json({
-          instance_url: null,
-          status: null,
-        })
-      }
+    const status = getErrorStatus(err)
+    if (status === 404) {
+      return NextResponse.json({
+        instance_url: null,
+        status: null,
+      })
+    }
+    if (typeof status === 'number') {
       console.error('Error retrieving instance URL:', err)
       return NextResponse.json(
-       { error: (err as ApiError).message },
-       { status: (err as ApiError).status }
+        { error: getErrorMessage(err) },
+        { status }
       )
     }
 
