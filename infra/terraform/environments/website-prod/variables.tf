@@ -104,6 +104,12 @@ variable "tags" {
   default     = {}
 }
 
+variable "bucket_suffix" {
+  description = "Unique suffix for the shared TF state bucket (from bootstrap output)"
+  type        = string
+  default     = ""
+}
+
 variable "cloudtrail_bucket_suffix" {
   description = "Short unique suffix for the CloudTrail S3 bucket (e.g. last 6 digits of account ID)"
   type        = string

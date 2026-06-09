@@ -12,15 +12,7 @@ terraform {
     }
   }
 
-  # Backend configured automatically by scripts/tf-init.sh
-  # Run: ../../scripts/tf-init.sh  (or from repo root: ./scripts/tf-init.sh control-plane-dev)
-  backend "s3" {
-    bucket         = "placeholder"
-    key            = "control-plane/dev/terraform.tfstate"
-    region         = "eu-west-2"
-    dynamodb_table = "aria-evaluator-tf-locks"
-    encrypt        = true
-  }
+  backend "s3" {}  # Configured via -backend-config flags at init time
 }
 
 provider "aws" {
