@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../db/client.js';
 import { percentile, TOKEN_ESTIMATOR_VERSION } from '../../lib/observability.js';
+import { estimateCost, PRICING_VERSION, getModelPrice } from '../../lib/model-pricing.js';
 import { getScheduleExecutorStatus } from '../../jobs/schedule-executor.js';
 
 export const observabilityRouter = Router();
@@ -114,6 +115,8 @@ observabilityRouter.get('/metrics', async (req, res) => {
               judgeTokenInputEstimate: true,
               judgeTokenOutputEstimate: true,
               judgeTokenTotalEstimate: true,
+              judgeEstimatedCostUsd: true,
+              judgeModel: true,
             },
           },
         },
@@ -140,6 +143,29 @@ observabilityRouter.get('/metrics', async (req, res) => {
   const judgeTokenInputTotal = telemetry.reduce((sum, row) => sum + (row.run.evalResult?.judgeTokenInputEstimate ?? 0), 0);
   const judgeTokenOutputTotal = telemetry.reduce((sum, row) => sum + (row.run.evalResult?.judgeTokenOutputEstimate ?? 0), 0);
   const judgeTokenTotal = telemetry.reduce((sum, row) => sum + (row.run.evalResult?.judgeTokenTotalEstimate ?? 0), 0);
+
+  // Aggregate judge costs — use stored cost if available, else estimate from tokens
+  let judgeCostTotal = 0;
+  let judgeCostKnownCount = 0;
+  let judgeCostUnknownCount = 0;
+  for (const row of telemetry) {
+    const er = row.run.evalResult;
+    if (!er) continue;
+    if (er.judgeEstimatedCostUsd != null) {
+      judgeCostTotal += er.judgeEstimatedCostUsd;
+      judgeCostKnownCount++;
+    } else if (er.judgeModel && er.judgeTokenInputEstimate != null) {
+      const cost = estimateCost(er.judgeModel, er.judgeTokenInputEstimate, er.judgeTokenOutputEstimate);
+      if (cost) {
+        judgeCostTotal += cost.costUsd;
+        judgeCostKnownCount++;
+      } else {
+        judgeCostUnknownCount++;
+      }
+    } else {
+      judgeCostUnknownCount++;
+    }
+  }
 
   const providerBuckets = new Map<string, {
     runCount: number;
@@ -259,6 +285,10 @@ observabilityRouter.get('/metrics', async (req, res) => {
       avgTokensPerRunEstimate: totalRuns > 0 ? round((tokenTotal + judgeTokenTotal) / totalRuns) : null,
       avgScenarioTokensPerRunEstimate: totalRuns > 0 ? round(tokenTotal / totalRuns) : null,
       avgJudgeTokensPerRunEstimate: totalRuns > 0 ? round(judgeTokenTotal / totalRuns) : null,
+      judgeEstimatedCostUsd: round(judgeCostTotal, 4),
+      avgJudgeCostPerRunUsd: judgeCostKnownCount > 0 ? round(judgeCostTotal / judgeCostKnownCount, 6) : null,
+      judgeCostKnownCount,
+      judgeCostUnknownCount,
     },
     providers,
     failures,
@@ -275,6 +305,231 @@ observabilityRouter.get('/metrics', async (req, res) => {
       version: TOKEN_ESTIMATOR_VERSION,
       method: 'chars_div_4_estimate',
       estimated: true,
+    },
+    costEstimator: {
+      version: PRICING_VERSION,
+      method: 'model_token_pricing',
+    },
+  });
+});
+
+// ─── Quality Trends ───────────────────────────────────────────────────────────
+// GET /api/metrics/trends?days=30&bucket=day
+// Returns time-series of quality scores, pass rates, costs, and token usage.
+
+function parseDays(raw: unknown): number | null {
+  if (Array.isArray(raw)) return null;
+  if (raw === undefined) return 30;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value < 1 || value > 90) return null;
+  return value;
+}
+
+observabilityRouter.get('/metrics/trends', async (req, res) => {
+  const days = parseDays(req.query['days']);
+  if (days == null) {
+    return res.status(400).json({ error: 'days must be an integer between 1 and 90' });
+  }
+
+  const bucket = req.query['bucket'] === 'hour' ? 'hour' : 'day';
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  // Fetch runs with eval results and telemetry in the time window
+  const runs = await prisma.run.findMany({
+    where: {
+      NOT: { status: 'deleted' },
+      completedAt: { gte: since },
+    },
+    select: {
+      id: true,
+      status: true,
+      completedAt: true,
+      evalResult: {
+        select: {
+          overallScore: true,
+          passed: true,
+          judgeEstimatedCostUsd: true,
+          judgeModel: true,
+          judgeTokenInputEstimate: true,
+          judgeTokenOutputEstimate: true,
+          judgeTokenTotalEstimate: true,
+        },
+      },
+      telemetry: {
+        select: {
+          latencyMs: true,
+          tokenTotalEstimate: true,
+        },
+      },
+    },
+    orderBy: { completedAt: 'asc' },
+  });
+
+  // Bucket runs by date
+  const buckets = new Map<string, {
+    totalRuns: number;
+    completedRuns: number;
+    failedRuns: number;
+    evaluatedRuns: number;
+    evalPassedRuns: number;
+    scoreSum: number;
+    scoreCount: number;
+    latencySum: number;
+    latencyCount: number;
+    tokenTotal: number;
+    costTotal: number;
+  }>();
+
+  for (const run of runs) {
+    if (!run.completedAt) continue;
+    const dt = run.completedAt;
+    const key = bucket === 'hour'
+      ? `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}T${String(dt.getUTCHours()).padStart(2, '0')}:00Z`
+      : `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+
+    const b = buckets.get(key) ?? {
+      totalRuns: 0, completedRuns: 0, failedRuns: 0,
+      evaluatedRuns: 0, evalPassedRuns: 0,
+      scoreSum: 0, scoreCount: 0,
+      latencySum: 0, latencyCount: 0,
+      tokenTotal: 0, costTotal: 0,
+    };
+
+    b.totalRuns++;
+    if (run.status === 'completed') b.completedRuns++;
+    if (run.status === 'failed') b.failedRuns++;
+
+    if (run.evalResult) {
+      b.evaluatedRuns++;
+      if (run.evalResult.passed) b.evalPassedRuns++;
+      if (run.evalResult.overallScore > 0) {
+        b.scoreSum += run.evalResult.overallScore;
+        b.scoreCount++;
+      }
+      // Cost: use stored if available, else estimate
+      if (run.evalResult.judgeEstimatedCostUsd != null) {
+        b.costTotal += run.evalResult.judgeEstimatedCostUsd;
+      } else if (run.evalResult.judgeModel) {
+        const cost = estimateCost(run.evalResult.judgeModel, run.evalResult.judgeTokenInputEstimate, run.evalResult.judgeTokenOutputEstimate);
+        if (cost) b.costTotal += cost.costUsd;
+      }
+    }
+
+    if (run.telemetry) {
+      if (typeof run.telemetry.latencyMs === 'number') {
+        b.latencySum += run.telemetry.latencyMs;
+        b.latencyCount++;
+      }
+      b.tokenTotal += run.telemetry.tokenTotalEstimate ?? 0;
+    }
+
+    buckets.set(key, b);
+  }
+
+  const trend = Array.from(buckets.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, b]) => ({
+      date,
+      totalRuns: b.totalRuns,
+      completedRuns: b.completedRuns,
+      failedRuns: b.failedRuns,
+      executionSuccessRate: b.totalRuns > 0 ? round((b.completedRuns / b.totalRuns) * 100) : null,
+      evaluatedRuns: b.evaluatedRuns,
+      evalPassRate: b.evaluatedRuns > 0 ? round((b.evalPassedRuns / b.evaluatedRuns) * 100) : null,
+      avgScore: b.scoreCount > 0 ? round(b.scoreSum / b.scoreCount, 1) : null,
+      avgLatencyMs: b.latencyCount > 0 ? round(b.latencySum / b.latencyCount) : null,
+      tokenTotal: b.tokenTotal,
+      judgeCostUsd: round(b.costTotal, 4),
+    }));
+
+  return res.json({
+    window: { days, bucket, since: since.toISOString(), until: new Date().toISOString() },
+    trend,
+    summary: {
+      totalDataPoints: trend.length,
+      totalRuns: runs.length,
+    },
+  });
+});
+
+// ─── Dimension Analytics ──────────────────────────────────────────────────────
+// GET /api/metrics/dimensions?hours=168
+// Returns per-dimension average scores and pass rates across all evaluated runs.
+
+const DIMENSION_PASS_THRESHOLD = 7; // score >= 7 out of 10 = pass
+
+observabilityRouter.get('/metrics/dimensions', async (req, res) => {
+  const hours = parseHours(req.query['hours']);
+  if (hours == null) {
+    return res.status(400).json({ error: 'hours must be an integer between 1 and 168' });
+  }
+
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+  const evalResults = await prisma.evalResult.findMany({
+    where: {
+      createdAt: { gte: since },
+      run: { NOT: { status: 'deleted' } },
+    },
+    select: {
+      dimensionScores: true,
+      scenarioType: true,
+    },
+  });
+
+  // Aggregate dimension scores
+  const dimBuckets = new Map<string, {
+    scoreSum: number;
+    count: number;
+    passCount: number;
+    scenarioTypes: Set<string>;
+  }>();
+
+  for (const er of evalResults) {
+    let parsed: Record<string, { score?: number; justification?: string }>;
+    try {
+      parsed = JSON.parse(er.dimensionScores);
+    } catch {
+      continue; // skip malformed JSON
+    }
+
+    for (const [dimId, dimData] of Object.entries(parsed)) {
+      if (dimData == null || typeof dimData.score !== 'number') continue;
+
+      const bucket = dimBuckets.get(dimId) ?? {
+        scoreSum: 0, count: 0, passCount: 0, scenarioTypes: new Set(),
+      };
+
+      bucket.scoreSum += dimData.score;
+      bucket.count++;
+      if (dimData.score >= DIMENSION_PASS_THRESHOLD) bucket.passCount++;
+      if (er.scenarioType) bucket.scenarioTypes.add(er.scenarioType);
+      dimBuckets.set(dimId, bucket);
+    }
+  }
+
+  const dimensions = Array.from(dimBuckets.entries())
+    .map(([dimension, b]) => ({
+      dimension,
+      avgScore: round(b.scoreSum / b.count, 1),
+      passRate: round((b.passCount / b.count) * 100),
+      totalEvals: b.count,
+      scenarioTypes: Array.from(b.scenarioTypes),
+    }))
+    .sort((a, b) => (a.avgScore ?? 0) - (b.avgScore ?? 0)); // weakest first
+
+  const weakest = dimensions.slice(0, 3);
+  const strongest = [...dimensions].sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0)).slice(0, 3);
+
+  return res.json({
+    window: { hours, since: since.toISOString(), until: new Date().toISOString() },
+    passThreshold: DIMENSION_PASS_THRESHOLD,
+    totalEvalResults: evalResults.length,
+    dimensions,
+    insights: {
+      weakest: weakest.map((d) => ({ dimension: d.dimension, avgScore: d.avgScore, passRate: d.passRate })),
+      strongest: strongest.map((d) => ({ dimension: d.dimension, avgScore: d.avgScore, passRate: d.passRate })),
     },
   });
 });

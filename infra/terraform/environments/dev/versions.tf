@@ -12,14 +12,15 @@ terraform {
     }
   }
 
-  # Uncomment and configure once you have an S3 backend bucket.
-  # backend "s3" {
-  #   bucket         = "aria-evaluator-tf-state"
-  #   key            = "dev/terraform.tfstate"
-  #   region         = "eu-west-2"
-  #   dynamodb_table = "aria-evaluator-tf-locks"
-  #   encrypt        = true
-  # }
+  # Backend configured automatically by scripts/tf-init.sh
+  # Run: ../../scripts/tf-init.sh  (or from repo root: ./scripts/tf-init.sh dev)
+  backend "s3" {
+    bucket         = "placeholder"
+    key            = "tenants/dev/terraform.tfstate"
+    region         = "eu-west-2"
+    dynamodb_table = "aria-evaluator-tf-locks"
+    encrypt        = true
+  }
 }
 
 provider "aws" {

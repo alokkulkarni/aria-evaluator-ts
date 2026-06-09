@@ -34,6 +34,7 @@ import {
   classifyFailure,
   estimateTokensFromTurns,
 } from '../lib/observability.js';
+import { estimateCost, PRICING_VERSION } from '../lib/model-pricing.js';
 
 type ClaimedRunJob = Prisma.JobGetPayload<{ include: { run: true } }>;
 
@@ -373,31 +374,27 @@ async function ingestRunArtifacts(
               : '')
           : 'No evaluation results generated.';
 
+      const judgeModelId = report.results[0]?.judgeModel ?? 'unknown';
+      const judgeCost = estimateCost(judgeModelId, judgeTokenInputEstimate, judgeTokenOutputEstimate);
+
+      const evalData = {
+        overallScore: Math.round(averageScore * 10) / 10,
+        passed: report.results.length > 0 ? passCount === report.results.length : finalStatus === 'completed',
+        dimensionScores: JSON.stringify(aggregateDimensionScores(qualityResults.length > 0 ? qualityResults : report.results)),
+        summary,
+        judgeModel: judgeModelId,
+        scenarioType: runScenarioType,
+        judgeTokenInputEstimate: judgeTokenInputEstimate ?? null,
+        judgeTokenOutputEstimate: judgeTokenOutputEstimate ?? null,
+        judgeTokenTotalEstimate: judgeTokenTotalEstimate ?? null,
+        judgeEstimatedCostUsd: judgeCost?.costUsd ?? null,
+        costPricingVersion: judgeCost ? PRICING_VERSION : null,
+      };
+
       await prisma.evalResult.upsert({
         where: { runId },
-        update: {
-          overallScore: Math.round(averageScore * 10) / 10,
-          passed: report.results.length > 0 ? passCount === report.results.length : finalStatus === 'completed',
-          dimensionScores: JSON.stringify(aggregateDimensionScores(qualityResults.length > 0 ? qualityResults : report.results)),
-          summary,
-          judgeModel: report.results[0]?.judgeModel ?? 'unknown',
-          scenarioType: runScenarioType,
-          judgeTokenInputEstimate: judgeTokenInputEstimate ?? null,
-          judgeTokenOutputEstimate: judgeTokenOutputEstimate ?? null,
-          judgeTokenTotalEstimate: judgeTokenTotalEstimate ?? null,
-        },
-        create: {
-          runId,
-          overallScore: Math.round(averageScore * 10) / 10,
-          passed: report.results.length > 0 ? passCount === report.results.length : finalStatus === 'completed',
-          dimensionScores: JSON.stringify(aggregateDimensionScores(qualityResults.length > 0 ? qualityResults : report.results)),
-          summary,
-          judgeModel: report.results[0]?.judgeModel ?? 'unknown',
-          scenarioType: runScenarioType,
-          judgeTokenInputEstimate: judgeTokenInputEstimate ?? null,
-          judgeTokenOutputEstimate: judgeTokenOutputEstimate ?? null,
-          judgeTokenTotalEstimate: judgeTokenTotalEstimate ?? null,
-        },
+        update: evalData,
+        create: { runId, ...evalData },
       });
     } catch (err) {
       const message = `⚠ Unable to parse report JSON: ${(err as Error).message}`;

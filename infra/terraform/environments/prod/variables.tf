@@ -47,9 +47,21 @@ variable "aws_region" {
   default     = "eu-west-2"
 }
 
-variable "app_image_uri" {
-  description = "ECR image URI for the tenant application"
+variable "ecr_repository_url" {
+  description = "ECR repository URL from bootstrap (e.g. 123456789.dkr.ecr.eu-west-2.amazonaws.com/aria-evaluator)"
   type        = string
+}
+
+variable "image_tag" {
+  description = "Docker image tag to build and push for the tenant evaluator app"
+  type        = string
+  default     = "latest"
+}
+
+variable "force_rebuild" {
+  description = "Increment to force a Docker image rebuild even when Dockerfile hasn't changed"
+  type        = number
+  default     = 1
 }
 
 variable "acm_certificate_arn" {

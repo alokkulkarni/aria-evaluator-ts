@@ -44,13 +44,18 @@ Show investors that ARIA Evaluator is a fully built, commercially credible SaaS 
   - evaluation count
   - average scores
   - quality badges: **Needs Review / Approved / Certified**
+- Point to the **Observability card**: failure rate, avg/P95 latency, **judge cost estimate**
+- Show the **Score Trend sparkline** — "This is 30 days of quality trajectory at a glance"
+- Scroll to the **Safety Dimensions card** — "Weakest and strongest dimensions, color-coded"
 - Open or hover over the **Plan Usage** card
 
 ### Key points to land
 
 - The UI feels like a modern SaaS control plane, not an internal prototype
+- **Cost tracking** gives teams visibility into evaluation spend — critical for budget-conscious AI teams
+- **Quality trends** show whether agents are improving or regressing over time
+- **Dimension analytics** pinpoint exactly where an agent is weak (e.g. PII handling, bias, hallucination)
 - The **Plan Usage** card signals monetization and SaaS unit economics
-- Buyers can immediately understand value through usage, score visibility, and auditability
 
 ### Likely investor questions
 
@@ -99,11 +104,11 @@ Show investors that ARIA Evaluator is a fully built, commercially credible SaaS 
 
 ---
 
-## 4. Reports & Analytics (2 min)
+## 4. Reports & Observability (2 min)
 
 ### Talk track
 
-"Once the run completes, ARIA produces a report teams can use for product decisions, release gates, and customer or internal reviews."
+"Once the run completes, ARIA produces a report teams can use for product decisions, release gates, and customer or internal reviews. But we also give teams ongoing observability — cost tracking, quality trends, and per-dimension analytics — so they can monitor agent safety continuously, not just at test time."
 
 ### What to show / click
 
@@ -113,12 +118,18 @@ Show investors that ARIA Evaluator is a fully built, commercially credible SaaS 
   - pass / fail breakdown
   - category-level filtering
 - Filter by a scenario category to show how teams isolate a class of risk
+- Switch back to the dashboard and highlight:
+  - **Judge Cost** metric — "Teams see exactly what evaluations cost per model"
+  - **Score Trend sparkline** — "30-day trajectory — is the agent getting safer or regressing?"
+  - **Dimension bars** — "Which safety dimensions are weakest? Teams can drill into the specific areas that need attention"
 - Scroll to the report detail view where evidence and scores are visible
 
 ### Key points to land
 
 - ARIA outputs evidence, not just a green checkmark
-- Teams can move from raw transcript to decision-ready reporting fast
+- **Cost visibility** matters — teams need to budget for ongoing evaluation
+- **Quality trends** enable data-driven release decisions: "Has our agent improved since last sprint?"
+- **Dimension analytics** tell you exactly what to fix, not just that something is wrong
 - This supports both product iteration and enterprise governance
 
 ### Likely investor questions
@@ -222,6 +233,7 @@ Show investors that ARIA Evaluator is a fully built, commercially credible SaaS 
 
 - ARIA runs on AWS with **ECS Fargate, CloudFront, S3, and WAF**
 - The platform is already deployed across **8 AWS regions**
+- **Observability** includes judge cost estimation, 30-day quality trends, and per-dimension safety analytics
 - The product is built with a **React dashboard**, evaluation engine, adversarial scenario library, and auth-backed website at **ariaeval.io**
 - The strongest wedge is helping companies test AI agents before production, especially in regulated or high-risk workflows
 

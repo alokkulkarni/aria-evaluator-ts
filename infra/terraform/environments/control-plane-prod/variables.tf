@@ -43,8 +43,21 @@ variable "private_subnet_cidrs" {
   default = ["10.62.3.0/24", "10.62.4.0/24"]
 }
 
-variable "control_plane_image_uri" {
-  type = string
+variable "ecr_repository_url" {
+  description = "ECR repository URL from bootstrap (e.g. 123456789.dkr.ecr.eu-west-2.amazonaws.com/aria-evaluator)"
+  type        = string
+}
+
+variable "image_tag" {
+  description = "Docker image tag to build and push"
+  type        = string
+  default     = "latest"
+}
+
+variable "force_rebuild" {
+  description = "Increment to force a Docker image rebuild even when Dockerfile hasn't changed"
+  type        = number
+  default     = 1
 }
 
 variable "container_port" {

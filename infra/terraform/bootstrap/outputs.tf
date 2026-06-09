@@ -38,6 +38,11 @@ output "kms_key_arn" {
   value       = aws_kms_key.secrets.arn
 }
 
+output "access_logs_bucket_name" {
+  description = "Name of the S3 access logging bucket"
+  value       = aws_s3_bucket.access_logs.id
+}
+
 output "ses_identity_arn" {
   description = "ARN of the SES domain identity for suspend warning emails. Empty when ses_sender_domain is not set."
   value       = length(aws_ses_domain_identity.sender) > 0 ? aws_ses_domain_identity.sender[0].arn : ""

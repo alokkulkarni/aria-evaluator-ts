@@ -43,6 +43,8 @@ interface ObservabilityMetrics {
     judgeTokenTotalEstimate: number;
     avgScenarioTokensPerRunEstimate: number | null;
     avgJudgeTokensPerRunEstimate: number | null;
+    judgeEstimatedCostUsd?: number | null;
+    avgJudgeCostPerRunUsd?: number | null;
   };
   providers: Array<{
     provider: string;
@@ -54,6 +56,21 @@ interface ObservabilityMetrics {
     failureClass: string;
     count: number;
   }>;
+}
+
+interface TrendPoint {
+  date: string;
+  totalRuns: number;
+  evalPassRate: number | null;
+  avgScore: number | null;
+  judgeCostUsd: number | null;
+}
+
+interface DimensionInsight {
+  dimension: string;
+  avgScore: number | null;
+  passRate: number | null;
+  totalEvals: number;
 }
 
 interface Props {
@@ -72,6 +89,8 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
     limits: { maxScenariosPerRun: number; maxRunsPerMonth: number; maxModels: number };
     usage: { runsThisMonth: number; distinctProviderCount: number; distinctProviders: string[] };
   } | null>(null);
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const [dimensions, setDimensions] = useState<DimensionInsight[]>([]);
 
   useEffect(() => {
     apiFetch('/api/runs')
@@ -90,6 +109,18 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
   useEffect(() => {
     apiFetch('/api/usage')
       .then((d: typeof usage) => setUsage(d))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch('/api/metrics/trends?days=30&bucket=day')
+      .then((d: { trend: TrendPoint[] }) => setTrend(d.trend ?? []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch('/api/metrics/dimensions?hours=168')
+      .then((d: { dimensions: DimensionInsight[] }) => setDimensions(d.dimensions ?? []))
       .catch(() => {});
   }, []);
 
@@ -280,8 +311,17 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                     <MiniMetric label="Fail %" value={metrics.totals.failureRatePercent != null ? `${metrics.totals.failureRatePercent.toFixed(1)}%` : '—%'} />
                     <MiniMetric label="Avg Lat." value={metrics.totals.avgLatencyMs != null ? formatLatency(metrics.totals.avgLatencyMs) : '—'} />
                     <MiniMetric label="P95 Lat." value={metrics.totals.p95LatencyMs != null ? formatLatency(metrics.totals.p95LatencyMs) : '—'} />
-                    <MiniMetric label="Judge Tok." value={formatTokenCount(metrics.totals.judgeTokenTotalEstimate)} />
+                    <MiniMetric label="Judge Cost" value={metrics.totals.judgeEstimatedCostUsd != null && metrics.totals.judgeEstimatedCostUsd > 0 ? `$${metrics.totals.judgeEstimatedCostUsd.toFixed(2)}` : '—'} />
                   </div>
+
+                  {/* Score Trend Sparkline (30 day) */}
+                  {trend.length > 1 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Score Trend (30d)</p>
+                      <Sparkline data={trend.map((t) => t.avgScore)} height={36} color="#0891b2" />
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
                       <p className="mb-1 font-semibold text-slate-700">Providers</p>
@@ -482,6 +522,37 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
               <span className="font-semibold text-slate-700">Note:</span> Security pass = attack blocked.
               Quality pass = score ≥ 6/10. Mixed-type runs excluded from breakdowns.
             </div>
+
+            {/* Dimension Strengths & Weaknesses */}
+            {dimensions.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-amber-600">Safety Dimensions (7d)</p>
+                <div className="space-y-1.5">
+                  {dimensions.slice(0, 5).map((d) => {
+                    const score = d.avgScore ?? 0;
+                    const tone = score >= 7 ? 'bg-emerald-500' : score >= 5 ? 'bg-amber-400' : 'bg-rose-500';
+                    return (
+                      <div key={d.dimension}>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-700 truncate max-w-[120px]" title={d.dimension}>
+                            {d.dimension.replace(/_/g, ' ')}
+                          </span>
+                          <span className="font-semibold text-slate-900">
+                            {score.toFixed(1)} <span className="font-normal text-slate-400">({d.passRate?.toFixed(0)}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-1 rounded-full bg-slate-100">
+                          <div className={`h-1 rounded-full ${tone}`} style={{ width: `${(score / 10) * 100}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {dimensions.length > 5 && (
+                  <p className="text-[10px] text-slate-400">+{dimensions.length - 5} more dimensions</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -530,6 +601,40 @@ function UsageBar({ label, current, max }: { label: string; current: number | nu
       <div className="h-1 rounded-full bg-slate-100">
         <div className={`h-1 rounded-full ${tone} transition-all`} style={{ width: unlimited ? '0%' : `${pct}%` }} />
       </div>
+    </div>
+  );
+}
+
+/** SVG sparkline for trend visualization. */
+function Sparkline({ data, height = 36, color = '#0891b2' }: { data: (number | null)[]; height?: number; color?: string }) {
+  const valid = data.filter((v): v is number => v != null);
+  if (valid.length < 2) return null;
+
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const range = max - min || 1;
+  const w = 200;
+  const pad = 2;
+
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * (w - pad * 2) + pad;
+    const y = v != null
+      ? height - pad - ((v - min) / range) * (height - pad * 2)
+      : null;
+    return { x, y };
+  }).filter((p): p is { x: number; y: number } => p.y != null);
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const lastPoint = points[points.length - 1];
+  const lastValue = valid[valid.length - 1];
+
+  return (
+    <div className="flex items-center gap-2">
+      <svg viewBox={`0 0 ${w} ${height}`} className="flex-1" style={{ height }} preserveAspectRatio="none">
+        <path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        {lastPoint && <circle cx={lastPoint.x} cy={lastPoint.y} r="2.5" fill={color} />}
+      </svg>
+      <span className="text-xs font-semibold text-slate-900">{lastValue.toFixed(1)}</span>
     </div>
   );
 }

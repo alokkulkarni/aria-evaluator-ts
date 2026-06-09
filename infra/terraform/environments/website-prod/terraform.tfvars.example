@@ -9,36 +9,23 @@
 
 # ── Deploy Steps ──────────────────────────────────────────────────────────────
 #
-# 1. First-time setup:
-#      cd infra/terraform/environments/website-prod
-#      terraform init
-#      terraform apply
+# Docker builds, ECR push, S3 sync, and CloudFront invalidation all happen
+# automatically during `terraform apply`. No manual docker/aws commands needed.
 #
-# 2. Build & push auth backend image:
-#      ECR_URI=$(terraform output -raw auth_ecr_repository_url)
-#      cd website/auth-backend && docker build -t $ECR_URI:latest .
-#      aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin $ECR_URI
-#      docker push $ECR_URI:latest
-#      aws ecs update-service \
-#        --cluster $(terraform output -raw auth_ecs_cluster_name) \
-#        --service $(terraform output -raw auth_ecs_service_name) \
-#        --force-new-deployment
+#   cd infra/terraform/environments/website-prod
+#   cp terraform.tfvars.example terraform.tfvars   # fill in values
+#   terraform init
+#   terraform apply
 #
-# 3. Build & deploy static frontend:
-#      cd website
-#      NEXT_PUBLIC_SIGNUP_MODE=waitlist npm run build:static
-#      S3_BUCKET=$(terraform output -raw s3_bucket_name)
-#      aws s3 sync out/ s3://$S3_BUCKET --delete
-#      aws cloudfront create-invalidation \
-#        --distribution-id $(terraform output -raw cloudfront_distribution_id) \
-#        --paths "/*"
-#
-#    NOTE: NEXT_PUBLIC_SIGNUP_MODE=waitlist restricts signups to Free tier only.
-#    Set to "open" when paid plans are ready to launch.
+# To force a rebuild when only source code changed (Dockerfile unchanged):
+#   terraform apply -var='force_rebuild=2'
 
 # ── Auth Backend Image Tag ────────────────────────────────────────────────────
-# ECR repository is created by Terraform. Push your image then set the tag:
 auth_backend_image_tag = "latest"
+
+# ── Signup Mode ───────────────────────────────────────────────────────────────
+# "waitlist" = free-only signups (prod default), "open" = all plans available
+signup_mode = "waitlist"
 
 # ── Auth Secrets (use TF_VAR_ env vars in CI/CD instead of hardcoding) ────────
 # nextauth_secret      = "..."

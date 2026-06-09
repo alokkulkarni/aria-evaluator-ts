@@ -4,6 +4,8 @@ data "aws_availability_zones" "available" { state = "available" }
 
 locals {
   availability_zones = slice(data.aws_availability_zones.available.names, 0, 3)
+  repo_root          = abspath("${path.module}/../../../..")
+  website_root       = "${local.repo_root}/website"
   public_url         = var.domain_name != "" ? "https://${var.domain_name}" : "https://${module.frontend.cloudfront_domain_name}"
 
   common_tags = merge(
@@ -13,6 +15,55 @@ locals {
       "aria:pricing_track" = "platform"
     },
   )
+}
+
+# ── Build & push auth-backend Docker image to ECR ─────────────────────────────
+
+module "docker_build_auth" {
+  source = "../../modules/docker-build-push"
+
+  ecr_repository_url = module.auth_backend.ecr_repository_url
+  image_tag          = var.auth_backend_image_tag
+  dockerfile         = "auth-backend/Dockerfile"
+  build_context      = local.website_root
+  aws_region         = var.aws_region
+  force_rebuild      = var.force_rebuild
+}
+
+# ── Build & deploy static website to S3 ───────────────────────────────────────
+
+resource "null_resource" "build_and_deploy_website" {
+  triggers = {
+    package_lock_sha = filesha1("${local.website_root}/package-lock.json")
+    force_rebuild    = var.force_rebuild
+  }
+
+  depends_on = [module.frontend]
+
+  provisioner "local-exec" {
+    working_dir = local.website_root
+
+    command = <<-EOT
+      set -euo pipefail
+
+      echo "==> Installing website dependencies..."
+      npm ci --prefer-offline
+
+      echo "==> Building static website (signup_mode=${var.signup_mode})..."
+      NEXT_PUBLIC_SIGNUP_MODE=${var.signup_mode} npm run build
+
+      echo "==> Syncing to S3: ${module.frontend.s3_bucket_name}..."
+      aws s3 sync out/ "s3://${module.frontend.s3_bucket_name}/" --delete --region ${var.aws_region}
+
+      echo "==> Invalidating CloudFront cache..."
+      aws cloudfront create-invalidation \
+        --distribution-id "${module.frontend.cloudfront_distribution_id}" \
+        --paths "/*" \
+        --region us-east-1
+
+      echo "==> Website deployed."
+    EOT
+  }
 }
 
 # ── Auth Backend (ECS Fargate behind ALB) ─────────────────────────────────────

@@ -16,16 +16,14 @@ terraform {
     }
   }
 
-  # These placeholders are intentionally committed. The deployment provisioner
-  # replaces them at runtime with -backend-config CLI flags so no tenant-specific
-  # backend coordinates are hardcoded in git history.
+  # Backend configured automatically by scripts/tf-init.sh
+  # Run: ../../scripts/tf-init.sh  (or from repo root: ./scripts/tf-init.sh prod)
   backend "s3" {
-    bucket         = "REPLACE_WITH_BOOTSTRAP_BUCKET"
-    key            = "tenants/REPLACE_WITH_TENANT_ID/terraform.tfstate"
-    region         = "REPLACE_WITH_REGION"
+    bucket         = "placeholder"
+    key            = "tenants/placeholder/terraform.tfstate"
+    region         = "eu-west-2"
     dynamodb_table = "aria-evaluator-tf-locks"
     encrypt        = true
-    kms_key_id     = "REPLACE_WITH_KMS_KEY_ARN"
   }
 }
 

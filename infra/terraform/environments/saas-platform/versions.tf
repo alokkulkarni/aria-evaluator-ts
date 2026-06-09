@@ -8,14 +8,15 @@ terraform {
     }
   }
 
-  # Remote state — update bucket/key/region once bootstrap is applied
-  # backend "s3" {
-  #   bucket         = "aria-evaluator-terraform-state"
-  #   key            = "saas-platform/security/terraform.tfstate"
-  #   region         = "eu-west-2"
-  #   dynamodb_table = "aria-evaluator-tf-locks"
-  #   encrypt        = true
-  # }
+  # Backend configured automatically by scripts/tf-init.sh
+  # Run: ../../scripts/tf-init.sh  (or from repo root: ./scripts/tf-init.sh saas-platform)
+  backend "s3" {
+    bucket         = "placeholder"
+    key            = "saas-platform/terraform.tfstate"
+    region         = "eu-west-2"
+    dynamodb_table = "aria-evaluator-tf-locks"
+    encrypt        = true
+  }
 }
 
 provider "aws" {

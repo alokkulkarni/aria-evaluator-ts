@@ -187,6 +187,8 @@ model EvalResult {
   judgeTokenInputEstimate  Int?
   judgeTokenOutputEstimate Int?
   judgeTokenTotalEstimate  Int?
+  judgeEstimatedCostUsd    Float?   // Estimated judge LLM cost (USD), null if model unknown
+  costPricingVersion       Int?     // Pricing registry version used for cost estimate
   securityScore   Float?   // 0–1, separate axis for security runs
   createdAt       DateTime @default(now())
   review          Review?
@@ -319,9 +321,12 @@ model RunTelemetry {
   updatedAt          DateTime @updatedAt
 
   @@index([createdAt])
+  @@index([completedAt])
   @@index([provider, createdAt])
+  @@index([provider, completedAt])
   @@index([failureClass, createdAt])
   @@index([status, createdAt])
+  @@index([status, completedAt])
   @@index([attackCategory, createdAt])
 }
 

@@ -5,9 +5,21 @@ variable "aws_region" {
 }
 
 variable "auth_backend_image_tag" {
-  description = "Docker image tag for the auth backend container (pushed to ECR via CI/CD)"
+  description = "Docker image tag for the auth backend container"
   type        = string
   default     = "latest"
+}
+
+variable "force_rebuild" {
+  description = "Increment to force a Docker image rebuild and website redeploy"
+  type        = number
+  default     = 1
+}
+
+variable "signup_mode" {
+  description = "Website signup mode: 'open' for all plans, 'waitlist' for free-only (prod)"
+  type        = string
+  default     = "waitlist"
 }
 
 # ── Auth Secrets (supply via CI/CD pipeline env vars, never commit) ────────────

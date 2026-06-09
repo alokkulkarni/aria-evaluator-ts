@@ -4,6 +4,7 @@ data "aws_availability_zones" "available" { state = "available" }
 
 locals {
   availability_zones = slice(data.aws_availability_zones.available.names, 0, 2)
+  repo_root          = abspath("${path.module}/../../../..")
 
   common_tags = merge(
     {
@@ -18,6 +19,19 @@ locals {
       "aria:pricing_tier" = var.pricing_tier
     },
   )
+}
+
+# ── Build & push control-plane Docker image to ECR ────────────────────────────
+
+module "docker_build" {
+  source = "../../modules/docker-build-push"
+
+  ecr_repository_url = var.ecr_repository_url
+  image_tag          = var.image_tag
+  dockerfile         = "Dockerfile.control-plane"
+  build_context      = local.repo_root
+  aws_region         = var.aws_region
+  force_rebuild      = var.force_rebuild
 }
 
 module "networking" {
@@ -100,7 +114,7 @@ module "ecs" {
   app_name                      = var.app_name
   environment                   = var.environment
   aws_region                    = var.aws_region
-  app_image_uri                 = var.control_plane_image_uri
+  app_image_uri                 = module.docker_build.image_uri
   container_port                = var.container_port
   cpu                           = var.cpu
   memory                        = var.memory

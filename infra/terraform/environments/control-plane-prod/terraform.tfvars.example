@@ -1,0 +1,16 @@
+# ARIA Control Plane — Production
+# Copy to terraform.tfvars and fill in values before running terraform apply.
+
+aws_region  = "eu-west-2"
+environment = "prod"
+
+# From bootstrap outputs
+bucket_suffix      = "REPLACE_WITH_BUCKET_SUFFIX"
+kms_key_arn        = "REPLACE_WITH_KMS_KEY_ARN"
+ecr_repository_url = "REPLACE_WITH_ECR_REPOSITORY_URL"
+
+# Image tag (auto-built and pushed during terraform apply)
+image_tag = "latest"
+
+# CloudTrail alarm topic (create or re-use an existing SNS topic)
+cloudtrail_alert_sns_topic_arn = ""

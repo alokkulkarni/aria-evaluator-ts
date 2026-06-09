@@ -1,3 +1,22 @@
+data "aws_caller_identity" "current" {}
+
+locals {
+  repo_root = abspath("${path.module}/../../../..")
+}
+
+# ── Build & push evaluator Docker image to ECR ────────────────────────────────
+
+module "docker_build" {
+  source = "../../modules/docker-build-push"
+
+  ecr_repository_url = var.ecr_repository_url
+  image_tag          = var.image_tag
+  dockerfile         = "Dockerfile"
+  build_context      = local.repo_root
+  aws_region         = var.aws_region
+  force_rebuild      = var.force_rebuild
+}
+
 module "tenant" {
   source = "../../modules/tenant-module"
 
@@ -7,7 +26,7 @@ module "tenant" {
   pricing_tier                     = var.pricing_tier
   pricing_track                    = var.pricing_track
   aws_region                       = var.aws_region
-  app_image_uri                    = var.app_image_uri
+  app_image_uri                    = module.docker_build.image_uri
   acm_certificate_arn              = var.acm_certificate_arn
   cloudfront_acm_certificate_arn   = var.cloudfront_acm_certificate_arn
   vpc_cidr                         = var.vpc_cidr
@@ -35,8 +54,6 @@ module "tenant" {
 # ── CloudTrail ────────────────────────────────────────────────────────────────
 # Records evaluator management API calls and data events across all regions.
 # Use a tenant-qualified app name so per-tenant prod stacks do not collide.
-
-data "aws_caller_identity" "current" {}
 
 module "cloudtrail" {
   source = "../../modules/cloudtrail"
