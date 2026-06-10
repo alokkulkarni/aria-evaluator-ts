@@ -27,6 +27,7 @@ suspend_threshold_hours_override = 0
 connect_instance_id              = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 cloudfront_enabled               = true
 waf_enabled                      = true
+alb_enable_deletion_protection   = false
 cloudtrail_enabled               = false
 log_retention_days_override      = 0
 

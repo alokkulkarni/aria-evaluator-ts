@@ -66,6 +66,7 @@ module "tenant" {
   connect_instance_id              = var.connect_instance_id
   cloudfront_enabled               = var.cloudfront_enabled
   waf_enabled                      = var.waf_enabled
+  alb_enable_deletion_protection   = var.alb_enable_deletion_protection
   log_retention_days_override      = var.log_retention_days_override
   control_plane_internal_url       = var.control_plane_internal_url
   control_plane_internal_secret    = var.control_plane_internal_secret

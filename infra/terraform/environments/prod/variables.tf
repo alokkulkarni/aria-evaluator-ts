@@ -169,6 +169,12 @@ variable "waf_enabled" {
   default     = true
 }
 
+variable "alb_enable_deletion_protection" {
+  description = "Whether ALB deletion protection is enabled. Keep false for apply/destroy validation cycles."
+  type        = bool
+  default     = false
+}
+
 variable "cloudtrail_enabled" {
   description = "Whether to provision a dedicated per-tenant CloudTrail trail in this stack. Disabled by default because account trail quotas are shared."
   type        = bool

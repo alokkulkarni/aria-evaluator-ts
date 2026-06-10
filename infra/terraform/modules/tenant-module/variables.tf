@@ -170,6 +170,12 @@ variable "waf_enabled" {
   default     = true
 }
 
+variable "alb_enable_deletion_protection" {
+  description = "Whether ALB deletion protection is enabled."
+  type        = bool
+  default     = true
+}
+
 variable "log_retention_days_override" {
   description = "Override for the default log retention; 0 uses the tier default"
   type        = number

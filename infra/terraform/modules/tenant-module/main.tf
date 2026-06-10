@@ -125,7 +125,7 @@ module "alb" {
   acm_certificate_arn        = var.acm_certificate_arn
   cloudfront_origin_secret   = var.cloudfront_enabled ? random_password.cf_secret[0].result : ""
   log_bucket_suffix          = local.composite_bucket_suffix
-  enable_deletion_protection = true
+  enable_deletion_protection = var.alb_enable_deletion_protection
   tenant_id                  = var.tenant_id
   pricing_tier               = var.pricing_tier
   tags = merge(local.common_tags, {
