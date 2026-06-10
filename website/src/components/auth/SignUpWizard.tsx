@@ -5,8 +5,9 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Github, Loader2 } from 'luc
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { useEffect, useMemo, useState } from 'react'
+import { useSession } from 'next-auth/react'
 
-import { createSSOToken, createTenant, registerUser } from '@/lib/api'
+import { ApiError, createSSOToken, createTenant, registerUser } from '@/lib/api'
 import { hashPasswordForTransit } from '@/lib/crypto'
 import { getPlanById, PLANS } from '@/lib/plans'
 import { getRegionById, getRegionsForTier, REGIONS } from '@/lib/regions'
@@ -59,13 +60,35 @@ function parseAuthProvider(value: string | null): SignUpState['authProvider'] | 
   return undefined
 }
 
+function getStoredSocialProvider(): SignUpState['authProvider'] | undefined {
+  if (typeof window === 'undefined') return undefined
+  const value = window.sessionStorage.getItem('signup_social_provider')
+  return parseAuthProvider(value)
+}
+
 function isPricingTier(value: string | null): value is PricingTier {
   return PLANS.some((plan) => plan.id === value)
+}
+
+function getAuthProviderLabel(provider?: string): string {
+  if (provider === 'google') return 'Google'
+  if (provider === 'github') return 'GitHub'
+  if (provider === 'email') return 'email and password'
+  return 'your original sign-in provider'
+}
+
+function parseApiErrorPayload(message: string): { code?: string; provider?: string; error?: string } | null {
+  try {
+    return JSON.parse(message) as { code?: string; provider?: string; error?: string }
+  } catch {
+    return null
+  }
 }
 
 export function SignUpWizard() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { data: session } = useSession()
 
   const stepParam = searchParams.get('step')
   const providerParam = searchParams.get('provider')
@@ -93,6 +116,7 @@ export function SignUpWizard() {
   const [submitting, setSubmitting] = useState(false)
   const [provisioning, setProvisioning] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [storedSocialProvider, setStoredSocialProvider] = useState<SignUpState['authProvider']>()
 
   const availableRegions = useMemo(() => getRegionsForTier(state.selectedPlan ?? 'free'), [state.selectedPlan])
   const disabledRegions = useMemo(
@@ -118,7 +142,7 @@ export function SignUpWizard() {
 
   useEffect(() => {
     const nextStep = parseStepParam(stepParam)
-    const nextProvider = parseAuthProvider(providerParam)
+    const nextProvider = parseAuthProvider(providerParam) ?? storedSocialProvider
     setState((current) => {
       if (current.step === nextStep && current.authProvider === nextProvider) return current
       return {
@@ -127,10 +151,29 @@ export function SignUpWizard() {
         authProvider: current.authProvider ?? nextProvider,
       }
     })
-  }, [stepParam, providerParam])
+  }, [stepParam, providerParam, storedSocialProvider])
+
+  useEffect(() => {
+    setStoredSocialProvider(getStoredSocialProvider())
+  }, [])
+
+  useEffect(() => {
+    const nextProvider = parseAuthProvider(providerParam) ?? storedSocialProvider
+    const nextName = session?.user?.name?.trim() ?? ''
+    const nextEmail = session?.user?.email?.trim() ?? ''
+    if (!nextProvider && !nextName && !nextEmail) return
+
+    setState((current) => ({
+      ...current,
+      authProvider: current.authProvider ?? nextProvider,
+      name: current.name || nextName,
+      email: current.email || nextEmail,
+    }))
+  }, [providerParam, session?.user?.email, session?.user?.name, storedSocialProvider])
 
   const selectedPlan = getPlanById(state.selectedPlan ?? 'free')
   const selectedRegion = getRegionById(state.selectedRegion ?? '')
+  const summaryEmail = state.email || session?.user?.email || 'your email address'
 
   const goToStep = (step: SignUpState['step']) => setState((current) => ({ ...current, step }))
 
@@ -158,6 +201,9 @@ export function SignUpWizard() {
   }
 
   const handleSocialSignUp = (provider: 'google' | 'github') => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('signup_social_provider', provider)
+    }
     void signIn(provider, { callbackUrl: `/sign-up?step=plan&provider=${provider}` })
   }
 
@@ -168,7 +214,7 @@ export function SignUpWizard() {
     setSubmitError(null)
 
     try {
-      let authToken: string | undefined
+      let authToken: string | undefined = session?.user?.accessToken
       if (!state.authProvider || state.authProvider === 'email') {
         const hashedPassword = await hashPasswordForTransit(state.password)
         const registration = await registerUser({
@@ -178,6 +224,9 @@ export function SignUpWizard() {
           company: state.company,
         })
         authToken = registration.token
+      }
+      if (!authToken) {
+        throw new Error('Your sign-in session expired. Please sign in again to continue.')
       }
 
       setProvisioning(true)
@@ -202,7 +251,16 @@ export function SignUpWizard() {
       router.push('/api/launch-instance')
     } catch (error) {
       setProvisioning(false)
-      setSubmitError(error instanceof Error ? error.message : 'We could not start provisioning your workspace.')
+      if (error instanceof ApiError) {
+        const payload = parseApiErrorPayload(error.message)
+        if (payload?.code === 'EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER') {
+          setSubmitError(`An account with this email already exists. Sign in with ${getAuthProviderLabel(payload.provider)}.`)
+        } else {
+          setSubmitError(payload?.error ?? error.message)
+        }
+      } else {
+        setSubmitError(error instanceof Error ? error.message : 'We could not start provisioning your workspace.')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -221,7 +279,7 @@ export function SignUpWizard() {
           </div>
           <div className="flex flex-wrap gap-3">
             <span className="page-hero-pill">4-step setup</span>
-            <span className="page-hero-pill">Provisioning in ~3 minutes</span>
+            <span className="page-hero-pill">Provisioning starts after confirmation</span>
             <span className="page-hero-pill">Global region selection</span>
           </div>
         </div>
@@ -501,6 +559,10 @@ export function SignUpWizard() {
                     <dt className="text-slate-500">Billing</dt>
                     <dd className="font-medium capitalize text-slate-900">{state.billingPeriod}</dd>
                   </div>
+                  <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <dt className="text-slate-500">Email</dt>
+                    <dd className="font-medium text-slate-900">{summaryEmail}</dd>
+                  </div>
                   <div className="flex items-center justify-between gap-4">
                     <dt className="text-slate-500">Account method</dt>
                     <dd className="font-medium capitalize text-slate-900">{state.authProvider ?? 'Email'}</dd>
@@ -510,9 +572,9 @@ export function SignUpWizard() {
 
               <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-6">
                 <p className="section-label">Provisioning</p>
-                <p className="mt-3 text-lg font-semibold text-slate-900">Your instance will be provisioned in ~3 minutes.</p>
+                <p className="mt-3 text-lg font-semibold text-slate-900">Your instance provisioning starts immediately after confirmation.</p>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
-                  We&apos;ll send a confirmation to <span className="font-semibold text-slate-900">{state.email || 'your email address'}</span> as soon as the workspace is ready.
+                  We&apos;ll send a confirmation to <span className="font-semibold text-slate-900">{summaryEmail}</span> as soon as the workspace is ready.
                 </p>
                 <ul className="mt-5 space-y-3 text-sm text-slate-600">
                   <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 text-emerald-600" /> Dedicated tenant configuration</li>

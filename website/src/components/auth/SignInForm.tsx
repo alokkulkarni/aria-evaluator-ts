@@ -13,12 +13,30 @@ export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const returnTo = searchParams.get('return') ?? '/api/launch-instance'
+  const authError = searchParams.get('error')
+  const authProvider = searchParams.get('provider')
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  const providerLabel = authProvider === 'google'
+    ? 'Google'
+    : authProvider === 'github'
+      ? 'GitHub'
+      : authProvider === 'email'
+        ? 'email and password'
+        : 'your original provider'
+
+  const queryErrorMessage = authError === 'email_provider_mismatch'
+    ? `An account with this email already exists. Sign in with ${providerLabel}.`
+    : authError === 'missing_social_email'
+      ? `Your ${providerLabel} account did not provide an email address. Use email/password or another ${providerLabel} account.`
+      : authError === 'social_signin_failed'
+        ? `We couldn't complete ${providerLabel} sign-in. Please try again.`
+        : null
 
   const handleSocialSignIn = async (provider: 'google' | 'github') => {
     setError(null)
@@ -131,7 +149,7 @@ export function SignInForm() {
           <input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" required />
         </div>
 
-        {error ? <p className="badge-fail w-full justify-center py-2 text-center">{error}</p> : null}
+        {(error || queryErrorMessage) ? <p className="badge-fail w-full justify-center py-2 text-center">{error ?? queryErrorMessage}</p> : null}
 
         <button type="submit" className="btn-primary w-full justify-center rounded-xl py-3" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Sign in'}

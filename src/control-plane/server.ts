@@ -12,12 +12,14 @@ import { z } from 'zod';
 type BillingPeriod = 'monthly' | 'annual';
 type PricingTier = 'free' | 'individual' | 'enterprise_starter' | 'enterprise_pro' | 'enterprise_unlimited';
 type InstanceStatus = 'not_provisioned' | 'provisioning' | 'running' | 'suspended' | 'error';
+type AuthProvider = 'email' | 'google' | 'github';
 
 interface ControlPlaneUser {
   id: string;
   email: string;
   name: string;
   company?: string;
+  authProvider?: AuthProvider;
   role: 'owner' | 'admin' | 'member';
   passwordHash: string;
   isNewUser: boolean;
@@ -64,6 +66,7 @@ interface ControlPlaneUserResponse {
   id: string;
   email: string;
   name: string;
+  authProvider?: AuthProvider;
   role: 'owner' | 'admin' | 'member';
   tenantId?: string;
   accessToken?: string;
@@ -96,6 +99,12 @@ interface RegisterBody {
 interface LoginBody {
   email?: string;
   password?: string;
+}
+
+interface OAuthSignInBody {
+  provider?: AuthProvider;
+  email?: string;
+  name?: string | null;
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -228,6 +237,7 @@ function ensureLocalSeedState(state: ControlPlaneState): boolean {
       id: 'local-seed-user',
       email: LOCAL_SEED_EMAIL,
       name: LOCAL_SEED_NAME,
+      authProvider: 'email',
       role: 'owner',
       passwordHash: passwordHash(LOCAL_SEED_PASSWORD),
       isNewUser: false,
@@ -248,6 +258,10 @@ function ensureLocalSeedState(state: ControlPlaneState): boolean {
     }
     if (user.role !== 'owner') {
       user.role = 'owner';
+      changed = true;
+    }
+    if (resolveAuthProvider(user) !== 'email') {
+      user.authProvider = 'email';
       changed = true;
     }
     if (!verifyPassword(user.passwordHash, LOCAL_SEED_PASSWORD)) {
@@ -415,11 +429,29 @@ function makeUserResponse(user: ControlPlaneUser, accessToken?: string): Control
     id: user.id,
     email: user.email,
     name: user.name,
+    authProvider: resolveAuthProvider(user),
     role: user.role,
     tenantId: user.tenantId,
     accessToken,
     isNewUser: user.isNewUser,
   };
+}
+
+function resolveAuthProvider(user: ControlPlaneUser): AuthProvider {
+  if (user.authProvider === 'google' || user.authProvider === 'github' || user.authProvider === 'email') {
+    return user.authProvider;
+  }
+  return 'email';
+}
+
+function defaultNameFromEmail(email: string): string {
+  const localPart = email.split('@')[0]?.replace(/[._-]+/g, ' ').trim();
+  if (!localPart) return 'ARIA User';
+  return localPart
+    .split(' ')
+    .filter(Boolean)
+    .map((token) => token[0]?.toUpperCase() + token.slice(1))
+    .join(' ');
 }
 
 function makeTenantInstanceUrl(tenantId: string): string {
@@ -514,6 +546,12 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const oauthSignInSchema = z.object({
+  provider: z.enum(['google', 'github']),
+  email: z.string().trim().email(),
+  name: z.string().trim().optional().nullable(),
+});
+
 const provisionSchema = z.object({
   plan: z.enum(['free', 'individual', 'enterprise_starter', 'enterprise_pro', 'enterprise_unlimited']),
   region: z.string().trim().min(3),
@@ -555,6 +593,15 @@ app.post('/auth/register', async (req, res) => {
   const existingState = await loadState();
   const existingUser = existingState.users.find((user) => user.email === parsed.data.email.toLowerCase());
   if (existingUser) {
+    const existingProvider = resolveAuthProvider(existingUser);
+    if (existingProvider !== 'email') {
+      res.status(409).json({
+        error: 'Email already exists. Use the original sign-in method.',
+        code: 'EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER',
+        provider: existingProvider,
+      });
+      return;
+    }
     res.status(409).json({ error: 'Account already exists' });
     return;
   }
@@ -567,6 +614,7 @@ app.post('/auth/register', async (req, res) => {
     email: parsed.data.email.toLowerCase(),
     name: parsed.data.name,
     company: parsed.data.company,
+    authProvider: 'email',
     role: 'owner',
     passwordHash: passwordHash(parsed.data.password),
     isNewUser: true,
@@ -602,6 +650,14 @@ app.post('/auth/login', async (req, res) => {
 
   const state = await loadState();
   const user = state.users.find((entry) => entry.email === parsed.data.email.toLowerCase());
+  if (user && resolveAuthProvider(user) !== 'email') {
+    res.status(409).json({
+      error: 'Email already exists. Use the original sign-in method.',
+      code: 'EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER',
+      provider: resolveAuthProvider(user),
+    });
+    return;
+  }
   if (!user || !verifyPassword(user.passwordHash, parsed.data.password)) {
     res.status(401).json({ error: 'Invalid email or password' });
     return;
@@ -619,6 +675,87 @@ app.post('/auth/login', async (req, res) => {
       userId: user.id,
       expiresAt,
       createdAt: nowIso(),
+    });
+  });
+
+  app.post('/auth/oauth', async (req, res) => {
+    const parsed = oauthSignInSchema.safeParse(req.body as OAuthSignInBody);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid OAuth sign-in payload' });
+      return;
+    }
+
+    const provider = parsed.data.provider;
+    const normalizedEmail = parsed.data.email.toLowerCase();
+    const normalizedName = parsed.data.name?.trim() || defaultNameFromEmail(normalizedEmail);
+    const { token, expiresAt } = issueToken();
+    const createdAt = nowIso();
+
+    let resolvedUser: ControlPlaneUser | null = null;
+    let wasNewUser = false;
+    let conflictProvider: AuthProvider | null = null;
+
+    await mutateState((state) => {
+      const existingUser = state.users.find((entry) => entry.email === normalizedEmail);
+      if (existingUser) {
+        const existingProvider = resolveAuthProvider(existingUser);
+        if (existingProvider !== provider) {
+          conflictProvider = existingProvider;
+          return;
+        }
+        wasNewUser = existingUser.isNewUser;
+        existingUser.isNewUser = false;
+        existingUser.authProvider = provider;
+        existingUser.name = existingUser.name || normalizedName;
+        existingUser.lastLoginAt = createdAt;
+        existingUser.updatedAt = createdAt;
+        resolvedUser = existingUser;
+      } else {
+        wasNewUser = true;
+        const createdUser: ControlPlaneUser = {
+          id: randomBytes(12).toString('hex'),
+          email: normalizedEmail,
+          name: normalizedName,
+          authProvider: provider,
+          role: 'owner',
+          passwordHash: passwordHash(randomBytes(32).toString('base64url')),
+          isNewUser: false,
+          createdAt,
+          updatedAt: createdAt,
+          lastLoginAt: createdAt,
+        };
+        state.users.push(createdUser);
+        resolvedUser = createdUser;
+      }
+
+      if (!resolvedUser) return;
+      state.sessions.push({
+        tokenHash: hashToken(token),
+        userId: resolvedUser.id,
+        expiresAt,
+        createdAt,
+      });
+    });
+
+    if (conflictProvider) {
+      res.status(409).json({
+        error: 'Email already exists. Use the original sign-in method.',
+        code: 'EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER',
+        provider: conflictProvider,
+      });
+      return;
+    }
+
+    if (!resolvedUser) {
+      res.status(500).json({ error: 'Unable to complete OAuth sign-in' });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      user: makeUserResponse(resolvedUser, token),
+      token,
+      isNewUser: wasNewUser,
     });
   });
 

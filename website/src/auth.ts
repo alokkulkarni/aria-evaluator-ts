@@ -2,16 +2,27 @@ import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import GitHub from 'next-auth/providers/github'
 import Google from 'next-auth/providers/google'
-import { serverApiFetch } from '@/lib/api'
+import { ApiError, serverApiFetch } from '@/lib/api'
+
+type AuthProvider = 'email' | 'google' | 'github'
 
 interface ControlPlaneUser {
   id: string
   email: string
   name?: string | null
+  authProvider?: AuthProvider
   role?: 'owner' | 'admin' | 'member'
   tenantId?: string
   accessToken?: string
   isNewUser?: boolean
+}
+
+function parseApiErrorPayload(raw: string): { code?: string; provider?: AuthProvider } | null {
+  try {
+    return JSON.parse(raw) as { code?: string; provider?: AuthProvider }
+  } catch {
+    return null
+  }
 }
 
 const authSecret = (() => {
@@ -72,9 +83,53 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     newUser: '/sign-up',
   },
   callbacks: {
+    async signIn({ user, account }) {
+      if (!account || account.provider === 'credentials') return true
+
+      const provider = account.provider === 'google' || account.provider === 'github'
+        ? account.provider
+        : null
+      if (!provider) return true
+
+      const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : ''
+      if (!email) return `/sign-in?error=missing_social_email&provider=${provider}`
+
+      try {
+        const response = await serverApiFetch<{ user: ControlPlaneUser }>('/auth/oauth', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider,
+            email,
+            name: typeof user.name === 'string' ? user.name : null,
+          }),
+        })
+
+        const cpUser = response.user
+        user.id = cpUser.id
+        user.email = cpUser.email
+        user.name = cpUser.name ?? user.name
+        ;(user as ControlPlaneUser).authProvider = cpUser.authProvider
+        ;(user as ControlPlaneUser).isNewUser = cpUser.isNewUser
+        ;(user as ControlPlaneUser).role = cpUser.role
+        ;(user as ControlPlaneUser).tenantId = cpUser.tenantId
+        ;(user as ControlPlaneUser).accessToken = cpUser.accessToken
+
+        return true
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          const payload = parseApiErrorPayload(error.message)
+          if (payload?.code === 'EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER' && payload.provider) {
+            return `/sign-in?error=email_provider_mismatch&provider=${payload.provider}`
+          }
+        }
+
+        return `/sign-in?error=social_signin_failed&provider=${provider}`
+      }
+    },
     async session({ session, token }) {
       if (session.user) {
         if (token.sub) session.user.id = token.sub
+        session.user.authProvider = token.authProvider as AuthProvider | undefined
         session.user.isNewUser = token.isNewUser as boolean | undefined
         session.user.role = token.role as 'owner' | 'admin' | 'member' | undefined
         session.user.tenantId = token.tenantId as string | undefined
@@ -85,6 +140,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, user, trigger }) {
       if (trigger === 'signIn' && user) {
+        token.authProvider = (user as ControlPlaneUser).authProvider
         token.isNewUser = (user as ControlPlaneUser).isNewUser
         token.role = (user as ControlPlaneUser).role
         token.tenantId = (user as ControlPlaneUser).tenantId
