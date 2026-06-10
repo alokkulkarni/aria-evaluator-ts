@@ -48,6 +48,13 @@ acm_certificate_arn_us_east_1 = "" # e.g. "arn:aws:acm:us-east-1:ACCOUNT:certifi
 # ── Notifications ─────────────────────────────────────────────────────────────
 # alarm_sns_topic_arn = "arn:aws:sns:eu-west-2:ACCOUNT:aria-alarms"
 
+# ── Control Plane Discovery ───────────────────────────────────────────────────
+# Optional explicit override:
+# control_plane_url = "http://internal-...elb.amazonaws.com"
+#
+# Default behavior uses SSM runtime discovery from:
+# control_plane_url_ssm_param_name = "/aria/control-plane/prod/internal-url"
+
 # ── CloudTrail ────────────────────────────────────────────────────────────────
 # cloudtrail_bucket_suffix = "prod"
 # cloudtrail_kms_key_arn   = ""

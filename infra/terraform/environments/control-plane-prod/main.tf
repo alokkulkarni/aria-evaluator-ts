@@ -112,6 +112,14 @@ module "alb" {
   tags                     = local.common_tags
 }
 
+resource "aws_ssm_parameter" "control_plane_internal_url" {
+  name  = "/aria/control-plane/${var.environment}/internal-url"
+  type  = "String"
+  value = "http://${module.alb.alb_dns_name}"
+
+  tags = local.common_tags
+}
+
 module "ecs" {
   source = "../../modules/ecs"
 

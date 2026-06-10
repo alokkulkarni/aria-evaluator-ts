@@ -104,6 +104,12 @@ variable "control_plane_url" {
   description = "Internal URL of the ARIA control plane API."
 }
 
+variable "control_plane_url_ssm_param_name" {
+  type        = string
+  default     = ""
+  description = "Optional SSM Parameter name that stores the control plane URL for runtime discovery."
+}
+
 # ── Observability ─────────────────────────────────────────────────────────────
 
 variable "log_retention_days" {

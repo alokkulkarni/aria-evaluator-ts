@@ -2,6 +2,11 @@ output "control_plane_url" {
   value = "http://${module.alb.alb_dns_name}"
 }
 
+output "control_plane_url_ssm_parameter_name" {
+  description = "SSM Parameter name storing the control plane internal URL."
+  value       = aws_ssm_parameter.control_plane_internal_url.name
+}
+
 # ── CloudTrail outputs ────────────────────────────────────────────────────────
 
 output "cloudtrail_trail_arn" {

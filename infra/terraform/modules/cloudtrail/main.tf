@@ -275,7 +275,7 @@ locals {
   log_group_name = var.enable_cloudwatch_logs ? aws_cloudwatch_log_group.trail[0].name : ""
   alarm_actions  = local.create_alarms ? [var.alert_sns_topic_arn] : []
 
-  cis_filters = local.create_alarms && var.enable_cloudwatch_logs ? {
+  cis_filters = var.enable_cis_alarms && var.enable_cloudwatch_logs ? {
     # CIS 3.1 — Unauthorised API calls
     "unauthorised-api-calls" = {
       pattern     = "{ ($.errorCode = \"*UnauthorizedOperation\") || ($.errorCode = \"AccessDenied*\") }"

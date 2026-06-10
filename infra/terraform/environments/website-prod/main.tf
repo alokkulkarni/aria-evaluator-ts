@@ -117,7 +117,8 @@ module "auth_backend" {
   github_client_id     = var.github_client_id
   github_client_secret = var.github_client_secret
 
-  control_plane_url         = var.control_plane_url
+  control_plane_url                = var.control_plane_url
+  control_plane_url_ssm_param_name = var.control_plane_url_ssm_param_name
   log_retention_days        = 90
   enable_container_insights = true
 

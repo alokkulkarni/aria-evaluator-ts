@@ -80,6 +80,7 @@ module "cloudtrail" {
   cloudwatch_log_retention_days = 90
   s3_log_retention_days         = 365
   alert_sns_topic_arn           = module.tenant.sns_topic_arn
+  enable_cis_alarms             = var.alert_email != ""
 
   tags = var.tags
 }

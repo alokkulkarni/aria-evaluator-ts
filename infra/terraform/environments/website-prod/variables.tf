@@ -98,6 +98,12 @@ variable "control_plane_url" {
   default     = ""
 }
 
+variable "control_plane_url_ssm_param_name" {
+  description = "SSM Parameter name used by auth-backend to resolve the control-plane URL at runtime."
+  type        = string
+  default     = "/aria/control-plane/prod/internal-url"
+}
+
 variable "tags" {
   description = "Additional tags"
   type        = map(string)

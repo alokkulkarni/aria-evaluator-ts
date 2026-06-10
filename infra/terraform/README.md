@@ -76,6 +76,29 @@ Optional overrides:
 - `TERRAFORM_STATE_KMS_KEY_ARN`
 - `AWS_REGION`
 
+### Tenant prod backend init (automated)
+
+For `environments/prod`, backend values are derived from `terraform.tfvars`
+(`tenant_id`, `bucket_suffix`, `kms_key_arn`) so local runs match CodeBuild
+state layout by default:
+
+```bash
+cd infra/terraform/environments/prod
+./init.sh
+terraform plan -var-file=terraform.tfvars
+terraform apply -var-file=terraform.tfvars
+terraform destroy -var-file=terraform.tfvars
+```
+
+Optional overrides:
+- `TERRAFORM_STATE_BUCKET`
+- `TERRAFORM_STATE_KEY`
+- `TERRAFORM_STATE_LOCK_TABLE`
+- `TERRAFORM_STATE_KMS_KEY_ARN`
+- `TENANT_ID`
+- `BUCKET_SUFFIX`
+- `AWS_REGION`
+
 ## Production architecture highlights
 
 - Shared ECR and shared heartbeat table from bootstrap

@@ -389,6 +389,29 @@ resource "aws_iam_role" "task" {
   tags = local.common_tags
 }
 
+data "aws_iam_policy_document" "task_control_plane_discovery" {
+  count = trimspace(var.control_plane_url_ssm_param_name) != "" ? 1 : 0
+
+  statement {
+    sid    = "ReadControlPlaneUrlFromSsm"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+    ]
+    resources = [
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter${var.control_plane_url_ssm_param_name}",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "task_control_plane_discovery" {
+  count = trimspace(var.control_plane_url_ssm_param_name) != "" ? 1 : 0
+
+  name   = "${local.name_prefix}-cp-discovery"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.task_control_plane_discovery[0].json
+}
+
 # ── Secrets Manager ────────────────────────────────────────────────────────────
 
 resource "aws_secretsmanager_secret" "auth" {
@@ -435,6 +458,7 @@ resource "aws_ecs_task_definition" "auth" {
       { name = "ARIA_DEPLOY_ENV", value = var.environment },
       { name = "NEXTAUTH_URL", value = var.public_url },
       { name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_url },
+      { name = "CONTROL_PLANE_URL_SSM_PARAM_NAME", value = var.control_plane_url_ssm_param_name },
     ]
 
     secrets = [

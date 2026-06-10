@@ -106,6 +106,12 @@ variable "alert_sns_topic_arn" {
   default     = ""
 }
 
+variable "enable_cis_alarms" {
+  description = "Create CIS CloudWatch metric filters and alarms. Must be set to true explicitly (known at plan time) alongside a non-empty alert_sns_topic_arn."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Additional tags applied to all resources"
   type        = map(string)

@@ -8,6 +8,7 @@
     "start": "next start --port 3001"
   },
   "dependencies": {
+    "@aws-sdk/client-ssm": "^3.1038.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "next": "^15.5.0",
