@@ -857,6 +857,23 @@ resource "aws_cloudfront_distribution" "main" {
       value = random_password.origin_secret.result
     }
 
+    # Tell Next.js / Auth.js the real public hostname and protocol.
+    # Without these, requests arriving over the internal HTTP path (CloudFront→ALB→ECS)
+    # would expose the ECS container's private DNS name as the Host header, causing
+    # NextAuth URL construction and Next.js server-side redirects to use the wrong host.
+    dynamic "custom_header" {
+      for_each = var.domain_name != "" ? [1] : []
+      content {
+        name  = "X-Forwarded-Host"
+        value = var.domain_name
+      }
+    }
+
+    custom_header {
+      name  = "X-Forwarded-Proto"
+      value = "https"
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
