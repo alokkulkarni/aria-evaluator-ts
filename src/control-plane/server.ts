@@ -36,6 +36,23 @@ interface ControlPlaneSession {
   createdAt: string;
 }
 
+interface PaymentMethod {
+  last4: string;
+  brand: string;
+  expMonth: number;
+  expYear: number;
+}
+
+interface BillingInvoice {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  currency: string;
+  status: 'paid' | 'pending' | 'failed';
+  downloadUrl?: string;
+}
+
 interface ControlPlaneTenant {
   id: string;
   userId: string;
@@ -46,6 +63,9 @@ interface ControlPlaneTenant {
   instanceUrl: string;
   ssoTokenHash?: string;
   ssoTokenExpiresAt?: string;
+  billingStartedAt?: string;
+  paymentMethod?: PaymentMethod;
+  invoices?: BillingInvoice[];
   usage: {
     runsThisMonth: number;
     maxRuns: number;
@@ -979,6 +999,223 @@ app.get('/auth/session', async (req, res) => {
   }
   res.json({ authenticated: true, user: makeUserResponse(user) });
 });
+
+// ── Billing endpoints ────────────────────────────────────────────────────────
+
+const PLAN_PRICES: Record<PricingTier, { monthly: number; annual: number }> = {
+  free: { monthly: 0, annual: 0 },
+  individual: { monthly: 49, annual: 39 },
+  enterprise_starter: { monthly: 299, annual: 249 },
+  enterprise_pro: { monthly: 799, annual: 699 },
+  enterprise_unlimited: { monthly: -1, annual: -1 },
+};
+
+function mockInvoicesForTenant(tenant: ControlPlaneTenant): BillingInvoice[] {
+  if (tenant.invoices && tenant.invoices.length > 0) return tenant.invoices;
+  const planPrice = PLAN_PRICES[tenant.plan];
+  const monthlyAmount = tenant.billingPeriod === 'annual' ? planPrice.annual : planPrice.monthly;
+  if (monthlyAmount <= 0) return [];
+
+  const start = new Date(tenant.createdAt);
+  const invoices: BillingInvoice[] = [];
+  const now = new Date();
+
+  for (let i = 0; i < 6; i++) {
+    const invoiceDate = new Date(start);
+    invoiceDate.setMonth(invoiceDate.getMonth() + i);
+    if (invoiceDate > now) break;
+
+    const plan = PACKAGES.find((p) => p.id === tenant.plan);
+    invoices.push({
+      id: `inv_${tenant.id.slice(0, 8)}_${i}`,
+      date: invoiceDate.toISOString(),
+      description: `${plan?.name ?? tenant.plan} — ${tenant.billingPeriod === 'annual' ? 'Annual (monthly)' : 'Monthly'} subscription`,
+      amount: monthlyAmount * 100,
+      currency: 'usd',
+      status: 'paid',
+    });
+  }
+  return invoices;
+}
+
+function nextBillingDate(tenant: ControlPlaneTenant): string {
+  const start = new Date(tenant.billingStartedAt ?? tenant.createdAt);
+  const now = new Date();
+  const next = new Date(start);
+  while (next <= now) {
+    if (tenant.billingPeriod === 'annual') {
+      next.setFullYear(next.getFullYear() + 1);
+    } else {
+      next.setMonth(next.getMonth() + 1);
+    }
+  }
+  return next.toISOString();
+}
+
+app.get('/billing/summary', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const state = await loadState();
+  const tenant = user.tenantId ? state.tenants.find((t) => t.id === user.tenantId) : undefined;
+
+  if (!tenant) {
+    res.json({
+      plan: null,
+      billingPeriod: null,
+      nextBillingDate: null,
+      paymentMethod: null,
+      planPrice: null,
+    });
+    return;
+  }
+
+  const planPrice = PLAN_PRICES[tenant.plan];
+  const priceAmount = tenant.billingPeriod === 'annual' ? planPrice.annual : planPrice.monthly;
+
+  res.json({
+    plan: tenant.plan,
+    billingPeriod: tenant.billingPeriod,
+    nextBillingDate: nextBillingDate(tenant),
+    paymentMethod: tenant.paymentMethod ?? null,
+    planPrice: priceAmount,
+  });
+});
+
+app.get('/billing/history', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const state = await loadState();
+  const tenant = user.tenantId ? state.tenants.find((t) => t.id === user.tenantId) : undefined;
+
+  res.json({
+    invoices: tenant ? mockInvoicesForTenant(tenant) : [],
+  });
+});
+
+const changePlanSchema = z.object({
+  plan: z.enum(['free', 'individual', 'enterprise_starter', 'enterprise_pro', 'enterprise_unlimited']),
+  billingPeriod: z.enum(['monthly', 'annual']).optional(),
+});
+
+app.post('/billing/change-plan', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = changePlanSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid payload' });
+    return;
+  }
+
+  const state = await loadState();
+  const tenant = user.tenantId ? state.tenants.find((t) => t.id === user.tenantId) : undefined;
+  if (!tenant) {
+    res.status(409).json({ error: 'No provisioned workspace' });
+    return;
+  }
+
+  const newPlan = parsed.data.plan;
+  const newBillingPeriod = parsed.data.billingPeriod ?? tenant.billingPeriod;
+  const limits = PLAN_LIMITS[newPlan];
+
+  await mutateState((draft) => {
+    const t = draft.tenants.find((entry) => entry.id === tenant.id);
+    if (!t) return;
+    t.plan = newPlan;
+    t.billingPeriod = newBillingPeriod;
+    t.usage.maxRuns = limits.maxRuns;
+    t.usage.maxScenarios = limits.maxScenarios;
+    t.updatedAt = nowIso();
+  });
+
+  res.json({ ok: true, plan: newPlan, billingPeriod: newBillingPeriod });
+});
+
+const updatePaymentSchema = z.object({
+  last4: z.string().length(4),
+  brand: z.string().min(1),
+  expMonth: z.number().int().min(1).max(12),
+  expYear: z.number().int().min(new Date().getFullYear()),
+});
+
+app.post('/billing/update-payment-method', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = updatePaymentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid payment method payload' });
+    return;
+  }
+
+  const state = await loadState();
+  const tenant = user.tenantId ? state.tenants.find((t) => t.id === user.tenantId) : undefined;
+  if (!tenant) {
+    res.status(409).json({ error: 'No provisioned workspace' });
+    return;
+  }
+
+  await mutateState((draft) => {
+    const t = draft.tenants.find((entry) => entry.id === tenant.id);
+    if (!t) return;
+    t.paymentMethod = {
+      last4: parsed.data.last4,
+      brand: parsed.data.brand,
+      expMonth: parsed.data.expMonth,
+      expYear: parsed.data.expYear,
+    };
+    t.updatedAt = nowIso();
+  });
+
+  res.json({ ok: true });
+});
+
+const closeAccountSchema = z.object({
+  confirmEmail: z.string().trim().email(),
+});
+
+app.delete('/account', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = closeAccountSchema.safeParse(req.body);
+  if (!parsed.success || parsed.data.confirmEmail.toLowerCase() !== user.email) {
+    res.status(400).json({ error: 'Email confirmation does not match your account email' });
+    return;
+  }
+
+  const token = getBearerToken(req);
+
+  await mutateState((draft) => {
+    draft.tenants = draft.tenants.filter((t) => t.userId !== user.id);
+    draft.sessions = draft.sessions.filter((s) => {
+      if (s.userId !== user.id) return true;
+      return token ? s.tokenHash !== hashToken(token) : false;
+    });
+    draft.users = draft.users.filter((u) => u.id !== user.id);
+  });
+
+  res.json({ ok: true, message: 'Account and workspace permanently deleted' });
+});
+
+// ── End billing endpoints ────────────────────────────────────────────────────
 
 if (process.env['NODE_ENV'] !== 'test') {
   void (async () => {
