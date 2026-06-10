@@ -23,6 +23,11 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.shared.repository_url
 }
 
+output "control_plane_ecr_repository_url" {
+  description = "ECR repository URL for the ARIA Control Plane image"
+  value       = aws_ecr_repository.control_plane.repository_url
+}
+
 output "heartbeat_table_name" {
   description = "Name of the shared tenant heartbeat table"
   value       = aws_dynamodb_table.heartbeats.name

@@ -8,7 +8,7 @@ environment = "prod"
 bucket_suffix      = "REPLACE_WITH_BUCKET_SUFFIX"
 kms_key_arn        = "REPLACE_WITH_KMS_KEY_ARN"
 cloudtrail_kms_key_arn = ""
-ecr_repository_url = "REPLACE_WITH_ECR_REPOSITORY_URL"
+ecr_repository_url = "REPLACE_WITH_ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/aria-control-plane"
 
 # Image tag (auto-built and pushed during terraform apply)
 image_tag = "latest"

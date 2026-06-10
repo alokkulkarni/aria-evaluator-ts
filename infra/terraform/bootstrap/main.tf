@@ -454,6 +454,51 @@ resource "aws_ecr_lifecycle_policy" "shared" {
   })
 }
 
+resource "aws_ecr_repository" "control_plane" {
+  name                 = "aria-control-plane"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "KMS"
+    kms_key         = aws_kms_key.secrets.arn
+  }
+
+  tags = merge(local.common_tags, {
+    Name                 = "aria-control-plane"
+    "aria:resource_type" = "storage"
+  })
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "control_plane" {
+  repository = aws_ecr_repository.control_plane.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep only the most recent 10 images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+
 resource "aws_dynamodb_table" "heartbeats" {
   name         = "aria-heartbeats"
   billing_mode = "PAY_PER_REQUEST"
