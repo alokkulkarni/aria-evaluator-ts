@@ -129,6 +129,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         if (token.sub) session.user.id = token.sub
+        if (token.email) session.user.email = token.email as string
+        if (token.name) session.user.name = token.name as string
         session.user.authProvider = token.authProvider as AuthProvider | undefined
         session.user.isNewUser = token.isNewUser as boolean | undefined
         session.user.role = token.role as 'owner' | 'admin' | 'member' | undefined

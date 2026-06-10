@@ -173,7 +173,7 @@ export function SignUpWizard() {
 
   const selectedPlan = getPlanById(state.selectedPlan ?? 'free')
   const selectedRegion = getRegionById(state.selectedRegion ?? '')
-  const summaryEmail = state.email || session?.user?.email || 'your email address'
+  const summaryEmail = state.email.trim() || session?.user?.email?.trim() || 'your email address'
 
   const goToStep = (step: SignUpState['step']) => setState((current) => ({ ...current, step }))
 
@@ -587,7 +587,7 @@ export function SignUpWizard() {
             {provisioning ? (
               <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-700">
                 <div className="flex items-center gap-3 font-medium">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Provisioning your instance… This usually takes 3–5 minutes.
+                  <Loader2 className="h-4 w-4 animate-spin" /> Provisioning your instance…
                 </div>
               </div>
             ) : null}

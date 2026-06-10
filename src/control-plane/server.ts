@@ -80,6 +80,28 @@ interface ControlPlaneState {
   users: ControlPlaneUser[];
   sessions: ControlPlaneSession[];
   tenants: ControlPlaneTenant[];
+  deletedAccounts: DeletedAccountRecord[];
+  pendingHistoryWrites: PendingHistoryWrite[];
+}
+
+interface DeletedAccountRecord {
+  id: string;
+  userId: string;
+  email: string;
+  name: string;
+  authProvider: string;
+  plan: PricingTier | null;
+  billingPeriod: BillingPeriod | null;
+  tenantId: string | null;
+  accountCreatedAt: string;
+  deletedAt: string;
+}
+
+interface PendingHistoryWrite {
+  id: string;
+  record: DeletedAccountRecord;
+  failedAt: string;
+  attempts: number;
 }
 
 interface ControlPlaneUserResponse {
@@ -237,7 +259,7 @@ function nowIso(): string {
 }
 
 function loadDefaultState(): ControlPlaneState {
-  return { users: [], sessions: [], tenants: [] };
+  return { users: [], sessions: [], tenants: [], deletedAccounts: [], pendingHistoryWrites: [] };
 }
 
 let stateCache: ControlPlaneState | null = null;
@@ -380,6 +402,8 @@ async function loadState(): Promise<ControlPlaneState> {
   stateCache.users ??= [];
   stateCache.sessions ??= [];
   stateCache.tenants ??= [];
+  stateCache.deletedAccounts ??= [];
+  stateCache.pendingHistoryWrites ??= [];
   if (ensureLocalSeedState(stateCache)) {
     await saveState(stateCache);
   }
@@ -661,6 +685,87 @@ app.post('/auth/register', async (req, res) => {
   });
 });
 
+app.post('/auth/oauth', async (req, res) => {
+  const parsed = oauthSignInSchema.safeParse(req.body as OAuthSignInBody);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid OAuth sign-in payload' });
+    return;
+  }
+
+  const provider = parsed.data.provider;
+  const normalizedEmail = parsed.data.email.toLowerCase();
+  const normalizedName = parsed.data.name?.trim() || defaultNameFromEmail(normalizedEmail);
+  const { token, expiresAt } = issueToken();
+  const createdAt = nowIso();
+
+  let resolvedUser: ControlPlaneUser | null = null;
+  let wasNewUser = false;
+  let conflictProvider: AuthProvider | null = null;
+
+  await mutateState((state) => {
+    const existingUser = state.users.find((entry) => entry.email === normalizedEmail);
+    if (existingUser) {
+      const existingProvider = resolveAuthProvider(existingUser);
+      if (existingProvider !== provider) {
+        conflictProvider = existingProvider;
+        return;
+      }
+      wasNewUser = existingUser.isNewUser;
+      existingUser.isNewUser = false;
+      existingUser.authProvider = provider;
+      existingUser.name = existingUser.name || normalizedName;
+      existingUser.lastLoginAt = createdAt;
+      existingUser.updatedAt = createdAt;
+      resolvedUser = existingUser;
+    } else {
+      wasNewUser = true;
+      const createdUser: ControlPlaneUser = {
+        id: randomBytes(12).toString('hex'),
+        email: normalizedEmail,
+        name: normalizedName,
+        authProvider: provider,
+        role: 'owner',
+        passwordHash: passwordHash(randomBytes(32).toString('base64url')),
+        isNewUser: false,
+        createdAt,
+        updatedAt: createdAt,
+        lastLoginAt: createdAt,
+      };
+      state.users.push(createdUser);
+      resolvedUser = createdUser;
+    }
+
+    if (!resolvedUser) return;
+    state.sessions.push({
+      tokenHash: hashToken(token),
+      userId: resolvedUser.id,
+      expiresAt,
+      createdAt,
+    });
+  });
+
+  if (conflictProvider) {
+    res.status(409).json({
+      error: 'Email already exists. Use the original sign-in method.',
+      code: 'EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER',
+      provider: conflictProvider,
+    });
+    return;
+  }
+
+  if (!resolvedUser) {
+    res.status(500).json({ error: 'Unable to complete OAuth sign-in' });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    user: makeUserResponse(resolvedUser, token),
+    token,
+    isNewUser: wasNewUser,
+  });
+});
+
 app.post('/auth/login', async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -695,87 +800,6 @@ app.post('/auth/login', async (req, res) => {
       userId: user.id,
       expiresAt,
       createdAt: nowIso(),
-    });
-  });
-
-  app.post('/auth/oauth', async (req, res) => {
-    const parsed = oauthSignInSchema.safeParse(req.body as OAuthSignInBody);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid OAuth sign-in payload' });
-      return;
-    }
-
-    const provider = parsed.data.provider;
-    const normalizedEmail = parsed.data.email.toLowerCase();
-    const normalizedName = parsed.data.name?.trim() || defaultNameFromEmail(normalizedEmail);
-    const { token, expiresAt } = issueToken();
-    const createdAt = nowIso();
-
-    let resolvedUser: ControlPlaneUser | null = null;
-    let wasNewUser = false;
-    let conflictProvider: AuthProvider | null = null;
-
-    await mutateState((state) => {
-      const existingUser = state.users.find((entry) => entry.email === normalizedEmail);
-      if (existingUser) {
-        const existingProvider = resolveAuthProvider(existingUser);
-        if (existingProvider !== provider) {
-          conflictProvider = existingProvider;
-          return;
-        }
-        wasNewUser = existingUser.isNewUser;
-        existingUser.isNewUser = false;
-        existingUser.authProvider = provider;
-        existingUser.name = existingUser.name || normalizedName;
-        existingUser.lastLoginAt = createdAt;
-        existingUser.updatedAt = createdAt;
-        resolvedUser = existingUser;
-      } else {
-        wasNewUser = true;
-        const createdUser: ControlPlaneUser = {
-          id: randomBytes(12).toString('hex'),
-          email: normalizedEmail,
-          name: normalizedName,
-          authProvider: provider,
-          role: 'owner',
-          passwordHash: passwordHash(randomBytes(32).toString('base64url')),
-          isNewUser: false,
-          createdAt,
-          updatedAt: createdAt,
-          lastLoginAt: createdAt,
-        };
-        state.users.push(createdUser);
-        resolvedUser = createdUser;
-      }
-
-      if (!resolvedUser) return;
-      state.sessions.push({
-        tokenHash: hashToken(token),
-        userId: resolvedUser.id,
-        expiresAt,
-        createdAt,
-      });
-    });
-
-    if (conflictProvider) {
-      res.status(409).json({
-        error: 'Email already exists. Use the original sign-in method.',
-        code: 'EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER',
-        provider: conflictProvider,
-      });
-      return;
-    }
-
-    if (!resolvedUser) {
-      res.status(500).json({ error: 'Unable to complete OAuth sign-in' });
-      return;
-    }
-
-    res.json({
-      ok: true,
-      user: makeUserResponse(resolvedUser, token),
-      token,
-      isNewUser: wasNewUser,
     });
   });
 
@@ -1188,6 +1212,48 @@ const closeAccountSchema = z.object({
   confirmEmail: z.string().trim().email(),
 });
 
+function buildDeletedAccountRecord(
+  user: ControlPlaneUser,
+  tenant: ControlPlaneTenant | undefined,
+): DeletedAccountRecord {
+  return {
+    id: randomBytes(12).toString('hex'),
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    authProvider: user.authProvider ?? 'email',
+    plan: tenant?.plan ?? null,
+    billingPeriod: tenant?.billingPeriod ?? null,
+    tenantId: tenant?.id ?? null,
+    accountCreatedAt: user.createdAt,
+    deletedAt: nowIso(),
+  };
+}
+
+async function processPendingHistoryWrites(): Promise<void> {
+  const state = await loadState();
+  if (!state.pendingHistoryWrites.length) return;
+
+  for (const pending of [...state.pendingHistoryWrites]) {
+    try {
+      await mutateState((draft) => {
+        draft.deletedAccounts.push(pending.record);
+        draft.pendingHistoryWrites = draft.pendingHistoryWrites.filter((p) => p.id !== pending.id);
+      });
+      console.log(`[history] Retry succeeded for pending history write ${pending.id}`);
+    } catch (err: unknown) {
+      await mutateState((draft) => {
+        const item = draft.pendingHistoryWrites.find((p) => p.id === pending.id);
+        if (item) item.attempts += 1;
+      });
+      console.error(
+        `[history] Retry attempt ${pending.attempts + 1} failed for ${pending.id}:`,
+        (err as Error).message,
+      );
+    }
+  }
+}
+
 app.delete('/account', async (req, res) => {
   const user = await getAuthUser(req);
   if (!user) {
@@ -1201,19 +1267,63 @@ app.delete('/account', async (req, res) => {
     return;
   }
 
-  const token = getBearerToken(req);
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.userId === user.id);
 
+  let historyRecord: DeletedAccountRecord | null = null;
+  let historyBuildError: string | null = null;
+
+  try {
+    historyRecord = buildDeletedAccountRecord(user, tenant);
+  } catch (err: unknown) {
+    historyBuildError = (err as Error).message;
+    console.error(`[history] Failed to build deleted account record for ${user.id}:`, historyBuildError);
+  }
+
+  // Delete from main tables. If history record was built successfully, write it
+  // atomically in the same mutation. If not, queue a pending write.
   await mutateState((draft) => {
+    if (historyRecord) {
+      draft.deletedAccounts.push(historyRecord);
+    } else {
+      // History build failed — queue for async retry so deletion still proceeds
+      const pending: PendingHistoryWrite = {
+        id: randomBytes(8).toString('hex'),
+        record: {
+          id: randomBytes(12).toString('hex'),
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          authProvider: user.authProvider ?? 'email',
+          plan: tenant?.plan ?? null,
+          billingPeriod: tenant?.billingPeriod ?? null,
+          tenantId: tenant?.id ?? null,
+          accountCreatedAt: user.createdAt,
+          deletedAt: nowIso(),
+        },
+        failedAt: nowIso(),
+        attempts: 1,
+      };
+      draft.pendingHistoryWrites.push(pending);
+      console.error(`[history] Queued pending history write ${pending.id} for async retry`);
+    }
+
     draft.tenants = draft.tenants.filter((t) => t.userId !== user.id);
-    draft.sessions = draft.sessions.filter((s) => {
-      if (s.userId !== user.id) return true;
-      return token ? s.tokenHash !== hashToken(token) : false;
-    });
+    draft.sessions = draft.sessions.filter((s) => s.userId !== user.id);
     draft.users = draft.users.filter((u) => u.id !== user.id);
   });
 
   res.json({ ok: true, message: 'Account and workspace permanently deleted' });
 });
+
+// ── Background: retry failed history writes every 5 minutes ─────────────────
+if (process.env['NODE_ENV'] !== 'test') {
+  setInterval(() => {
+    processPendingHistoryWrites().catch((err: unknown) => {
+      console.error('[history] processPendingHistoryWrites error:', (err as Error).message);
+    });
+  }, 5 * 60 * 1000);
+}
 
 // ── End billing endpoints ────────────────────────────────────────────────────
 
