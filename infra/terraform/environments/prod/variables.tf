@@ -53,7 +53,7 @@ variable "ecr_repository_url" {
 }
 
 variable "image_tag" {
-  description = "Docker image tag to build and push for the tenant evaluator app"
+  description = "Docker image tag to build and push for the tenant evaluator app. Leave as \"latest\" to auto-derive an immutable-safe tf-* tag."
   type        = string
   default     = "latest"
 }

@@ -3,7 +3,24 @@ data "aws_caller_identity" "current" {}
 locals {
   repo_root = abspath("${path.module}/../../../..")
   # Use pre-built image URI from CI/CD if provided, otherwise build locally
-  use_prebuilt       = var.image_uri != ""
+  use_prebuilt = var.image_uri != ""
+
+  # ECR repository enforces immutable tags. If the default "latest" tag is left
+  # in tfvars, derive a deterministic content tag to avoid overwrite failures.
+  default_local_image_tag = format(
+    "tf-%s",
+    substr(
+      sha1(join("|", [
+        filesha1("${local.repo_root}/Dockerfile"),
+        fileexists("${local.repo_root}/package-lock.json") ? filesha1("${local.repo_root}/package-lock.json") : "none",
+        tostring(var.force_rebuild),
+      ])),
+      0,
+      12,
+    ),
+  )
+  effective_image_tag = var.image_tag == "latest" ? local.default_local_image_tag : var.image_tag
+
   resolved_image_uri = local.use_prebuilt ? var.image_uri : module.docker_build[0].image_uri
 }
 
@@ -15,7 +32,7 @@ module "docker_build" {
   source = "../../modules/docker-build-push"
 
   ecr_repository_url = var.ecr_repository_url
-  image_tag          = var.image_tag
+  image_tag          = local.effective_image_tag
   dockerfile         = "Dockerfile"
   build_context      = local.repo_root
   aws_region         = var.aws_region
