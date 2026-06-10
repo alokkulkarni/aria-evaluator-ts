@@ -78,6 +78,7 @@ module "tenant" {
 # Use a tenant-qualified app name so per-tenant prod stacks do not collide.
 
 module "cloudtrail" {
+  count  = var.cloudtrail_enabled ? 1 : 0
   source = "../../modules/cloudtrail"
 
   app_name       = "${var.app_name}-${var.tenant_id}"

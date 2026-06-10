@@ -169,6 +169,12 @@ variable "waf_enabled" {
   default     = true
 }
 
+variable "cloudtrail_enabled" {
+  description = "Whether to provision a dedicated per-tenant CloudTrail trail in this stack. Disabled by default because account trail quotas are shared."
+  type        = bool
+  default     = false
+}
+
 variable "log_retention_days_override" {
   description = "Override for the default log retention; 0 uses the tier default"
   type        = number

@@ -158,7 +158,6 @@ resource "aws_lambda_function" "suspend_check" {
       ECS_SERVICE             = var.ecs_service_name
       SUSPEND_THRESHOLD_HOURS = tostring(var.suspend_threshold_hours)
       ALERT_EMAIL             = var.alert_email
-      AWS_REGION              = var.aws_region
       PRICING_TIER            = var.pricing_tier
     }
   }
@@ -252,7 +251,6 @@ resource "aws_lambda_function" "resume" {
       HEARTBEAT_TABLE = var.heartbeat_table_name
       ECS_CLUSTER     = var.ecs_cluster_name
       ECS_SERVICE     = var.ecs_service_name
-      AWS_REGION      = var.aws_region
     }
   }
 
