@@ -1,13 +1,13 @@
 'use client'
 
 import { z } from 'zod'
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Github, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signIn } from 'next-auth/react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
 import { ApiError, createSSOToken, createTenant, registerUser } from '@/lib/api'
+import { signInWithSocialProvider } from '@/lib/cognito'
 import { hashPasswordForTransit } from '@/lib/crypto'
 import { getPlanById, PLANS } from '@/lib/plans'
 import { getRegionById, getRegionsForTier, REGIONS } from '@/lib/regions'
@@ -56,7 +56,7 @@ function parseStepParam(value: string | null): SignUpState['step'] {
 }
 
 function parseAuthProvider(value: string | null): SignUpState['authProvider'] | undefined {
-  if (value === 'google' || value === 'github' || value === 'apple' || value === 'email') return value
+  if (value === 'google' || value === 'apple' || value === 'email') return value
   return undefined
 }
 
@@ -72,7 +72,7 @@ function isPricingTier(value: string | null): value is PricingTier {
 
 function getAuthProviderLabel(provider?: string): string {
   if (provider === 'google') return 'Google'
-  if (provider === 'github') return 'GitHub'
+  if (provider === 'apple') return 'Apple'
   if (provider === 'email') return 'email and password'
   return 'your original sign-in provider'
 }
@@ -200,11 +200,11 @@ export function SignUpWizard() {
     setState((current) => ({ ...current, authProvider: 'email', step: 2 }))
   }
 
-  const handleSocialSignUp = (provider: 'google' | 'github') => {
+  const handleSocialSignUp = (provider: 'google' | 'apple') => {
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem('signup_social_provider', provider)
     }
-    void signIn(provider, { callbackUrl: `/sign-up?step=plan&provider=${provider}` })
+    void signInWithSocialProvider(provider, `/sign-up?step=plan&provider=${provider}`)
   }
 
   const handleCreateWorkspace = async () => {
@@ -318,7 +318,7 @@ export function SignUpWizard() {
             <div className="space-y-2">
               <p className="section-label">Step 1</p>
               <h2 className="text-2xl font-semibold text-slate-900">Create your account</h2>
-              <p className="text-sm leading-6 text-slate-600">Create your account with email or use Google / GitHub to get started quickly.</p>
+              <p className="text-sm leading-6 text-slate-600">Create your account with email or use Google / Apple to get started quickly.</p>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -337,16 +337,16 @@ export function SignUpWizard() {
               </button>
               <button
                 type="button"
-                onClick={() => handleSocialSignUp('github')}
-                className="flex items-center justify-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                onClick={() => handleSocialSignUp('apple')}
+                className="flex items-center justify-center gap-3 rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-900"
               >
-                <Github className="h-5 w-5" />
-                Continue with GitHub
+                <span className="text-base"></span>
+                Continue with Apple
               </button>
             </div>
 
             <p className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Signing up with Google or GitHub will take you straight to plan selection.
+              Social sign-up takes you straight to plan selection.
             </p>
 
             <div className="grid gap-5 md:grid-cols-2">

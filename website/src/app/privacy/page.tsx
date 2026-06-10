@@ -36,7 +36,7 @@ export default function PrivacyPage() {
             {
               title: '1.3 Information from Third Parties',
               content: [
-                'Authentication providers: When you sign in via Google, GitHub, or Apple, we receive your profile information as authorised by your account settings.',
+                'Authentication providers: When you sign in via Google or Apple, we receive your profile information as authorised by your account settings.',
                 'Payment processors: Transaction confirmations and billing information from our payment service providers.',
               ],
             },

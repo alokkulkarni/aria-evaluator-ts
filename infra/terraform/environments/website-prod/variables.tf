@@ -34,6 +34,37 @@ variable "signup_mode" {
   default     = "waitlist"
 }
 
+variable "enable_cognito" {
+  description = "Enable Cognito as the OAuth broker for Google/Apple social sign-in."
+  type        = bool
+  default     = true
+}
+
+variable "apple_client_id" {
+  description = "Apple Services ID for Cognito Sign in with Apple."
+  type        = string
+  default     = ""
+}
+
+variable "apple_team_id" {
+  description = "Apple developer team id."
+  type        = string
+  default     = ""
+}
+
+variable "apple_key_id" {
+  description = "Apple Sign in with Apple key id."
+  type        = string
+  default     = ""
+}
+
+variable "apple_private_key" {
+  description = "Apple Sign in with Apple private key PEM."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # ── Auth Secrets (supply via CI/CD pipeline env vars, never commit) ────────────
 
 variable "nextauth_secret" {
@@ -55,11 +86,13 @@ variable "google_client_secret" {
 variable "github_client_id" {
   type      = string
   sensitive = true
+  default   = ""
 }
 
 variable "github_client_secret" {
   type      = string
   sensitive = true
+  default   = ""
 }
 
 # ── Domain & TLS ────────────────────────────────────────────────────────────────

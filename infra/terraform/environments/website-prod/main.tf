@@ -111,18 +111,42 @@ module "auth_backend" {
   image_uri     = local.use_prebuilt_auth ? var.auth_backend_image_uri : ""
 
   # Auth secrets
-  nextauth_secret      = var.nextauth_secret
-  google_client_id     = var.google_client_id
-  google_client_secret = var.google_client_secret
-  github_client_id     = var.github_client_id
-  github_client_secret = var.github_client_secret
+  nextauth_secret       = var.nextauth_secret
+  google_client_id      = var.google_client_id
+  google_client_secret  = var.google_client_secret
+  github_client_id      = var.github_client_id
+  github_client_secret  = var.github_client_secret
+  cognito_enabled       = var.enable_cognito
+  cognito_client_id     = try(module.cognito[0].app_client_id, "")
+  cognito_client_secret = try(module.cognito[0].app_client_secret, "")
+  cognito_issuer        = try(module.cognito[0].issuer, "")
+  cognito_domain        = try(module.cognito[0].user_pool_domain_fqdn, "")
 
   control_plane_url                = var.control_plane_url
   control_plane_url_ssm_param_name = var.control_plane_url_ssm_param_name
-  log_retention_days        = 90
-  enable_container_insights = true
+  log_retention_days               = 90
+  enable_container_insights        = true
 
   tags = local.common_tags
+}
+
+module "cognito" {
+  count  = var.enable_cognito ? 1 : 0
+  source = "../../modules/cognito"
+
+  app_name    = "aria"
+  environment = "prod"
+  domain_name = var.domain_name
+
+  google_client_id     = var.google_client_id
+  google_client_secret = var.google_client_secret
+  apple_client_id      = var.apple_client_id
+  apple_team_id        = var.apple_team_id
+  apple_key_id         = var.apple_key_id
+  apple_private_key    = var.apple_private_key
+
+  callback_urls = ["${local.public_url}/api/auth/callback/cognito"]
+  logout_urls   = ["${local.public_url}/sign-out"]
 }
 
 # ── Static Frontend (S3 + CloudFront) ─────────────────────────────────────────

@@ -8,7 +8,7 @@ export default function SignInPage() {
         <div className="space-y-3 text-center">
           <p className="section-label">Secure access</p>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Access your ARIA workspace</h1>
-          <p className="text-sm text-slate-600">Sign in with Google, GitHub, or your email and password.</p>
+          <p className="text-sm text-slate-600">Sign in with Google, Apple, or your email and password.</p>
         </div>
         <Suspense fallback={<div className="py-12 text-center text-sm text-slate-400">Loading…</div>}>
           <SignInForm />

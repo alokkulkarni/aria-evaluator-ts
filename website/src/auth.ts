@@ -1,10 +1,9 @@
 import NextAuth from 'next-auth'
+import Cognito from 'next-auth/providers/cognito'
 import Credentials from 'next-auth/providers/credentials'
-import GitHub from 'next-auth/providers/github'
-import Google from 'next-auth/providers/google'
 import { ApiError, serverApiFetch } from '@/lib/api'
 
-type AuthProvider = 'email' | 'google' | 'github'
+type AuthProvider = 'email' | 'google' | 'apple'
 
 interface ControlPlaneUser {
   id: string
@@ -15,6 +14,31 @@ interface ControlPlaneUser {
   tenantId?: string
   accessToken?: string
   isNewUser?: boolean
+}
+
+function getSocialProviderFromCognitoProfile(profile: unknown): AuthProvider | null {
+  if (!profile || typeof profile !== 'object') return null
+  const candidate = profile as Record<string, unknown>
+
+  const identitiesRaw = candidate.identities
+  if (typeof identitiesRaw === 'string') {
+    try {
+      const identities = JSON.parse(identitiesRaw) as Array<Record<string, unknown>>
+      const providerName = identities[0]?.providerName
+      if (providerName === 'Google') return 'google'
+      if (providerName === 'SignInWithApple' || providerName === 'Apple') return 'apple'
+    } catch {
+      // fall through to other hints in the profile payload
+    }
+  }
+
+  const cognitoUsername = candidate['cognito:username']
+  if (typeof cognitoUsername === 'string') {
+    if (cognitoUsername.startsWith('Google_')) return 'google'
+    if (cognitoUsername.startsWith('SignInWithApple_') || cognitoUsername.startsWith('Apple_')) return 'apple'
+  }
+
+  return null
 }
 
 function parseApiErrorPayload(raw: string): { code?: string; provider?: AuthProvider } | null {
@@ -38,20 +62,19 @@ const authSecret = (() => {
   return 'aria-website-default-secret-change-me'
 })()
 
+const useCognitoSocialAuth = Boolean(
+  process.env.COGNITO_CLIENT_ID &&
+    process.env.COGNITO_CLIENT_SECRET &&
+    process.env.COGNITO_ISSUER,
+)
+
 const providers = [
-  ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+  ...(useCognitoSocialAuth
     ? [
-        Google({
-          clientId: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        }),
-      ]
-    : []),
-  ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
-    ? [
-        GitHub({
-          clientId: process.env.GITHUB_CLIENT_ID,
-          clientSecret: process.env.GITHUB_CLIENT_SECRET,
+        Cognito({
+          clientId: process.env.COGNITO_CLIENT_ID!,
+          clientSecret: process.env.COGNITO_CLIENT_SECRET!,
+          issuer: process.env.COGNITO_ISSUER!,
         }),
       ]
     : []),
@@ -77,19 +100,16 @@ const providers = [
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
-  trustHost: true,
   pages: {
     signIn: '/sign-in',
     newUser: '/sign-up',
   },
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (!account || account.provider === 'credentials') return true
 
-      const provider = account.provider === 'google' || account.provider === 'github'
-        ? account.provider
-        : null
-      if (!provider) return true
+      const provider = account.provider === 'cognito' ? getSocialProviderFromCognitoProfile(profile) : null
+      if (!provider) return '/sign-in?error=social_signin_failed'
 
       const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : ''
       if (!email) return `/sign-in?error=missing_social_email&provider=${provider}`

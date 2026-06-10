@@ -43,6 +43,38 @@ output "auth_log_group_name" {
   value = module.auth_backend.log_group_name
 }
 
+# ── Cognito outputs ───────────────────────────────────────────────────────────
+
+output "cognito_enabled" {
+  description = "Whether Cognito social auth broker is enabled"
+  value       = var.enable_cognito
+}
+
+output "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  value       = try(module.cognito[0].user_pool_id, "")
+}
+
+output "cognito_app_client_id" {
+  description = "Cognito app client ID used by NextAuth"
+  value       = try(module.cognito[0].app_client_id, "")
+}
+
+output "cognito_issuer" {
+  description = "OIDC issuer configured in NextAuth Cognito provider"
+  value       = try(module.cognito[0].issuer, "")
+}
+
+output "cognito_idp_response_url" {
+  description = "Set this as callback URL in Google and Apple app settings"
+  value       = try(module.cognito[0].idp_response_url, "")
+}
+
+output "cognito_apple_enabled" {
+  description = "Whether Sign in with Apple is enabled in Cognito"
+  value       = try(module.cognito[0].apple_enabled, false)
+}
+
 # ── CloudTrail outputs ────────────────────────────────────────────────────────
 
 output "cloudtrail_trail_arn" {

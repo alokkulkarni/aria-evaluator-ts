@@ -12,7 +12,7 @@ import { z } from 'zod';
 type BillingPeriod = 'monthly' | 'annual';
 type PricingTier = 'free' | 'individual' | 'enterprise_starter' | 'enterprise_pro' | 'enterprise_unlimited';
 type InstanceStatus = 'not_provisioned' | 'provisioning' | 'running' | 'suspended' | 'error';
-type AuthProvider = 'email' | 'google' | 'github';
+type AuthProvider = 'email' | 'google' | 'github' | 'apple';
 
 interface ControlPlaneUser {
   id: string;
@@ -482,7 +482,7 @@ function makeUserResponse(user: ControlPlaneUser, accessToken?: string): Control
 }
 
 function resolveAuthProvider(user: ControlPlaneUser): AuthProvider {
-  if (user.authProvider === 'google' || user.authProvider === 'github' || user.authProvider === 'email') {
+  if (user.authProvider === 'google' || user.authProvider === 'github' || user.authProvider === 'apple' || user.authProvider === 'email') {
     return user.authProvider;
   }
   return 'email';
@@ -591,7 +591,7 @@ const loginSchema = z.object({
 });
 
 const oauthSignInSchema = z.object({
-  provider: z.enum(['google', 'github']),
+  provider: z.enum(['google', 'apple']),
   email: z.string().trim().email(),
   name: z.string().trim().optional().nullable(),
 });

@@ -96,6 +96,37 @@ variable "github_client_secret" {
   default   = ""
 }
 
+variable "cognito_enabled" {
+  description = "Whether Cognito is used as the social OAuth broker."
+  type        = bool
+  default     = false
+}
+
+variable "cognito_client_id" {
+  description = "Cognito app client ID for NextAuth Cognito provider."
+  type        = string
+  default     = ""
+}
+
+variable "cognito_client_secret" {
+  description = "Cognito app client secret for NextAuth Cognito provider."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "cognito_issuer" {
+  description = "OIDC issuer URL for Cognito user pool."
+  type        = string
+  default     = ""
+}
+
+variable "cognito_domain" {
+  description = "Cognito hosted UI domain FQDN."
+  type        = string
+  default     = ""
+}
+
 # ── Control plane ─────────────────────────────────────────────────────────────
 
 variable "control_plane_url" {

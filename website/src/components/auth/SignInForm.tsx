@@ -1,12 +1,12 @@
 'use client'
 
-import { Github } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { FormEvent, useState } from 'react'
 
 import { AriaLogo } from '@/components/shared/AriaLogo'
+import { signInWithSocialProvider } from '@/lib/cognito'
 import { hashPasswordForTransit } from '@/lib/crypto'
 
 export function SignInForm() {
@@ -24,8 +24,8 @@ export function SignInForm() {
 
   const providerLabel = authProvider === 'google'
     ? 'Google'
-    : authProvider === 'github'
-      ? 'GitHub'
+    : authProvider === 'apple'
+      ? 'Apple'
       : authProvider === 'email'
         ? 'email and password'
         : 'your original provider'
@@ -38,10 +38,10 @@ export function SignInForm() {
         ? `We couldn't complete ${providerLabel} sign-in. Please try again.`
         : null
 
-  const handleSocialSignIn = async (provider: 'google' | 'github') => {
+  const handleSocialSignIn = async (provider: 'google' | 'apple') => {
     setError(null)
     setLoadingProvider(provider)
-    await signIn(provider, { callbackUrl: returnTo })
+    await signInWithSocialProvider(provider, returnTo)
     setLoadingProvider(null)
   }
 
@@ -61,7 +61,7 @@ export function SignInForm() {
     setSubmitting(false)
 
     if (result?.error) {
-      setError('Sign-in failed. Check your email and password, or use Google or GitHub.')
+      setError('Sign-in failed. Check your email and password, or use Google or Apple.')
       return
     }
 
@@ -101,22 +101,12 @@ export function SignInForm() {
 
         <button
           type="button"
-          onClick={() => handleSocialSignIn('github')}
-          className="flex w-full items-center justify-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+          onClick={() => handleSocialSignIn('apple')}
+          className="flex w-full items-center justify-center gap-3 rounded-xl bg-black px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-900"
           disabled={loadingProvider !== null}
         >
-          <Github className="h-5 w-5" />
-          {loadingProvider === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
-        </button>
-
-        <button
-          type="button"
-          disabled
-          className="flex w-full items-center justify-center gap-3 rounded-xl bg-black px-4 py-3 text-sm font-medium text-white opacity-80"
-        >
           <span className="text-base"></span>
-          <span>Continue with Apple</span>
-          <span className="badge-info">Coming soon</span>
+          <span>{loadingProvider === 'apple' ? 'Redirecting…' : 'Continue with Apple'}</span>
         </button>
       </div>
 

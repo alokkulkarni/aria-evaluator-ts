@@ -27,12 +27,23 @@ auth_backend_image_tag = "latest"
 # "waitlist" = free-only signups (prod default), "open" = all plans available
 signup_mode = "waitlist"
 
+# ── Cognito OAuth Broker ───────────────────────────────────────────────────────
+# Keep enabled for stable Google/Apple redirects through Cognito hosted UI.
+enable_cognito = true
+
 # ── Auth Secrets (use TF_VAR_ env vars in CI/CD instead of hardcoding) ────────
 # nextauth_secret      = "..."
 # google_client_id     = "..."
 # google_client_secret = "..."
-# github_client_id     = "..."
-# github_client_secret = "..."
+#
+# After first apply, read output `cognito_idp_response_url` and set it as callback
+# URL in Google/Apple app settings.
+#
+# Apple via Cognito:
+# apple_client_id   = "com.ariaeval.web"
+# apple_team_id     = "..."
+# apple_key_id      = "..."
+# apple_private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 
 # ── Domain & TLS ──────────────────────────────────────────────────────────────
 # 1. Register domain in Route53 (already done: ariaeval.io)

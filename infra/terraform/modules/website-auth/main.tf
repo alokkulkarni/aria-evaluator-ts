@@ -422,13 +422,18 @@ resource "aws_secretsmanager_secret" "auth" {
 resource "aws_secretsmanager_secret_version" "auth" {
   secret_id = aws_secretsmanager_secret.auth.id
 
-  secret_string = jsonencode({
-    NEXTAUTH_SECRET      = var.nextauth_secret
-    GOOGLE_CLIENT_ID     = var.google_client_id
-    GOOGLE_CLIENT_SECRET = var.google_client_secret
-    GITHUB_CLIENT_ID     = var.github_client_id
-    GITHUB_CLIENT_SECRET = var.github_client_secret
-  })
+  secret_string = jsonencode(merge(
+    {
+      NEXTAUTH_SECRET      = var.nextauth_secret
+      GOOGLE_CLIENT_ID     = var.google_client_id
+      GOOGLE_CLIENT_SECRET = var.google_client_secret
+      GITHUB_CLIENT_ID     = var.github_client_id
+      GITHUB_CLIENT_SECRET = var.github_client_secret
+    },
+    trimspace(var.cognito_client_secret) != "" ? {
+      COGNITO_CLIENT_SECRET = var.cognito_client_secret
+    } : {},
+  ))
 }
 
 # ── ECS Task Definition ───────────────────────────────────────────────────────
@@ -457,17 +462,26 @@ resource "aws_ecs_task_definition" "auth" {
       { name = "NODE_ENV", value = "production" },
       { name = "ARIA_DEPLOY_ENV", value = var.environment },
       { name = "NEXTAUTH_URL", value = var.public_url },
+      { name = "COGNITO_ENABLED", value = var.cognito_enabled ? "true" : "false" },
+      { name = "COGNITO_CLIENT_ID", value = var.cognito_client_id },
+      { name = "COGNITO_ISSUER", value = var.cognito_issuer },
+      { name = "COGNITO_DOMAIN", value = var.cognito_domain },
       { name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_url },
       { name = "CONTROL_PLANE_URL_SSM_PARAM_NAME", value = var.control_plane_url_ssm_param_name },
     ]
 
-    secrets = [
-      { name = "NEXTAUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.auth.arn}:NEXTAUTH_SECRET::" },
-      { name = "GOOGLE_CLIENT_ID", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GOOGLE_CLIENT_ID::" },
-      { name = "GOOGLE_CLIENT_SECRET", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GOOGLE_CLIENT_SECRET::" },
-      { name = "GITHUB_CLIENT_ID", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GITHUB_CLIENT_ID::" },
-      { name = "GITHUB_CLIENT_SECRET", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GITHUB_CLIENT_SECRET::" },
-    ]
+    secrets = concat(
+      [
+        { name = "NEXTAUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.auth.arn}:NEXTAUTH_SECRET::" },
+        { name = "GOOGLE_CLIENT_ID", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GOOGLE_CLIENT_ID::" },
+        { name = "GOOGLE_CLIENT_SECRET", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GOOGLE_CLIENT_SECRET::" },
+        { name = "GITHUB_CLIENT_ID", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GITHUB_CLIENT_ID::" },
+        { name = "GITHUB_CLIENT_SECRET", valueFrom = "${aws_secretsmanager_secret.auth.arn}:GITHUB_CLIENT_SECRET::" },
+      ],
+      trimspace(var.cognito_client_secret) != "" ? [
+        { name = "COGNITO_CLIENT_SECRET", valueFrom = "${aws_secretsmanager_secret.auth.arn}:COGNITO_CLIENT_SECRET::" },
+      ] : [],
+    )
 
     logConfiguration = {
       logDriver = "awslogs"
