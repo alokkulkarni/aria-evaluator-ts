@@ -92,7 +92,6 @@ resource "aws_lambda_function" "provisioner" {
     variables = {
       CODEBUILD_PROJECT_NAME = var.codebuild_project_name
       USER_INSTANCE_TABLE    = var.user_instance_table_name
-      AWS_REGION             = var.aws_region
       COGNITO_USER_POOL_ID   = var.cognito_user_pool_id
       MAX_INSTANCES_PER_USER = var.max_instances_per_user
       MAX_MONTHLY_SPEND      = var.max_monthly_spend_per_user
