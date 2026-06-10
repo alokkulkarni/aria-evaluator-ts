@@ -76,9 +76,6 @@ resource "aws_ecs_cluster" "main" {
 
   tags = local.common_tags
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "aws_ecs_cluster_capacity_providers" "main" {

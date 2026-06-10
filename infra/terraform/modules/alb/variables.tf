@@ -90,6 +90,7 @@ variable "enable_deletion_protection" {
   default     = true
 }
 
+
 variable "tenant_id" {
   description = "Tenant identifier used for naming and tagging"
   type        = string

@@ -28,9 +28,6 @@ resource "aws_s3_bucket" "alb_logs" {
     "aria:resource_type" = "storage"
   })
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "aws_s3_bucket_public_access_block" "alb_logs" {
@@ -160,9 +157,6 @@ resource "aws_lb" "main" {
     Name = "${local.short_name}-alb"
   })
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "aws_lb_target_group" "app" {
