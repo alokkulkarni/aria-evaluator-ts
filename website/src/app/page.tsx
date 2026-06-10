@@ -139,16 +139,13 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="mt-10 grid items-start gap-6 lg:grid-cols-[1fr_1fr] xl:grid-cols-[0.94fr_1.06fr]">
-          <article className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.1)] backdrop-blur-sm">
-            <div className="flex items-center justify-between border-b border-slate-200/70 bg-slate-50/90 px-5 py-3">
+        <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <article className="h-full overflow-hidden rounded-[2rem] border border-slate-200/80 bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.1)] backdrop-blur-sm">
+            <div className="flex items-center border-b border-slate-200/70 bg-slate-50/90 px-5 py-3">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-              </div>
-              <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-500">
-                ariaeval.io / workspace / executive-overview
               </div>
             </div>
 
@@ -275,66 +272,52 @@ export default function HomePage() {
             </div>
           </article>
 
-          <div className="grid gap-5">
-            <article className="card space-y-4">
-              <p className="section-label">What buyers notice first</p>
-              <h3 className="text-2xl font-semibold text-slate-900">A visual tour that sells the product before the trial starts</h3>
-              <p className="text-sm leading-6 text-slate-600">
-                A short product reel gives visitors an immediate feel for the platform experience before they start a trial. It reinforces
-                release readiness, judge confidence, and the premium operating model behind ARIA Evaluator.
-              </p>
-              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-[0_20px_45px_rgba(15,23,42,0.14)]">
-                <div className="relative aspect-[16/9] bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.25),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.28),transparent_34%)]">
-                  <video
-                    className="h-full w-full object-cover"
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    preload="auto"
-                    aria-label="ARIA Evaluator product reel"
-                  >
-                    <source src="/videos/homepage-product-reel.mp4" type="video/mp4" />
-                  </video>
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-slate-950/10" />
-                  <div className="pointer-events-none absolute left-4 top-4 rounded-full border border-white/15 bg-slate-950/65 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200 backdrop-blur">
-                    Product walkthrough
-                  </div>
-                </div>
-                <div className="border-t border-white/10 bg-slate-950 px-5 py-4">
-                  <p className="text-sm font-semibold text-white">See the platform in motion</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-300">
-                    A larger product window keeps the dashboard legible and gives buyers a clearer feel for the platform before they explore the rest of the page.
-                  </p>
+          <article className="card flex h-full flex-col">
+            <div className="flex flex-1 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-[0_20px_45px_rgba(15,23,42,0.14)]">
+              <div className="relative min-h-[320px] flex-1 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.25),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.28),transparent_34%)]">
+                <video
+                  className="h-full w-full object-cover"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  aria-label="ARIA Evaluator product reel"
+                >
+                  <source src="/videos/homepage-product-reel.mp4" type="video/mp4" />
+                </video>
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-slate-950/10" />
+                <div className="pointer-events-none absolute left-4 top-4 rounded-full border border-white/15 bg-slate-950/65 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200 backdrop-blur">
+                  Product walkthrough
                 </div>
               </div>
-            </article>
+            </div>
+          </article>
 
-            <article className="card space-y-4">
-              <p className="section-label">Highlights</p>
-              <div className="space-y-3">
-                {[
-                  'Dedicated tenant workspaces with enterprise isolation built in.',
-                  'Adversarial and functional scenario coverage in one release view.',
-                  'Multi-model judge comparisons with traceable confidence signals.',
-                  'Region selection aligned to sovereignty and compliance requirements.',
-                ].map((item) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <span className="mt-1 h-2.5 w-2.5 rounded-full bg-cyan-500" />
-                    <p className="text-sm leading-6 text-slate-600">{item}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-3 pt-2">
-                <Link href="/sign-up" className="btn-primary rounded-xl">
-                  Start for free
-                </Link>
-                <Link href="/blog" className="btn-secondary rounded-xl">
-                  Explore insights
-                </Link>
-              </div>
-            </article>
-          </div>
+          <article className="card space-y-4 lg:col-span-2">
+            <p className="section-label">Highlights</p>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {[
+                'Dedicated tenant workspaces with enterprise isolation built in.',
+                'Adversarial and functional scenario coverage in one release view.',
+                'Multi-model judge comparisons with traceable confidence signals.',
+                'Region selection aligned to sovereignty and compliance requirements.',
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-3">
+                  <span className="mt-1 h-2.5 w-2.5 rounded-full bg-cyan-500" />
+                  <p className="text-sm leading-6 text-slate-600">{item}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-3 pt-2">
+              <Link href="/sign-up" className="btn-primary rounded-xl">
+                Start for free
+              </Link>
+              <Link href="/blog" className="btn-secondary rounded-xl">
+                Explore insights
+              </Link>
+            </div>
+          </article>
         </div>
       </section>
 
