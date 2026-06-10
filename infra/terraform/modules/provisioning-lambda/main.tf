@@ -11,7 +11,7 @@ locals {
 # ── IAM role for Lambda ────────────────────────────────────────────────────
 
 resource "aws_iam_role" "lambda_role" {
-  name_prefix = "${var.app_name}-${var.environment}-provisioner-role-"
+  name_prefix = "${var.app_name}-${var.environment}-role-"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
