@@ -17,11 +17,12 @@ locals {
 resource "aws_cloudwatch_log_group" "this" {
   provider = aws.us_east_1
 
-  name              = "/aws/wafv2/aria-${var.tenant_id}"
+  # AWS WAF logging requires CloudWatch destination names prefixed with aws-waf-logs-.
+  name              = "aws-waf-logs-aria-${var.tenant_id}"
   retention_in_days = var.log_retention_days
 
   tags = merge(local.common_tags, {
-    Name = "aria-${var.tenant_id}-waf-logs"
+    Name = "aws-waf-logs-aria-${var.tenant_id}"
   })
 }
 
