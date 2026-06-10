@@ -42,6 +42,23 @@ const steps = [
   { id: 4, label: 'Confirm' },
 ] as const
 
+function parseStepParam(value: string | null): SignUpState['step'] {
+  if (!value) return 1
+  if (value === 'account') return 1
+  if (value === 'plan') return 2
+  if (value === 'region') return 3
+  if (value === 'confirm') return 4
+
+  const numeric = Number.parseInt(value, 10)
+  if (numeric >= 1 && numeric <= 4) return numeric as SignUpState['step']
+  return 1
+}
+
+function parseAuthProvider(value: string | null): SignUpState['authProvider'] | undefined {
+  if (value === 'google' || value === 'github' || value === 'apple' || value === 'email') return value
+  return undefined
+}
+
 function isPricingTier(value: string | null): value is PricingTier {
   return PLANS.some((plan) => plan.id === value)
 }
@@ -50,17 +67,22 @@ export function SignUpWizard() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  const stepParam = searchParams.get('step')
+  const providerParam = searchParams.get('provider')
   const planParam = searchParams.get('plan')
   const periodParam = searchParams.get('period')
+  const initialStep = parseStepParam(stepParam)
+  const initialAuthProvider = parseAuthProvider(providerParam)
   const initialPlan = isWaitlistMode ? 'free' : (isPricingTier(planParam) ? planParam : 'free')
   const initialPeriod: BillingPeriod = periodParam === 'annual' ? 'annual' : 'monthly'
 
   const [state, setState] = useState<SignUpState>({
-    step: 1,
+    step: initialStep,
     name: '',
     company: '',
     email: '',
     password: '',
+    authProvider: initialAuthProvider,
     billingPeriod: initialPeriod,
     selectedPlan: initialPlan,
     selectedRegion: getRegionsForTier(initialPlan)[0]?.id,
@@ -94,6 +116,19 @@ export function SignUpWizard() {
     }
   }, [state.selectedPlan, state.selectedRegion])
 
+  useEffect(() => {
+    const nextStep = parseStepParam(stepParam)
+    const nextProvider = parseAuthProvider(providerParam)
+    setState((current) => {
+      if (current.step === nextStep && current.authProvider === nextProvider) return current
+      return {
+        ...current,
+        step: nextStep,
+        authProvider: current.authProvider ?? nextProvider,
+      }
+    })
+  }, [stepParam, providerParam])
+
   const selectedPlan = getPlanById(state.selectedPlan ?? 'free')
   const selectedRegion = getRegionById(state.selectedRegion ?? '')
 
@@ -123,7 +158,7 @@ export function SignUpWizard() {
   }
 
   const handleSocialSignUp = (provider: 'google' | 'github') => {
-    void signIn(provider, { callbackUrl: '/sign-up?step=plan' })
+    void signIn(provider, { callbackUrl: `/sign-up?step=plan&provider=${provider}` })
   }
 
   const handleCreateWorkspace = async () => {

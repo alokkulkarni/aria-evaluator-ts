@@ -21,7 +21,8 @@ locals {
 }
 
 resource "aws_s3_bucket" "alb_logs" {
-  bucket = local.alb_logs_bucket
+  bucket        = local.alb_logs_bucket
+  force_destroy = var.log_bucket_force_destroy
 
   tags = merge(local.common_tags, {
     Name                 = local.alb_logs_bucket

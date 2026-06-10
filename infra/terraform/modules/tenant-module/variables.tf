@@ -170,6 +170,12 @@ variable "waf_enabled" {
   default     = true
 }
 
+variable "s3_force_destroy" {
+  description = "Allow destroy to purge non-empty tenant S3 buckets (state + ALB logs). Use for ephemeral validation stacks."
+  type        = bool
+  default     = false
+}
+
 variable "alb_enable_deletion_protection" {
   description = "Whether ALB deletion protection is enabled."
   type        = bool

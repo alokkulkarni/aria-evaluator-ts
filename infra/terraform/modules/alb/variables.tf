@@ -90,6 +90,12 @@ variable "enable_deletion_protection" {
   default     = true
 }
 
+variable "log_bucket_force_destroy" {
+  description = "Allow Terraform to destroy the ALB access logs bucket even when it contains objects/versions."
+  type        = bool
+  default     = false
+}
+
 
 variable "tenant_id" {
   description = "Tenant identifier used for naming and tagging"

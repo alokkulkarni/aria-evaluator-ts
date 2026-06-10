@@ -87,7 +87,7 @@ module "s3" {
   app_name           = var.app_name
   environment        = var.environment
   bucket_suffix      = local.composite_bucket_suffix
-  force_destroy      = false
+  force_destroy      = var.s3_force_destroy
   versioning_enabled = true
   tags = merge(local.common_tags, {
     "aria:resource_type" = "storage"
@@ -125,6 +125,7 @@ module "alb" {
   acm_certificate_arn        = var.acm_certificate_arn
   cloudfront_origin_secret   = var.cloudfront_enabled ? random_password.cf_secret[0].result : ""
   log_bucket_suffix          = local.composite_bucket_suffix
+  log_bucket_force_destroy   = var.s3_force_destroy
   enable_deletion_protection = var.alb_enable_deletion_protection
   tenant_id                  = var.tenant_id
   pricing_tier               = var.pricing_tier
