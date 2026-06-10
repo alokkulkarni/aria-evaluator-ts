@@ -238,8 +238,8 @@ resource "aws_kms_alias" "dynamodb" {
 # ── S3 Bucket for CloudTrail Logs ────────────────────────────────────────────
 
 resource "aws_s3_bucket" "cloudtrail_logs" {
-  bucket              = "${var.app_name}-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
-  force_destroy       = false
+  bucket        = "${var.app_name}-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = false
 
   tags = local.common_tags
 }
@@ -280,25 +280,6 @@ resource "aws_sns_topic" "provisioning_alarms" {
   tags = local.common_tags
 }
 
-resource "aws_sns_topic_policy" "provisioning_alarms" {
-  arn = aws_sns_topic.provisioning_alarms.arn
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "CloudWatchAlarms"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudwatch.amazonaws.com"
-        }
-        Action   = "SNS:Publish"
-        Resource = aws_sns_topic.provisioning_alarms.arn
-      }
-    ]
-  })
-}
-
 # ── CodeBuild project for provisioning ────────────────────────────────────────
 
 module "provisioning_codebuild" {
@@ -326,6 +307,7 @@ module "provisioning_lambda" {
   source = "../../modules/provisioning-lambda"
 
   app_name                 = var.app_name
+  environment              = var.environment
   aws_region               = data.aws_region.current.name
   codebuild_project_name   = module.provisioning_codebuild.codebuild_project_name
   codebuild_project_arn    = module.provisioning_codebuild.codebuild_project_arn
@@ -334,14 +316,14 @@ module "provisioning_lambda" {
   allowed_origins          = var.allowed_origins
 
   # ── Security Configuration ────────────────────────────────────────────────
-  cognito_user_pool_id   = var.cognito_user_pool_id
-  jwt_audience           = var.jwt_audience
-  dynamodb_kms_key_arn   = aws_kms_key.dynamodb.arn
-  cloudtrail_s3_bucket   = aws_s3_bucket.cloudtrail_logs.id
-  alarm_sns_topic_arn    = aws_sns_topic.provisioning_alarms.arn
+  cognito_user_pool_id = var.cognito_user_pool_id
+  jwt_audience         = var.jwt_audience
+  dynamodb_kms_key_arn = aws_kms_key.dynamodb.arn
+  cloudtrail_s3_bucket = aws_s3_bucket.cloudtrail_logs.id
+  alarm_sns_topic_arn  = aws_sns_topic.provisioning_alarms.arn
 
   # ── Cost Guardrails ───────────────────────────────────────────────────────
-  max_instances_per_user    = var.max_instances_per_user
+  max_instances_per_user     = var.max_instances_per_user
   max_monthly_spend_per_user = var.max_monthly_spend_per_user
   cost_per_instance_hour     = var.cost_per_instance_hour
 
@@ -352,4 +334,109 @@ module "provisioning_lambda" {
     aws_s3_bucket.cloudtrail_logs,
     aws_sns_topic.provisioning_alarms,
   ]
+}
+
+# ── Email subscription for provisioning alarms ────────────────────────────────
+
+resource "aws_sns_topic_subscription" "provisioning_alarms_email" {
+  topic_arn = aws_sns_topic.provisioning_alarms.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+# ── EventBridge rule: CodeBuild failure → SNS ─────────────────────────────────
+
+resource "aws_cloudwatch_event_rule" "codebuild_failure" {
+  name        = "${var.app_name}-codebuild-failure"
+  description = "Fires when a provisioning CodeBuild build fails or is stopped"
+
+  event_pattern = jsonencode({
+    source      = ["aws.codebuild"]
+    detail-type = ["CodeBuild Build State Change"]
+    detail = {
+      "build-status" = ["FAILED", "STOPPED"]
+      "project-name" = [module.provisioning_codebuild.codebuild_project_name]
+    }
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_event_target" "codebuild_failure_sns" {
+  rule      = aws_cloudwatch_event_rule.codebuild_failure.name
+  target_id = "codebuild-failure-to-sns"
+  arn       = aws_sns_topic.provisioning_alarms.arn
+
+  input_transformer {
+    input_paths = {
+      build_id = "$.detail.build-id"
+      project  = "$.detail.project-name"
+      status   = "$.detail.build-status"
+      account  = "$.account"
+      region   = "$.region"
+      time     = "$.time"
+    }
+    input_template = "\"ARIA Evaluator Provisioning FAILED\\n\\nProject: <project>\\nBuild ID: <build_id>\\nStatus: <status>\\nTime: <time>\\nAccount: <account>\\nRegion: <region>\\n\\nCheck CloudWatch Logs: /aws/codebuild/<project>\\nTo re-run: POST /retry-build with the build_id via the provisioning API.\""
+  }
+}
+
+resource "aws_sns_topic_policy" "provisioning_alarms_eventbridge" {
+  arn = aws_sns_topic.provisioning_alarms.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchAlarms"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudwatch.amazonaws.com"
+        }
+        Action   = "SNS:Publish"
+        Resource = aws_sns_topic.provisioning_alarms.arn
+      },
+      {
+        Sid    = "EventBridgePublish"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "SNS:Publish"
+        Resource = aws_sns_topic.provisioning_alarms.arn
+      }
+    ]
+  })
+}
+
+# ── CloudWatch metric filter for Terraform errors in CodeBuild logs ───────────
+
+resource "aws_cloudwatch_log_metric_filter" "terraform_errors" {
+  name           = "${var.app_name}-terraform-errors"
+  log_group_name = "/aws/codebuild/${module.provisioning_codebuild.codebuild_project_name}"
+  pattern        = "?\"Error:\" ?\"error:\" ?\"FAILED\" ?\"terraform plan\" ?\"terraform apply\" ?\"Provisioning failed\""
+
+  metric_transformation {
+    name          = "TerraformErrors"
+    namespace     = "ARIA/Provisioning"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "terraform_errors" {
+  alarm_name          = "${var.app_name}-terraform-errors"
+  alarm_description   = "Terraform errors detected in CodeBuild provisioning logs"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "TerraformErrors"
+  namespace           = "ARIA/Provisioning"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.provisioning_alarms.arn]
+  ok_actions    = [aws_sns_topic.provisioning_alarms.arn]
+
+  tags = local.common_tags
 }

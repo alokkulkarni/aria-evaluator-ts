@@ -4,13 +4,14 @@
 # Triggers: CodeBuild project to run terraform apply
 
 locals {
-  lambda_name = "${var.app_name}-provisioner"
+  lambda_name         = "${var.app_name}-provisioner"
+  xray_layer_zip_path = abspath("${path.module}/xray-layer.zip")
 }
 
 # ── IAM role for Lambda ────────────────────────────────────────────────────
 
 resource "aws_iam_role" "lambda_role" {
-  name = "${local.lambda_name}-role"
+  name_prefix = "${var.app_name}-${var.environment}-provisioner-role-"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -89,13 +90,13 @@ resource "aws_lambda_function" "provisioner" {
 
   environment {
     variables = {
-      CODEBUILD_PROJECT_NAME  = var.codebuild_project_name
-      USER_INSTANCE_TABLE     = var.user_instance_table_name
-      AWS_REGION              = var.aws_region
-      COGNITO_USER_POOL_ID    = var.cognito_user_pool_id
-      MAX_INSTANCES_PER_USER  = var.max_instances_per_user
-      MAX_MONTHLY_SPEND       = var.max_monthly_spend_per_user
-      COST_PER_INSTANCE_HOUR  = var.cost_per_instance_hour
+      CODEBUILD_PROJECT_NAME = var.codebuild_project_name
+      USER_INSTANCE_TABLE    = var.user_instance_table_name
+      AWS_REGION             = var.aws_region
+      COGNITO_USER_POOL_ID   = var.cognito_user_pool_id
+      MAX_INSTANCES_PER_USER = var.max_instances_per_user
+      MAX_MONTHLY_SPEND      = var.max_monthly_spend_per_user
+      COST_PER_INSTANCE_HOUR = var.cost_per_instance_hour
     }
   }
 
@@ -232,6 +233,14 @@ resource "aws_apigatewayv2_route" "reactivate_route_secured" {
   authorization_type = "JWT"
 }
 
+resource "aws_apigatewayv2_route" "retry_build_route_secured" {
+  api_id             = aws_apigatewayv2_api.provisioner_api.id
+  route_key          = "POST /retry-build"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+  authorization_type = "JWT"
+}
+
 # ── WAF for API Gateway ──────────────────────────────────────────────────────
 
 resource "aws_wafv2_web_acl" "provisioner_waf" {
@@ -318,10 +327,8 @@ resource "aws_wafv2_web_acl" "provisioner_waf" {
   tags = var.tags
 }
 
-resource "aws_wafv2_web_acl_association" "provisioner_waf_association" {
-  resource_arn = aws_apigatewayv2_stage.provisioner_stage.arn
-  web_acl_arn  = aws_wafv2_web_acl.provisioner_waf.arn
-}
+# AWS WAFv2 does not accept API Gateway v2 HTTP API stage ARNs here, so the
+# ACL is defined for future use but not associated to this stage.
 
 # ── CloudWatch Alarms for Monitoring ─────────────────────────────────────────
 
@@ -415,7 +422,7 @@ resource "aws_iam_role_policy" "lambda_xray" {
 }
 
 resource "aws_lambda_layer_version" "xray_sdk" {
-  filename            = "${path.module}/xray-layer.zip"
+  filename            = local.xray_layer_zip_path
   layer_name          = "${local.lambda_name}-xray-layer"
   compatible_runtimes = ["nodejs18.x"]
 
@@ -435,7 +442,7 @@ resource "null_resource" "create_xray_layer" {
       npm init -y > /dev/null 2>&1
       npm install --save aws-xray-sdk-core --prefix ./nodejs > /dev/null 2>&1
       cd /tmp
-      zip -r -q ${path.module}/xray-layer.zip xray-layer/
+      zip -r -q "${local.xray_layer_zip_path}" xray-layer/
       echo "X-Ray layer created successfully"
     EOT
   }
@@ -470,8 +477,8 @@ resource "aws_cloudtrail" "provisioner_trail" {
 
   depends_on = [aws_s3_bucket_policy.cloudtrail_policy]
 
-  enable_log_file_validation = true
-  is_multi_region_trail      = true
+  enable_log_file_validation    = true
+  is_multi_region_trail         = true
   include_global_service_events = true
 
   event_selector {

@@ -256,6 +256,11 @@ exports.handler = async (event) => {
       return await reactivateInstance(event);
     }
 
+    // Route: POST /retry-build
+    if (httpMethod === 'POST' && path.endsWith('/retry-build')) {
+      return await retryBuild(event);
+    }
+
     return createResponse(404, { error: 'Route not found' });
   } catch (error) {
     console.error('Handler error:', error);
@@ -561,6 +566,92 @@ async function reactivateInstance(event) {
     });
   } catch (error) {
     console.error('Reactivate instance error:', error);
+    return createResponse(500, { error: 'Internal error' }, true);
+  }
+}
+
+async function retryBuild(event) {
+  try {
+    const auth = validateAuthAndGetUserId(event);
+    if (!auth.valid) {
+      return createResponse(auth.statusCode, { error: 'Unauthorized' });
+    }
+
+    const userId = auth.userId;
+
+    // Look up the user's current instance record
+    const existing = await dynamodb
+      .getItem({
+        TableName: TABLE_NAME,
+        Key: { user_id: { S: userId } },
+      })
+      .promise();
+
+    if (!existing.Item) {
+      await auditLog(userId, 'retry_build', { reason: 'no_instance' }, 404);
+      return createResponse(404, { error: 'No instance found for this user' });
+    }
+
+    const currentStatus = existing.Item.status?.S;
+    const previousBuildId = existing.Item.build_id?.S;
+
+    // Only allow retry if the previous build failed or instance is in a failed state
+    if (currentStatus !== 'provisioning' && currentStatus !== 'failed') {
+      // Check the actual CodeBuild status if instance is still marked as provisioning
+      if (currentStatus === 'provisioning' && previousBuildId) {
+        const buildCheck = await codebuild
+          .batchGetBuilds({ ids: [previousBuildId] })
+          .promise();
+        const buildStatus = buildCheck.builds?.[0]?.buildStatus;
+        if (buildStatus === 'IN_PROGRESS') {
+          await auditLog(userId, 'retry_build', { reason: 'build_still_running', buildId: previousBuildId }, 409);
+          return createResponse(409, { error: 'A build is still in progress', build_id: previousBuildId });
+        }
+      } else {
+        await auditLog(userId, 'retry_build', { reason: 'invalid_status', status: currentStatus }, 409);
+        return createResponse(409, { error: `Cannot retry build for instance with status: ${currentStatus}` });
+      }
+    }
+
+    // Re-use the same plan_type from the original provisioning request
+    const planType = existing.Item.plan_type?.S || 'free';
+
+    // Start a new CodeBuild job
+    const buildResponse = await codebuild
+      .startBuild({
+        projectName: PROJECT_NAME,
+        environmentVariablesOverride: [
+          { name: 'USER_ID', value: userId, type: 'PLAINTEXT' },
+          { name: 'PLAN_TYPE', value: planType, type: 'PLAINTEXT' },
+        ],
+      })
+      .promise();
+
+    const newBuildId = buildResponse.build.id;
+
+    // Update DynamoDB with new build ID and reset status
+    await dynamodb
+      .updateItem({
+        TableName: TABLE_NAME,
+        Key: { user_id: { S: userId } },
+        UpdateExpression: 'SET #status = :status, build_id = :buildId',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': { S: 'provisioning' },
+          ':buildId': { S: newBuildId },
+        },
+      })
+      .promise();
+
+    await auditLog(userId, 'retry_build', { newBuildId, previousBuildId, planType }, 202);
+
+    return createResponse(202, {
+      message: 'Build retry started',
+      build_id: newBuildId,
+      previous_build_id: previousBuildId,
+    });
+  } catch (error) {
+    console.error('Retry build error:', error);
     return createResponse(500, { error: 'Internal error' }, true);
   }
 }

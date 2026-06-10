@@ -175,3 +175,11 @@ variable "cost_per_instance_hour" {
   type        = number
   default     = 0.50
 }
+
+# ── Alerting ───────────────────────────────────────────────────────────────────
+
+variable "alert_email" {
+  description = "Email address for provisioning alerts and CodeBuild failure notifications"
+  type        = string
+  default     = "kulkarni.alok@gmail.com"
+}

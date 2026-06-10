@@ -97,4 +97,12 @@ cache:
 
 # Log output
 on_failure:
-  - command: echo "Provisioning failed! Check logs above for details."
+  - command: |
+      echo "Provisioning failed! Check logs above for details."
+      aws dynamodb update-item \
+        --table-name ${USER_INSTANCE_TABLE} \
+        --key "{\"user_id\": {\"S\": \"${USER_ID}\"}}" \
+        --update-expression "SET #s = :s" \
+        --expression-attribute-names '{"#s":"status"}' \
+        --expression-attribute-values '{":s":{"S":"failed"}}' \
+        --region ${AWS_REGION} || true
