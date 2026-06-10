@@ -100,6 +100,15 @@ data "aws_iam_policy_document" "suspend_check" {
     resources = [var.heartbeat_table_arn]
   }
 
+  statement {
+    sid     = "SqsDlqSendMessage"
+    effect  = "Allow"
+    actions = ["sqs:SendMessage"]
+    resources = [
+      aws_sqs_queue.suspend_dlq.arn,
+    ]
+  }
+
   dynamic "statement" {
     for_each = var.alert_email != "" ? [1] : []
 
