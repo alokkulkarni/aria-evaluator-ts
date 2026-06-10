@@ -9,6 +9,14 @@ export default defineConfig({
   build: {
     outDir: 'dist/ui',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
   },
   server: {
     port: 5173,
