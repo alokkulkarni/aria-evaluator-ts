@@ -139,7 +139,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_1fr] xl:grid-cols-[0.94fr_1.06fr]">
+        <div className="mt-10 grid items-start gap-6 lg:grid-cols-[1fr_1fr] xl:grid-cols-[0.94fr_1.06fr]">
           <article className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.1)] backdrop-blur-sm">
             <div className="flex items-center justify-between border-b border-slate-200/70 bg-slate-50/90 px-5 py-3">
               <div className="flex items-center gap-2">
