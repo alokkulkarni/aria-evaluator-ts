@@ -156,7 +156,7 @@ module "cloudtrail" {
   aws_region     = var.aws_region
   aws_account_id = data.aws_caller_identity.current.account_id
   bucket_suffix  = var.bucket_suffix
-  kms_key_arn    = var.kms_key_arn
+  kms_key_arn    = var.cloudtrail_kms_key_arn
 
   is_multi_region               = true # prod: capture all regions
   include_global_service_events = true

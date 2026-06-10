@@ -95,6 +95,12 @@ variable "kms_key_arn" {
   type = string
 }
 
+variable "cloudtrail_kms_key_arn" {
+  description = "Optional dedicated KMS key ARN for CloudTrail. Leave empty to use SSE-S3 for CloudTrail logs."
+  type        = string
+  default     = ""
+}
+
 variable "s3_state_prefix" {
   type    = string
   default = "aria-control-plane"
