@@ -18,6 +18,12 @@ variable "app_image_name" {
   default     = "aria-evaluator:local"
 }
 
+variable "docker_pull_trigger" {
+  description = "Trigger value to force Docker image pull (e.g., current date to update Redis)"
+  type        = string
+  default     = "redis:7-alpine"
+}
+
 variable "app_dockerfile_context" {
   description = <<-EOT
     Absolute path to the repo root (where the main Dockerfile lives).
@@ -120,4 +126,50 @@ variable "website_url" {
   EOT
   type        = string
   default     = "http://localhost:3000"
+}
+
+# ── Phase 1: JWT Secrets ───────────────────────────────────────────────────────
+
+variable "access_token_secret" {
+  description = "JWT access token secret (generate with: openssl rand -base64 32)"
+  type        = string
+  default     = "local-dev-access-token-secret-do-not-use-in-prod"
+  sensitive   = true
+}
+
+variable "refresh_token_secret" {
+  description = "JWT refresh token secret (generate with: openssl rand -base64 32)"
+  type        = string
+  default     = "local-dev-refresh-token-secret-do-not-use-in-prod"
+  sensitive   = true
+}
+
+# ── Phase 1: OAuth Credentials ─────────────────────────────────────────────────
+
+variable "google_client_id" {
+  description = "Google OAuth client ID (from Google Cloud Console)"
+  type        = string
+  default     = "local-google-client-id"
+  sensitive   = true
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth client secret (from Google Cloud Console)"
+  type        = string
+  default     = "local-google-client-secret"
+  sensitive   = true
+}
+
+variable "github_client_id" {
+  description = "GitHub OAuth client ID (from GitHub Settings > Developers)"
+  type        = string
+  default     = "local-github-client-id"
+  sensitive   = true
+}
+
+variable "github_client_secret" {
+  description = "GitHub OAuth client secret (from GitHub Settings > Developers)"
+  type        = string
+  default     = "local-github-client-secret"
+  sensitive   = true
 }

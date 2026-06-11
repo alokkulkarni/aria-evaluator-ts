@@ -234,3 +234,27 @@ variable "website_url" {
   type        = string
   default     = ""
 }
+
+variable "enable_autoscaling" {
+  description = "Enable ECS service auto-scaling (requires IAM autoscaling permissions)"
+  type        = bool
+  default     = false
+}
+
+variable "min_capacity" {
+  description = "Minimum number of ECS tasks when auto-scaling is enabled"
+  type        = number
+  default     = 1
+}
+
+variable "max_capacity" {
+  description = "Maximum number of ECS tasks when auto-scaling is enabled"
+  type        = number
+  default     = 3
+}
+
+variable "cpu_scale_target" {
+  description = "Target CPU utilization % for auto-scaling (0-100)"
+  type        = number
+  default     = 70
+}

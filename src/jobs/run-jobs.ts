@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { prisma } from '../db/client.js';
+import { jobQueue } from '../lib/cache.js';
 import { publishRunEventSafe } from './run-events.js';
 import type { RunJobPayload } from './run-job-payload.js';
 import { serializeRunJobPayload } from './run-job-payload.js';
@@ -47,6 +48,18 @@ export async function createQueuedRun(params: {
     });
   });
 
+  // Add to Bull/Redis queue — fire-and-forget so a Redis outage never blocks run creation.
+  // The Prisma poll loop acts as fallback if Redis is unavailable.
+  jobQueue.add(
+    { runId: params.runId },
+    {
+      attempts: MAX_RUN_JOB_ATTEMPTS,
+      backoff: { type: 'exponential', delay: 2000 },
+      removeOnComplete: { age: 3600 },
+      removeOnFail: false,
+    },
+  ).catch((err: Error) => console.warn(`[JobQueue] Failed to enqueue run ${params.runId}: ${err.message}`));
+
   const queuedAt = new Date().toISOString();
   const message = `=== Run queued at ${queuedAt} ===`;
   appendRunLogLine(params.runId, message);
@@ -70,6 +83,22 @@ export async function startRunJobWorker(): Promise<void> {
     );
   }
 
+  // Re-enqueue any Prisma-queued jobs that survived a Redis restart.
+  await rehydrateBullQueue();
+
+  // Register Bull processor — primary execution path.
+  const bullConcurrency = Math.max(
+    1,
+    Number.parseInt(process.env['BULL_QUEUE_CONCURRENCY'] ?? '5', 10) || 5,
+  );
+  jobQueue.process(bullConcurrency, async (job) => {
+    const { runId } = job.data as { runId: string };
+    const claimedJob = await claimSpecificRunJob(runId);
+    if (!claimedJob) return; // Already processed by another worker or the poll loop
+    await executeRunJob(claimedJob);
+  });
+
+  // Keep the Prisma poll loop as a fallback for when Redis/Bull is unavailable.
   scheduleNextJob(0);
 }
 
@@ -222,6 +251,92 @@ async function runJobWorkerTick(): Promise<void> {
   } finally {
     scheduleNextJob(nextDelay);
   }
+}
+
+async function rehydrateBullQueue(): Promise<void> {
+  try {
+    const queuedJobs = await prisma.job.findMany({
+      where: { status: 'queued' },
+      select: { runId: true },
+    });
+    if (queuedJobs.length === 0) return;
+    await Promise.all(
+      queuedJobs.map((j) =>
+        jobQueue
+          .add(
+            { runId: j.runId },
+            {
+              attempts: MAX_RUN_JOB_ATTEMPTS,
+              backoff: { type: 'exponential', delay: 2000 },
+              removeOnComplete: { age: 3600 },
+              removeOnFail: false,
+            },
+          )
+          .catch(() => { /* ignore duplicate-add errors */ }),
+      ),
+    );
+    console.log(`[JobQueue] Rehydrated ${queuedJobs.length} queued run(s) into Bull.`);
+  } catch (err) {
+    console.warn(`[JobQueue] Rehydration skipped (Redis unavailable?): ${(err as Error).message}`);
+  }
+}
+
+async function claimSpecificRunJob(runId: string): Promise<ClaimedRunJob | null> {
+  const claimedAt = new Date();
+  const claimedAtIso = claimedAt.toISOString();
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.$executeRawUnsafe(
+      `UPDATE "Job"
+       SET "status" = 'running',
+           "workerId" = ?,
+           "claimedAt" = ?,
+           "startedAt" = ?,
+           "attemptCount" = "attemptCount" + 1,
+           "updatedAt" = ?
+       WHERE "runId" = ?
+         AND "status" = 'queued'`,
+      workerId,
+      claimedAtIso,
+      claimedAtIso,
+      claimedAtIso,
+      runId,
+    );
+
+    if (updated === 0) return null;
+
+    const job = await tx.job.findFirst({
+      where: { runId, workerId, status: 'running' },
+      include: { run: true },
+      orderBy: { claimedAt: 'desc' },
+    });
+    if (!job) return null;
+
+    await tx.run.update({
+      where: { id: runId },
+      data: {
+        status: 'running',
+        startedAt: claimedAt,
+        completedAt: null,
+        errorMessage: null,
+        audioPath: null,
+      },
+    });
+
+    return {
+      ...job,
+      run: {
+        ...job.run,
+        status: 'running',
+        startedAt: claimedAt,
+        completedAt: null,
+        errorMessage: null,
+        audioPath: null,
+      },
+      startedAt: claimedAt,
+      claimedAt,
+    };
+  });
 }
 
 async function claimNextQueuedRunJob(): Promise<ClaimedRunJob | null> {

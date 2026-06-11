@@ -32,7 +32,7 @@ export interface SignUpState {
   email: string
   password: string
   company?: string
-  authProvider?: 'google' | 'github' | 'apple' | 'email'
+  authProvider?: 'google' | 'apple' | 'email'
   selectedPlan?: PricingTier
   billingPeriod: BillingPeriod
   selectedRegion?: string

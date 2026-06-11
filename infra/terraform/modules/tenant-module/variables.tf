@@ -216,3 +216,36 @@ variable "website_url" {
   type        = string
   default     = ""
 }
+
+variable "extra_environment_vars" {
+  description = "Extra environment variables to pass to ECS task (e.g., Redis connection info)"
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default = []
+}
+
+variable "enable_autoscaling" {
+  description = "Enable ECS service auto-scaling for this tenant"
+  type        = bool
+  default     = false
+}
+
+variable "min_capacity" {
+  description = "Minimum number of ECS tasks when auto-scaling is enabled"
+  type        = number
+  default     = 1
+}
+
+variable "max_capacity" {
+  description = "Maximum number of ECS tasks when auto-scaling is enabled"
+  type        = number
+  default     = 3
+}
+
+variable "cpu_scale_target" {
+  description = "Target CPU utilisation % that triggers auto-scaling (0-100)"
+  type        = number
+  default     = 70
+}

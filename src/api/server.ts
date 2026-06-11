@@ -10,10 +10,14 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import type { NextFunction, Request, Response } from 'express';
 
-import { initDb } from '../db/client.js';
+import { initDb, prisma } from '../db/client.js';
+import redis from '../lib/cache.js';
 import { startRunJobWorker } from '../jobs/run-jobs.js';
 import { appPaths, ensureManagedStateDirs, getStateLayoutWarnings } from '../runtime/paths.js';
 import { attachAuthContext, authRouter, ssoRouter, requireAuth, ensureDefaultAdminAccount } from './auth.js';
+import { authCredentialsRouter } from './routes/auth-credentials.js';
+import { authOAuthRouter } from './routes/auth-oauth.js';
+import { tokenRouter } from './routes/auth-token.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { runsRouter } from './routes/runs.js';
 import { reviewsRouter } from './routes/reviews.js';
@@ -174,6 +178,10 @@ if (process.env['NODE_ENV'] === 'production') {
 // unauthenticated redirect from the website hits here first.
 // Path matches what control-plane emits: {instanceUrl}/auth/sso?token=...
 app.use('/auth/sso', ssoRouter);
+// Phase 1: Email/password credentials and OAuth flows
+app.use('/auth', authCredentialsRouter);
+app.use('/auth', authOAuthRouter);
+app.use('/auth', tokenRouter);
 app.use('/api', attachAuthContext);
 app.use('/api/auth', authRouter);
 app.use('/api', enforceTrustedOrigin);
@@ -204,9 +212,47 @@ if (existsSync(DIST_DIR)) {
   });
 }
 
-// ── Health check ───────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, ts: new Date().toISOString() });
+// ── Health & readiness probes ─────────────────────────────────────────────────
+async function checkDbHealth(): Promise<boolean> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkRedisHealth(): Promise<boolean> {
+  try {
+    await redis.ping();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// /health — deep dependency check used by ALB and monitoring
+app.get('/health', async (_req, res) => {
+  const [dbOk, redisOk] = await Promise.allSettled([checkDbHealth(), checkRedisHealth()]);
+  const db = dbOk.status === 'fulfilled' && dbOk.value;
+  const cache = redisOk.status === 'fulfilled' && redisOk.value;
+  const status = db && cache ? 'ok' : 'degraded';
+  res.status(db ? 200 : 503).json({
+    status,
+    ts: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    checks: { database: db ? 'ok' : 'error', redis: cache ? 'ok' : 'error' },
+  });
+});
+
+// /ready — readiness probe; 503 until all deps healthy (used by ECS pre-traffic checks)
+app.get('/ready', async (_req, res) => {
+  const [db, cache] = await Promise.all([checkDbHealth(), checkRedisHealth()]);
+  if (db && cache) {
+    res.json({ ready: true });
+  } else {
+    res.status(503).json({ ready: false, checks: { database: db, redis: cache } });
+  }
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────────

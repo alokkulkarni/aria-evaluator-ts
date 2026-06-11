@@ -72,7 +72,28 @@ module "tenant" {
   control_plane_internal_url       = var.control_plane_internal_url
   control_plane_internal_secret    = var.control_plane_internal_secret
   website_url                      = var.website_url
-  tags                             = var.tags
+  enable_autoscaling               = var.enable_autoscaling
+  min_capacity                     = var.min_capacity
+  max_capacity                     = var.max_capacity
+  cpu_scale_target                 = var.cpu_scale_target
+
+  # Pass Redis connection info from redis.tf
+  extra_environment_vars = [
+    {
+      name  = "REDIS_HOST"
+      value = module.redis.endpoint_address
+    },
+    {
+      name  = "REDIS_PORT"
+      value = tostring(module.redis.endpoint_port)
+    },
+    {
+      name  = "REDIS_DB"
+      value = "0"
+    },
+  ]
+
+  tags = var.tags
 }
 
 # ── CloudTrail ────────────────────────────────────────────────────────────────

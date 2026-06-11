@@ -189,3 +189,27 @@ variable "alert_email" {
   type        = string
   default     = "kulkarni.alok@gmail.com"
 }
+
+variable "enable_autoscaling" {
+  description = "Enable ECS auto-scaling"
+  type        = bool
+  default     = false
+}
+
+variable "min_capacity" {
+  description = "Minimum ECS task count"
+  type        = number
+  default     = 1
+}
+
+variable "max_capacity" {
+  description = "Maximum ECS task count"
+  type        = number
+  default     = 3
+}
+
+variable "cpu_scale_target" {
+  description = "Target CPU % for auto-scaling trigger"
+  type        = number
+  default     = 70
+}

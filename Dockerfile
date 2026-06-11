@@ -6,8 +6,13 @@ FROM --platform=$BUILDPLATFORM node:20-bookworm-slim AS build
 
 WORKDIR /app
 
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 COPY prisma ./prisma
+
+ENV PRISMA_HIDE_UPDATE_MESSAGE=1
+
 RUN npm ci && npx prisma generate
 
 COPY . .

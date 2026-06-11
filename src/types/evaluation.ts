@@ -4,6 +4,7 @@ export interface DimensionScore {
   score: number;         // 0–10
   justification: string;
   evidence?: string;
+  gap?: string;          // Why the score is not 10/10 — populated by judge when score < 1.0
 }
 
 export interface EvalResult {

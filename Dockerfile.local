@@ -4,10 +4,18 @@ FROM node:20-bookworm-slim AS build
 
 WORKDIR /app
 
+# OpenSSL is required by Prisma to detect the correct engine binary at generate
+# time. Without it Prisma falls back to openssl-1.1.x and emits a warning.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 # Copy dependency manifests before source so Docker layer caching skips
 # npm ci on rebuilds where only source files changed (not dependencies).
 COPY package*.json ./
 COPY prisma ./prisma
+
+# PRISMA_HIDE_UPDATE_MESSAGE suppresses the "Update available 6.x → 7.x" banner
+# that would otherwise clutter build logs on every prisma generate call.
+ENV PRISMA_HIDE_UPDATE_MESSAGE=1
 
 # BuildKit cache mounts keep the npm download cache and Prisma engine binary
 # warm across builds.  Only the package manifests layer is invalidated when

@@ -3,6 +3,16 @@ output "vpc_id" {
   value       = module.networking.vpc_id
 }
 
+output "ecs_service_security_group_id" {
+  description = "ECS service security group ID for Redis access"
+  value       = module.networking.ecs_service_security_group_id
+}
+
+output "private_subnet_ids" {
+  description = "Private subnet IDs for Redis subnet group"
+  value       = module.networking.private_subnet_ids
+}
+
 output "alb_dns_name" {
   description = "DNS name of the tenant ALB"
   value       = module.alb.alb_dns_name

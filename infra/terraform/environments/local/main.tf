@@ -1,3 +1,21 @@
+# ── Phase 1: Auth system environment variables ────────────────────────────────
+# Phase 1 adds JWT tokens, OAuth, and Redis-backed sessions
+locals {
+  phase1_environment_vars = [
+    { name = "REDIS_HOST", value = "localhost" },
+    { name = "REDIS_PORT", value = "6379" },
+    { name = "ACCESS_TOKEN_SECRET", value = var.access_token_secret },
+    { name = "REFRESH_TOKEN_SECRET", value = var.refresh_token_secret },
+    { name = "GOOGLE_CLIENT_ID", value = var.google_client_id },
+    { name = "GOOGLE_CLIENT_SECRET", value = var.google_client_secret },
+    { name = "GOOGLE_REDIRECT_URI", value = "http://localhost:3001/auth/oauth/google/callback" },
+    { name = "GITHUB_CLIENT_ID", value = var.github_client_id },
+    { name = "GITHUB_CLIENT_SECRET", value = var.github_client_secret },
+    { name = "GITHUB_REDIRECT_URI", value = "http://localhost:3001/auth/oauth/github/callback" },
+    { name = "BULL_QUEUE_CONCURRENCY", value = "5" },
+  ]
+}
+
 module "docker_local" {
   source = "../../modules/docker-local"
 
@@ -12,7 +30,7 @@ module "docker_local" {
   container_port = 3001
   host_port      = var.host_port
 
-  extra_environment_vars = var.extra_environment_vars
+  extra_environment_vars = concat(var.extra_environment_vars, local.phase1_environment_vars)
 
   # ── External Bedrock proxy ───────────────────────────────────────────────────
   # The Bedrock proxy now runs as a completely standalone service deployed with:

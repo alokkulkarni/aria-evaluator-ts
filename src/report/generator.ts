@@ -124,7 +124,23 @@ export class ReportGenerator {
     .dim-details { margin-top: 6px; }
     .dim-summary { font-size: 12px; color: #4a6fa5; cursor: pointer; user-select: none; display: inline-block; }
     .dim-summary:hover { text-decoration: underline; }
-    .dim-detail-body { margin-top: 8px; padding: 10px 12px; background: #f7fafc; border-left: 3px solid #cbd5e0; border-radius: 0 4px 4px 0; font-size: 13px; }
+    .dim-detail-body { margin-top: 8px; font-size: 13px; }
+    .scenario-block { padding: 10px 12px; background: #f7fafc; border-left: 3px solid #cbd5e0; border-radius: 0 4px 4px 0; margin-bottom: 8px; }
+    .scenario-block.low-scorer { background: #fff8f0; border-left-color: #ed8936; }
+    .scenario-block.failing { background: #fff5f5; border-left-color: #e53e3e; }
+    .scenario-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px; }
+    .scenario-name { font-weight: 600; color: #2d3748; font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scenario-score-badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 12px; white-space: nowrap; flex-shrink: 0; }
+    .badge-pass { background: #c6f6d5; color: #276749; }
+    .badge-warn { background: #feebc8; color: #7b341e; }
+    .badge-fail { background: #fed7d7; color: #9b2c2c; }
+    .low-flag { font-size: 11px; color: #ed8936; font-weight: 600; margin-left: 4px; }
+    .score-gap-block { margin: 6px 0 8px 0; padding: 7px 10px; background: #fffaf0; border: 1px solid #f6ad55; border-radius: 4px; font-size: 12px; color: #744210; display: flex; gap: 6px; align-items: flex-start; }
+    .score-gap-icon { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+    .score-gap-text { line-height: 1.5; }
+    .score-gap-text strong { color: #c05621; }
+    .score-interp { margin-top: 3px; color: #7b341e; font-style: italic; }
+    .score-gap-why { margin-top: 4px; color: #744210; }
     .reasoning-block ul { margin: 4px 0 8px 16px; padding: 0; }
     .reasoning-block li { margin-bottom: 4px; line-height: 1.5; color: #2d3748; }
     .evidence-block { margin-top: 8px; }
@@ -181,6 +197,15 @@ export class ReportGenerator {
 </html>`;
   }
 
+  private scoreInterpretation(score: number): string {
+    if (score >= 9.5) return 'Excellent — near-perfect performance across the board';
+    if (score >= 9.0) return 'Very good — strong performance; the 1-point gap reflects a subtle area the judge detected but did not describe explicitly in the justification';
+    if (score >= 8.0) return 'Good — solid performance with some identifiable gaps';
+    if (score >= 7.0) return 'Acceptable — meets the passing threshold but notable areas need improvement';
+    if (score >= 6.0) return 'Borderline — passing, but significant weaknesses present';
+    return 'Failing — critical issues detected';
+  }
+
   private renderDimensionTable(results: EvalResult[]): string {
     if (results.length === 0) return '<p>No results.</p>';
 
@@ -192,32 +217,68 @@ export class ReportGenerator {
     const rows = Array.from(allDimIds)
       .map((dimId) => {
         const dim = ALL_DIMENSIONS_BY_ID[dimId];
-        const dimScores = results.flatMap((r) =>
-          r.dimensionScores[dimId] ? [r.dimensionScores[dimId]!] : [],
+        // Pair each score with its originating result so we can show scenario name + per-scenario score.
+        const dimScoresWithResult = results.flatMap((r) =>
+          r.dimensionScores[dimId] ? [{ ds: r.dimensionScores[dimId]!, result: r }] : [],
         );
-        const numericScores = dimScores.map((d) => d.score);
+        const numericScores = dimScoresWithResult.map((d) => d.ds.score);
         const avg = numericScores.length > 0 ? numericScores.reduce((a, b) => a + b, 0) / numericScores.length : 0;
         const pct = (avg / 10) * 100;
-        const passing = avg >= 6;  // default passing threshold
+        const passing = avg >= 6;
         const scoreClass = passing ? 'score-pass' : 'score-fail';
+        const minScore = numericScores.length > 0 ? Math.min(...numericScores) : 0;
 
-        // Build justification blocks (one per result)
-        const detailBlocks = dimScores
-          .map((ds, i) => {
+        // Build per-scenario justification blocks with score badges and low-score highlighting.
+        const detailBlocks = dimScoresWithResult
+          .map(({ ds, result }, i) => {
+            const scenarioScore = ds.score;
+            const isFailing = scenarioScore < 6;
+            const isLow = !isFailing && scenarioScore < avg && numericScores.length > 1;
+            const isLowest = scenarioScore === minScore && numericScores.length > 1 && scenarioScore < avg;
+
+            const blockClass = isFailing ? 'failing' : isLow ? 'low-scorer' : '';
+            const badgeClass = isFailing ? 'badge-fail' : isLow ? 'badge-warn' : 'badge-pass';
+            const gapFromPerfect = (10 - scenarioScore).toFixed(1);
+            const gapFromAvg = (avg - scenarioScore).toFixed(1);
+            const lowFlag = isLowest ? `<span class="low-flag">↓ −${gapFromAvg} below avg</span>` : '';
+
+            const scenarioName = result.scenarioName ?? `Scenario ${i + 1}`;
+            const scenarioLabel = dimScoresWithResult.length > 1
+              ? `<div class="scenario-header">
+                   <span class="scenario-name" title="${escapeHtml(scenarioName)}">${escapeHtml(scenarioName)}</span>
+                   <span class="scenario-score-badge ${badgeClass}">${scenarioScore.toFixed(1)}/10${lowFlag}</span>
+                 </div>`
+              : '';
+
+            // Gap analysis block for amber/failing scenarios — explains the deduction explicitly
+            const gapBlock = (isLow || isFailing)
+              ? (() => {
+                  const gapDetail = ds.gap
+                    ? `<div class="score-gap-why"><strong>Why not 10/10:</strong> ${escapeHtml(ds.gap)}</div>`
+                    : `<div class="score-interp">${escapeHtml(this.scoreInterpretation(scenarioScore))}</div>`;
+                  return `<div class="score-gap-block">
+                   <span class="score-gap-icon">ℹ️</span>
+                   <div class="score-gap-text">
+                     <strong>${scenarioScore.toFixed(1)}/10 — ${gapFromPerfect} point${parseFloat(gapFromPerfect) !== 1 ? 's' : ''} below perfect${numericScores.length > 1 ? `, ${gapFromAvg} below group average (${avg.toFixed(1)}/10)` : ''}</strong>
+                     ${gapDetail}
+                   </div>
+                 </div>`;
+                })()
+              : '';
+
             const justLines = ds.justification
-              ? ds.justification.split(' | ').map((line) =>
-                  `<li>${escapeHtml(line)}</li>`,
-                ).join('')
+              ? ds.justification.split(' | ').map((line) => `<li>${escapeHtml(line)}</li>`).join('')
               : '';
             const evidenceLines = ds.evidence
-              ? ds.evidence.split('\n').map((line) =>
-                  `<div class="evidence-quote">${escapeHtml(line)}</div>`,
-                ).join('')
+              ? ds.evidence.split('\n').map((line) => `<div class="evidence-quote">${escapeHtml(line)}</div>`).join('')
               : '';
-            const resultLabel = results.length > 1 ? `<strong>Scenario ${i + 1}:</strong> ` : '';
-            return `
-              ${justLines ? `<div class="reasoning-block">${resultLabel}<ul>${justLines}</ul></div>` : ''}
-              ${evidenceLines ? `<div class="evidence-block"><span class="evidence-label">📎 Evidence</span>${evidenceLines}</div>` : ''}`;
+
+            return `<div class="scenario-block ${blockClass}">
+                ${scenarioLabel}
+                ${gapBlock}
+                ${justLines ? `<div class="reasoning-block"><ul>${justLines}</ul></div>` : ''}
+                ${evidenceLines ? `<div class="evidence-block"><span class="evidence-label">📎 Evidence</span>${evidenceLines}</div>` : ''}
+              </div>`;
           })
           .join('');
 
@@ -228,7 +289,7 @@ export class ReportGenerator {
             <div>${dim?.description ?? dimId}</div>
             <details class="dim-details">
               <summary class="dim-summary">Why this score?</summary>
-              <div class="dim-detail-body">${detailBlocks || '<p>No detail available.</p>'}</div>
+              <div class="dim-detail-body">${detailBlocks || '<div class="scenario-block"><p>No detail available.</p></div>'}</div>
             </details>
           </td>
           <td class="dim-score">

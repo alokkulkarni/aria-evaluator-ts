@@ -75,6 +75,7 @@ const providers = [
           clientId: process.env.COGNITO_CLIENT_ID!,
           clientSecret: process.env.COGNITO_CLIENT_SECRET!,
           issuer: process.env.COGNITO_ISSUER!,
+          checks: ['pkce', 'state', 'nonce'],
         }),
       ]
     : []),
@@ -100,6 +101,7 @@ const providers = [
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
+  trustHost: true,
   pages: {
     signIn: '/sign-in',
     newUser: '/sign-up',

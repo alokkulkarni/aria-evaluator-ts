@@ -616,7 +616,16 @@ app.use(express.json({ limit: '1mb' }));
 app.use(enforceOrigin);
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, ts: nowIso() });
+  res.json({
+    status: 'ok',
+    ts: nowIso(),
+    uptime: Math.floor(process.uptime()),
+    checks: { server: 'ok' },
+  });
+});
+
+app.get('/ready', (_req, res) => {
+  res.json({ ready: true });
 });
 
 app.get('/regions', (_req, res) => {

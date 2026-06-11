@@ -462,6 +462,8 @@ resource "aws_ecs_task_definition" "auth" {
       { name = "NODE_ENV", value = "production" },
       { name = "ARIA_DEPLOY_ENV", value = var.environment },
       { name = "NEXTAUTH_URL", value = var.public_url },
+      { name = "AUTH_URL", value = var.public_url },
+      { name = "AUTH_TRUST_HOST", value = "true" },
       { name = "COGNITO_ENABLED", value = var.cognito_enabled ? "true" : "false" },
       { name = "COGNITO_CLIENT_ID", value = var.cognito_client_id },
       { name = "COGNITO_ISSUER", value = var.cognito_issuer },
@@ -492,13 +494,6 @@ resource "aws_ecs_task_definition" "auth" {
       }
     }
 
-    healthCheck = {
-      command     = ["CMD-SHELL", "wget -qO- http://localhost:${var.container_port}/api/health || exit 1"]
-      interval    = 30
-      timeout     = 5
-      retries     = 3
-      startPeriod = 60
-    }
   }])
 
   tags = local.common_tags

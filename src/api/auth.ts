@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 
 import { prisma } from '../db/client.js';
+import { getCachedAuthSession, cacheAuthSession, invalidateCachedAuthSession } from '../lib/cache.js';
 import { recordAuditEventSafe } from './audit-log.js';
 import { getWebsiteSignOutUrl } from './control-plane.js';
 
@@ -122,7 +123,8 @@ function hashPassword(password: string, salt?: string, options?: { temporary?: b
   return `${version}$${effectiveSalt}$${digest}`;
 }
 
-function verifyPassword(storedHash: string, candidatePassword: string): boolean {
+function verifyPassword(storedHash: string | null, candidatePassword: string): boolean {
+  if (!storedHash) return false;
   const [version, salt, expectedHash] = storedHash.split('$');
   if ((version !== PASSWORD_HASH_VERSION && version !== TEMP_PASSWORD_HASH_VERSION) || !salt || !expectedHash) return false;
 
@@ -135,7 +137,8 @@ function verifyPassword(storedHash: string, candidatePassword: string): boolean 
   return timingSafeEqual(expectedBuffer, computedBuffer);
 }
 
-function isTemporaryPasswordHash(storedHash: string): boolean {
+function isTemporaryPasswordHash(storedHash: string | null): boolean {
+  if (!storedHash) return false;
   const [version] = storedHash.split('$');
   return version === TEMP_PASSWORD_HASH_VERSION;
 }
@@ -472,6 +475,16 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
     }
 
     const tokenHash = hashToken(sessionToken);
+
+    // 1. Try Redis cache first (60 s TTL, shared across instances)
+    const cached = await getCachedAuthSession(tokenHash).catch(() => null);
+    if (cached) {
+      (req as AuthenticatedRequest).auth = cached as AuthContext;
+      next();
+      return;
+    }
+
+    // 2. Cache miss — fall through to DB
     const session = await prisma.authSession.findUnique({
       where: { tokenHash },
       include: { user: true },
@@ -485,6 +498,7 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
 
     if (session.expiresAt.getTime() <= Date.now()) {
       await prisma.authSession.delete({ where: { id: session.id } });
+      invalidateCachedAuthSession(tokenHash).catch(() => {});
       clearSessionCookie(res);
       next();
       return;
@@ -493,12 +507,13 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
     // Idle timeout: expire session if no activity for SESSION_IDLE_TIMEOUT_MS
     if (session.lastSeenAt && (Date.now() - session.lastSeenAt.getTime()) > SESSION_IDLE_TIMEOUT_MS) {
       await prisma.authSession.delete({ where: { id: session.id } });
+      invalidateCachedAuthSession(tokenHash).catch(() => {});
       clearSessionCookie(res);
       next();
       return;
     }
 
-    (req as AuthenticatedRequest).auth = {
+    const authContext: AuthContext = {
       userId: session.userId,
       username: session.user.username,
       role: session.user.role,
@@ -509,6 +524,11 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       requirePasswordChange: isTemporaryPasswordHash(session.user.passwordHash),
       suspended: session.user.suspended,
     };
+
+    // 3. Store in cache (fire-and-forget — never block the request path)
+    cacheAuthSession(tokenHash, authContext).catch(() => {});
+
+    (req as AuthenticatedRequest).auth = authContext;
 
     const shouldRefreshLastSeen = !session.lastSeenAt
       || (Date.now() - session.lastSeenAt.getTime()) > SESSION_REFRESH_INTERVAL_MS;
@@ -759,6 +779,10 @@ authRouter.post('/change-password', async (req, res) => {
     });
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    if (!user.passwordHash) {
+      res.status(400).json({ error: 'Cannot change password for SSO account' });
       return;
     }
     if (!verifyPassword(user.passwordHash, currentPassword)) {

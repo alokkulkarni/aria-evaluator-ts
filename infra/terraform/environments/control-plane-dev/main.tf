@@ -105,6 +105,10 @@ module "ecs" {
   cpu                           = var.cpu
   memory                        = var.memory
   desired_count                 = var.desired_count
+  enable_autoscaling            = var.enable_autoscaling
+  min_capacity                  = var.min_capacity
+  max_capacity                  = var.max_capacity
+  cpu_scale_target              = var.cpu_scale_target
   task_execution_role_arn       = module.iam.task_execution_role_arn
   task_role_arn                 = module.iam.task_role_arn
   public_subnet_ids             = module.networking.public_subnet_ids

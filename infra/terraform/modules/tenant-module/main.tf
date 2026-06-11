@@ -183,6 +183,10 @@ module "ecs" {
   cpu                                = local.config.cpu
   memory                             = local.config.memory
   desired_count                      = 1
+  enable_autoscaling                 = var.enable_autoscaling
+  min_capacity                       = var.min_capacity
+  max_capacity                       = var.max_capacity
+  cpu_scale_target                   = var.cpu_scale_target
   task_execution_role_arn            = module.iam.task_execution_role_arn
   task_role_arn                      = module.iam.task_role_arn
   public_subnet_ids                  = module.networking.public_subnet_ids
@@ -208,6 +212,7 @@ module "ecs" {
   control_plane_internal_url         = var.control_plane_internal_url
   control_plane_internal_secret      = var.control_plane_internal_secret
   website_url                        = var.website_url
+  extra_environment_vars             = var.extra_environment_vars
   tags = merge(local.common_tags, {
     "aria:resource_type" = "compute"
   })

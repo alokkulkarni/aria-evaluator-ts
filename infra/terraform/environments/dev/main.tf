@@ -111,6 +111,10 @@ module "ecs" {
   cpu                           = var.cpu
   memory                        = var.memory
   desired_count                 = var.desired_count
+  enable_autoscaling            = var.enable_autoscaling
+  min_capacity                  = var.min_capacity
+  max_capacity                  = var.max_capacity
+  cpu_scale_target              = var.cpu_scale_target
   task_execution_role_arn       = module.iam.task_execution_role_arn
   task_role_arn                 = module.iam.task_role_arn
   public_subnet_ids             = module.networking.public_subnet_ids
@@ -121,7 +125,26 @@ module "ecs" {
   s3_state_prefix               = var.s3_state_prefix
   s3_sync_interval_seconds      = var.s3_sync_interval_seconds
   log_retention_days            = var.log_retention_days
-  extra_environment_vars        = var.extra_environment_vars
+
+  # Merge Redis env vars with extra vars
+  extra_environment_vars = concat(
+    [
+      {
+        name  = "REDIS_HOST"
+        value = module.redis.endpoint_address
+      },
+      {
+        name  = "REDIS_PORT"
+        value = tostring(module.redis.endpoint_port)
+      },
+      {
+        name  = "REDIS_DB"
+        value = "0"
+      },
+    ],
+    var.extra_environment_vars
+  )
+
   saas_mode                     = false # dev is always standalone
   tenant_id                     = var.tenant_id
   pricing_tier                  = var.pricing_tier

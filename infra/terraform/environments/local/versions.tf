@@ -8,11 +8,13 @@ terraform {
     }
     null = {
       source  = "hashicorp/null"
-      version = "~> 3.0"
+      version = "~> 3.2"
     }
   }
 }
 
-# Connect to the local Docker daemon (default socket — no additional config needed).
-# Set DOCKER_HOST env var to override (e.g. a remote daemon or Colima socket).
-provider "docker" {}
+# Connect to the local Docker daemon
+# Set DOCKER_HOST env var to override (e.g. a remote daemon or Colima socket)
+provider "docker" {
+  host = "unix:///var/run/docker.sock"
+}

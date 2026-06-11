@@ -214,6 +214,32 @@ variable "control_plane_internal_secret" {
   sensitive   = true
 }
 
+# ── Redis ────────────────────────────────────────────────────────────────────────
+
+variable "redis_node_type" {
+  description = "ElastiCache node type for Redis (e.g., cache.t4g.micro, cache.t4g.small)"
+  type        = string
+  default     = "cache.t4g.small"
+}
+
+variable "redis_num_cache_nodes" {
+  description = "Number of cache nodes (1 for dev, 2 for HA)"
+  type        = number
+  default     = 1
+}
+
+variable "redis_snapshot_retention_limit" {
+  description = "Number of days to retain Redis snapshots"
+  type        = number
+  default     = 5
+}
+
+variable "alarm_sns_topic_arn" {
+  description = "SNS topic ARN for CloudWatch alarm notifications (optional)"
+  type        = string
+  default     = ""
+}
+
 variable "website_url" {
   description = <<-EOT
     Base URL of the ARIA marketing website, injected as ARIA_WEBSITE_URL.
@@ -222,4 +248,28 @@ variable "website_url" {
   EOT
   type        = string
   default     = ""
+}
+
+variable "enable_autoscaling" {
+  description = "Enable ECS auto-scaling for the dev environment"
+  type        = bool
+  default     = false
+}
+
+variable "min_capacity" {
+  description = "Minimum ECS task count"
+  type        = number
+  default     = 1
+}
+
+variable "max_capacity" {
+  description = "Maximum ECS task count"
+  type        = number
+  default     = 3
+}
+
+variable "cpu_scale_target" {
+  description = "Target CPU % for auto-scaling trigger"
+  type        = number
+  default     = 70
 }
