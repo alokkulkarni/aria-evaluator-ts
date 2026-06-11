@@ -190,10 +190,9 @@ module "ecs" {
       { name = "CONTROL_PLANE_SECRET_ARN", value = aws_secretsmanager_secret.control_plane_internal_secret.arn },
       { name = "CONTROL_PLANE_CORS_ORIGINS", value = join(",", var.allowed_origins) },
       { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = var.instance_base_url },
+      { name = "USER_INSTANCE_TABLE", value = aws_dynamodb_table.user_instances.name },
+      { name = "CODEBUILD_PROJECT_NAME", value = module.provisioning_codebuild.codebuild_project_name },
     ],
-    var.codebuild_project_name != "" ? [
-      { name = "CODEBUILD_PROJECT_NAME", value = var.codebuild_project_name },
-    ] : [],
   )
   # Internal secret injected via ECS secrets (Secrets Manager valueFrom) — never plaintext
   extra_secrets = [
@@ -335,15 +334,6 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail_logs" {
   restrict_public_buckets = true
 }
 
-# ── SNS Topic for Alarms ─────────────────────────────────────────────────────
-
-resource "aws_sns_topic" "provisioning_alarms" {
-  name              = "${var.app_name}-provisioning-alarms"
-  kms_master_key_id = "alias/aws/sns"
-
-  tags = local.common_tags
-}
-
 # ── CodeBuild project for provisioning ────────────────────────────────────────
 
 module "provisioning_codebuild" {
@@ -361,6 +351,7 @@ module "provisioning_codebuild" {
   ecr_repository_arn          = "arn:aws:ecr:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:repository/${var.app_name}"
   github_repo_url             = var.github_repo_url
   github_branch               = var.github_branch
+  alert_email                 = var.alert_email
 
   tags = local.common_tags
 }
@@ -384,7 +375,8 @@ module "provisioning_lambda" {
   jwt_audience         = var.jwt_audience
   dynamodb_kms_key_arn = aws_kms_key.dynamodb.arn
   cloudtrail_s3_bucket = aws_s3_bucket.cloudtrail_logs.id
-  alarm_sns_topic_arn  = aws_sns_topic.provisioning_alarms.arn
+  # Use the SNS topic created inside the module so Lambda alarms reach the same destination
+  alarm_sns_topic_arn = module.provisioning_codebuild.sns_topic_arn
 
   # ── Cost Guardrails ───────────────────────────────────────────────────────
   max_instances_per_user     = var.max_instances_per_user
@@ -396,111 +388,6 @@ module "provisioning_lambda" {
   depends_on = [
     aws_kms_key.dynamodb,
     aws_s3_bucket.cloudtrail_logs,
-    aws_sns_topic.provisioning_alarms,
+    module.provisioning_codebuild,
   ]
-}
-
-# ── Email subscription for provisioning alarms ────────────────────────────────
-
-resource "aws_sns_topic_subscription" "provisioning_alarms_email" {
-  topic_arn = aws_sns_topic.provisioning_alarms.arn
-  protocol  = "email"
-  endpoint  = var.alert_email
-}
-
-# ── EventBridge rule: CodeBuild failure → SNS ─────────────────────────────────
-
-resource "aws_cloudwatch_event_rule" "codebuild_failure" {
-  name        = "${var.app_name}-codebuild-failure"
-  description = "Fires when a provisioning CodeBuild build fails or is stopped"
-
-  event_pattern = jsonencode({
-    source      = ["aws.codebuild"]
-    detail-type = ["CodeBuild Build State Change"]
-    detail = {
-      "build-status" = ["FAILED", "STOPPED"]
-      "project-name" = [module.provisioning_codebuild.codebuild_project_name]
-    }
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_cloudwatch_event_target" "codebuild_failure_sns" {
-  rule      = aws_cloudwatch_event_rule.codebuild_failure.name
-  target_id = "codebuild-failure-to-sns"
-  arn       = aws_sns_topic.provisioning_alarms.arn
-
-  input_transformer {
-    input_paths = {
-      build_id = "$.detail.build-id"
-      project  = "$.detail.project-name"
-      status   = "$.detail.build-status"
-      account  = "$.account"
-      region   = "$.region"
-      time     = "$.time"
-    }
-    input_template = "\"ARIA Evaluator Provisioning FAILED\\n\\nProject: <project>\\nBuild ID: <build_id>\\nStatus: <status>\\nTime: <time>\\nAccount: <account>\\nRegion: <region>\\n\\nCheck CloudWatch Logs: /aws/codebuild/<project>\\nTo re-run: POST /retry-build with the build_id via the provisioning API.\""
-  }
-}
-
-resource "aws_sns_topic_policy" "provisioning_alarms_eventbridge" {
-  arn = aws_sns_topic.provisioning_alarms.arn
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "CloudWatchAlarms"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudwatch.amazonaws.com"
-        }
-        Action   = "SNS:Publish"
-        Resource = aws_sns_topic.provisioning_alarms.arn
-      },
-      {
-        Sid    = "EventBridgePublish"
-        Effect = "Allow"
-        Principal = {
-          Service = "events.amazonaws.com"
-        }
-        Action   = "SNS:Publish"
-        Resource = aws_sns_topic.provisioning_alarms.arn
-      }
-    ]
-  })
-}
-
-# ── CloudWatch metric filter for Terraform errors in CodeBuild logs ───────────
-
-resource "aws_cloudwatch_log_metric_filter" "terraform_errors" {
-  name           = "${var.app_name}-terraform-errors"
-  log_group_name = "/aws/codebuild/${module.provisioning_codebuild.codebuild_project_name}"
-  pattern        = "?\"Error:\" ?\"error:\" ?\"FAILED\" ?\"terraform plan\" ?\"terraform apply\" ?\"Provisioning failed\""
-
-  metric_transformation {
-    name          = "TerraformErrors"
-    namespace     = "ARIA/Provisioning"
-    value         = "1"
-    default_value = "0"
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "terraform_errors" {
-  alarm_name          = "${var.app_name}-terraform-errors"
-  alarm_description   = "Terraform errors detected in CodeBuild provisioning logs"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "TerraformErrors"
-  namespace           = "ARIA/Provisioning"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 0
-  treat_missing_data  = "notBreaching"
-
-  alarm_actions = [aws_sns_topic.provisioning_alarms.arn]
-  ok_actions    = [aws_sns_topic.provisioning_alarms.arn]
-
-  tags = local.common_tags
 }

@@ -8,6 +8,12 @@ version: 0.2
 #   just an ARN — not the secret itself). The actual secret value is fetched via
 #   AWS CLI at runtime so it is never stored in build logs or env var dumps.
 #   CONTROL_PLANE_INTERNAL_URL is read from SSM automatically.
+#
+# Notification:
+#   On failure the post_build phase sends a rich JSON payload to the control
+#   plane (/internal/provision/failed) including tenant ID, plan, region, and
+#   the last 50 lines of the build log.  Separately, EventBridge fires an SNS
+#   email (configured in Terraform) with a CloudWatch deep link for the build.
 
 phases:
   pre_build:
@@ -44,14 +50,20 @@ phases:
           CP_SECRET=""
         fi
 
-        export RESOLVED_CP_URL="${CP_URL}"
-        export RESOLVED_CP_SECRET="${CP_SECRET}"
-        echo "Control plane URL resolved: ${RESOLVED_CP_URL:-<not found>}"
+        echo "Control plane URL resolved: ${CP_URL:-<not found>}"
+        # Write to a shared file so the build phase can read it without re-fetching
+        echo "CP_URL=${CP_URL}"     > /tmp/cp_env.sh
+        echo "CP_SECRET=${CP_SECRET}" >> /tmp/cp_env.sh
 
   build:
     commands:
       - echo "==> Cloning repo (branch ${GITHUB_BRANCH:-main})..."
       - git clone --depth 1 --branch "${GITHUB_BRANCH:-main}" "${GITHUB_REPO}" /tmp/repo
+
+      # Capture the exact commit so it appears in logs and failure emails
+      - COMMIT_SHA=$(git -C /tmp/repo rev-parse --short HEAD 2>/dev/null || echo "unknown")
+      - echo "Repo commit: ${COMMIT_SHA}"
+
       - cd /tmp/repo/infra/terraform/environments/prod
 
       - echo "==> Terraform init (tenant=${USER_ID}, region=${TENANT_REGION:-$AWS_REGION})..."
@@ -69,22 +81,22 @@ phases:
 
       - echo "==> Terraform plan (plan=${PLAN_TYPE}, track=${PRICING_TRACK:-individual})..."
       - |
-        # Re-fetch control plane URL and secret — env vars exported in pre_build
-        # do not survive across CodeBuild phases (each command block is a new shell).
-        BUILD_CP_URL=$(aws ssm get-parameter \
-          --name "/aria/control-plane/${ENVIRONMENT:-prod}/internal-url" \
-          --region "${AWS_REGION}" \
-          --query "Parameter.Value" \
-          --output text 2>/dev/null || echo "")
-
-        if [ -n "${CONTROL_PLANE_SECRET_ARN}" ]; then
-          BUILD_CP_SECRET=$(aws secretsmanager get-secret-value \
+        # Re-fetch control plane creds — env vars exported in pre_build do not survive
+        # across CodeBuild phases (each command block runs in a fresh shell).
+        source /tmp/cp_env.sh 2>/dev/null || true
+        if [ -z "${CP_URL}" ]; then
+          CP_URL=$(aws ssm get-parameter \
+            --name "/aria/control-plane/${ENVIRONMENT:-prod}/internal-url" \
+            --region "${AWS_REGION}" \
+            --query "Parameter.Value" \
+            --output text 2>/dev/null || echo "")
+        fi
+        if [ -z "${CP_SECRET}" ] && [ -n "${CONTROL_PLANE_SECRET_ARN}" ]; then
+          CP_SECRET=$(aws secretsmanager get-secret-value \
             --secret-id "${CONTROL_PLANE_SECRET_ARN}" \
             --region "${AWS_REGION}" \
             --query "SecretString" \
             --output text 2>/dev/null || echo "")
-        else
-          BUILD_CP_SECRET=""
         fi
 
         terraform plan \
@@ -93,8 +105,8 @@ phases:
           -var="pricing_track=${PRICING_TRACK:-individual}" \
           -var="aws_region=${TENANT_REGION:-$AWS_REGION}" \
           -var="environment=prod" \
-          -var="control_plane_internal_url=${BUILD_CP_URL}" \
-          -var="control_plane_internal_secret=${BUILD_CP_SECRET}" \
+          -var="control_plane_internal_url=${CP_URL}" \
+          -var="control_plane_internal_secret=${CP_SECRET}" \
           -out=/tmp/tfplan
 
       - echo "==> Terraform apply..."
@@ -110,7 +122,7 @@ phases:
         INSTANCE_URL=$(jq -r '.cloudfront_domain_name.value // .alb_dns_name.value // empty' /tmp/outputs.json 2>/dev/null)
         BUILD_STATUS=$CODEBUILD_BUILD_SUCCEEDING
 
-        # Re-fetch secrets (env vars are scoped per phase in CodeBuild)
+        # Re-fetch secrets — each phase is a separate shell in CodeBuild
         CP_URL=$(aws ssm get-parameter \
           --name "/aria/control-plane/${ENVIRONMENT:-prod}/internal-url" \
           --region "${AWS_REGION}" \
@@ -127,6 +139,22 @@ phases:
           CP_SECRET=""
         fi
 
+        # Build the CloudWatch Logs URL for this specific build's stream.
+        # Stream name = last segment of CODEBUILD_BUILD_ID after the colon.
+        BUILD_STREAM=$(echo "${CODEBUILD_BUILD_ID}" | sed 's/.*://')
+        LOG_GROUP_ENCODED=$(echo "/aws/codebuild/${CODEBUILD_BUILD_ARN##*:project/}" | sed 's|/|$252F|g')
+        CW_DEEP_LINK="https://console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}#logsV2:log-groups/log-group/$252Faws$252Fcodebuild$252F${CODEBUILD_BUILD_ARN##*:project/}/log-events/${BUILD_STREAM}"
+
+        # Capture the tail of the build log for the failure payload.
+        # The log is written by the CodeBuild agent to the container filesystem.
+        TAIL_LOG=$(tail -50 /tmp/build.log 2>/dev/null \
+          || grep -i "error\|failed\|exit" /var/log/amazon/ssm/*.log 2>/dev/null | tail -30 \
+          || echo "(log not available — open CloudWatch link)")
+        # Sanitise for JSON: escape quotes and newlines
+        TAIL_LOG_JSON=$(echo "${TAIL_LOG}" | head -c 2000 | python3 -c \
+          "import sys,json; print(json.dumps(sys.stdin.read()))" 2>/dev/null \
+          || echo "\"(log serialisation failed)\"")
+
         if [ "$BUILD_STATUS" = "1" ] && [ -n "$INSTANCE_URL" ] && [ -n "$CP_URL" ]; then
           echo "==> Provisioning succeeded. Notifying control plane..."
           FULL_URL="https://${INSTANCE_URL}"
@@ -137,14 +165,38 @@ phases:
             && echo "Control plane notified: ${FULL_URL}" \
             || echo "WARNING: failed to notify control plane (status will update via heartbeat)"
         else
-          echo "==> Provisioning failed. Notifying control plane..."
-          ERR_MSG=$(tail -20 /var/log/aws/codebuild/build.log 2>/dev/null | tr '\"' "'" | tr '\n' ' ' | cut -c1-200)
+          echo "==> Provisioning FAILED. Notifying control plane with full context..."
+
+          # Rich failure payload — everything support needs in one notification
+          FAILURE_PAYLOAD=$(cat <<PAYLOAD
+        {
+          "tenantId": "${USER_ID}",
+          "errorMessage": "CodeBuild provisioning failed (status=${BUILD_STATUS:-unknown})",
+          "context": {
+            "planType": "${PLAN_TYPE:-unknown}",
+            "pricingTrack": "${PRICING_TRACK:-unknown}",
+            "region": "${TENANT_REGION:-${AWS_REGION}}",
+            "githubRepo": "${GITHUB_REPO:-unknown}",
+            "githubBranch": "${GITHUB_BRANCH:-main}",
+            "buildId": "${CODEBUILD_BUILD_ID:-unknown}",
+            "cloudwatchLogsUrl": "${CW_DEEP_LINK}",
+            "logGroupName": "/aws/codebuild/${CODEBUILD_BUILD_ARN##*:project/}",
+            "logStreamName": "${BUILD_STREAM}",
+            "logTail": ${TAIL_LOG_JSON}
+          }
+        }
+        PAYLOAD
+          )
+
           if [ -n "$CP_URL" ]; then
             curl -sf -X POST "${CP_URL}/internal/provision/failed" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer ${CP_SECRET}" \
-              -d "{\"tenantId\":\"${USER_ID}\",\"errorMessage\":\"${ERR_MSG}\"}" \
-              || echo "WARNING: failed to notify control plane of failure"
+              -d "${FAILURE_PAYLOAD}" \
+              && echo "Control plane notified of failure" \
+              || echo "WARNING: failed to notify control plane of failure (EventBridge SNS email still fires)"
+          else
+            echo "WARNING: CP_URL empty — cannot notify control plane. EventBridge SNS email will still fire."
           fi
           exit 1
         fi

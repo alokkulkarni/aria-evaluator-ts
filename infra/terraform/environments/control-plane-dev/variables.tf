@@ -129,6 +129,50 @@ variable "instance_base_url" {
   default     = ""
 }
 
+# ── Provisioning infrastructure (optional in dev) ─────────────────────────────
+
+variable "alert_email" {
+  description = "Email address for provisioning failure notifications. Leave empty to skip notification infrastructure."
+  type        = string
+  default     = "kulkarni.alok@gmail.com"
+}
+
+variable "terraform_state_bucket" {
+  description = "S3 bucket used by CodeBuild for per-tenant Terraform remote state. Required when codebuild_project_name is set."
+  type        = string
+  default     = ""
+}
+
+variable "terraform_state_kms_key_arn" {
+  description = "KMS key ARN for encrypting Terraform state. Required when codebuild_project_name is set."
+  type        = string
+  default     = ""
+}
+
+variable "terraform_state_lock_table" {
+  description = "DynamoDB table name for Terraform state locking."
+  type        = string
+  default     = "aria-evaluator-tf-locks-dev"
+}
+
+variable "github_repo_url" {
+  description = "GitHub repository URL for CodeBuild to clone."
+  type        = string
+  default     = "https://github.com/alokkulkarni/aria-evaluator-ts.git"
+}
+
+variable "github_branch" {
+  description = "GitHub branch for CodeBuild to clone."
+  type        = string
+  default     = "main"
+}
+
+variable "ecr_repository_url" {
+  description = "ECR repository URL for the evaluator image. Required when codebuild_project_name is set."
+  type        = string
+  default     = ""
+}
+
 # control_plane_internal_url is now auto-derived from module.alb.alb_dns_name via aws_ssm_parameter
 
 variable "control_plane_internal_secret" {

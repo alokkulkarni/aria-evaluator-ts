@@ -319,3 +319,186 @@ resource "aws_cloudwatch_log_group" "codebuild_logs" {
 
   tags = var.tags
 }
+
+# ── Failure notifications (created only when alert_email is provided) ─────────
+
+locals {
+  notifications_enabled = var.alert_email != ""
+  log_group_name        = "/aws/codebuild/${local.codebuild_name}"
+  # Direct CloudWatch Logs URL — links to the log group filtered to the specific build stream.
+  # The stream name in CodeBuild matches the last segment of the build ARN (after the final colon).
+  cw_console_base = "https://console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#logsV2:log-groups/log-group"
+}
+
+resource "aws_sns_topic" "provisioning_failures" {
+  count             = local.notifications_enabled ? 1 : 0
+  name              = "${local.codebuild_name}-failures"
+  kms_master_key_id = "alias/aws/sns"
+  tags              = var.tags
+}
+
+resource "aws_sns_topic_subscription" "support_email" {
+  count     = local.notifications_enabled ? 1 : 0
+  topic_arn = aws_sns_topic.provisioning_failures[0].arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+# Allow EventBridge and CloudWatch to publish to the topic
+resource "aws_sns_topic_policy" "provisioning_failures" {
+  count = local.notifications_enabled ? 1 : 0
+  arn   = aws_sns_topic.provisioning_failures[0].arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowEventBridge"
+        Effect    = "Allow"
+        Principal = { Service = "events.amazonaws.com" }
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.provisioning_failures[0].arn
+      },
+      {
+        Sid       = "AllowCloudWatch"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.provisioning_failures[0].arn
+      }
+    ]
+  })
+}
+
+# ── EventBridge: CodeBuild FAILED / STOPPED → rich email ─────────────────────
+
+resource "aws_cloudwatch_event_rule" "codebuild_failure" {
+  count       = local.notifications_enabled ? 1 : 0
+  name        = "${local.codebuild_name}-failure"
+  description = "Fires when a tenant provisioning CodeBuild build fails or is stopped"
+
+  event_pattern = jsonencode({
+    source        = ["aws.codebuild"]
+    "detail-type" = ["CodeBuild Build State Change"]
+    detail = {
+      "build-status" = ["FAILED", "STOPPED"]
+      "project-name" = [local.codebuild_name]
+    }
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "codebuild_failure_sns" {
+  count     = local.notifications_enabled ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.codebuild_failure[0].name
+  target_id = "provisioning-failure-to-sns"
+  arn       = aws_sns_topic.provisioning_failures[0].arn
+
+  # The CodeBuild state-change event exposes:
+  #   $.detail.additional-information.logs.deep-link  — direct CloudWatch Logs URL for this build
+  #   $.detail.additional-information.logs.stream-name — log stream (= build UUID)
+  # These are extracted via input_paths and embedded in the notification body.
+  input_transformer {
+    input_paths = {
+      account    = "$.account"
+      build_id   = "$.detail.build-id"
+      deep_link  = "$.detail.additional-information.logs.deep-link"
+      log_stream = "$.detail.additional-information.logs.stream-name"
+      project    = "$.detail.project-name"
+      region     = "$.region"
+      status     = "$.detail.build-status"
+      time       = "$.time"
+    }
+
+    # Plain-text body (SNS email protocol delivers the raw string)
+    input_template = <<-EOT
+      "ARIA Evaluator — Provisioning ${upper("failed")}
+
+      Status  : <status>
+      Project : <project>
+      Build   : <build_id>
+      Time    : <time>
+
+      ── CLOUDWATCH LOGS (open this first) ────────────────────────────────
+      Direct link to this build's log stream:
+      <deep_link>
+
+      Log group : ${local.log_group_name}
+      Stream    : <log_stream>
+
+      Tip: search for \"Error:\", \"Error running command\", or \"FAILED\" near
+      the bottom of the log to locate the Terraform / GitHub / shell error.
+
+      ── GITHUB ───────────────────────────────────────────────────────────
+      Repo   : ${var.github_repo_url}
+      Branch : ${var.github_branch}
+
+      Commit history : ${var.github_repo_url}/commits/${var.github_branch}
+      To check recent changes that may have broken provisioning, open the
+      commit history link above and compare against the build timestamp.
+
+      ── TENANT CONTEXT ───────────────────────────────────────────────────
+      The tenant ID (USER_ID) and plan (PLAN_TYPE) that triggered this build
+      are visible at the top of the CloudWatch log stream under the heading
+      \"Environment variables\". Search for USER_ID in the log.
+
+      ── ACCOUNT ──────────────────────────────────────────────────────────
+      AWS account : <account>
+      Region      : <region>
+
+      ── NEXT STEPS ───────────────────────────────────────────────────────
+      1. Open the CloudWatch deep link above to read the full build log.
+      2. Identify whether the failure is: Terraform error, GitHub clone
+         failure, or AWS permission issue.
+      3. Fix the root cause, then ask the user to re-provision from their
+         dashboard (Settings → Re-provision instance).
+      4. If urgent, trigger a new CodeBuild build manually from the AWS
+         console with the same USER_ID and PLAN_TYPE env var overrides."
+    EOT
+  }
+}
+
+# ── CloudWatch metric filter: catch Terraform / provisioning errors in logs ───
+
+resource "aws_cloudwatch_log_metric_filter" "provisioning_errors" {
+  count          = local.notifications_enabled ? 1 : 0
+  name           = "${local.codebuild_name}-errors"
+  log_group_name = local.log_group_name
+  # Matches: Terraform plan/apply errors, shell errors, GitHub failures
+  pattern = "?\"Error:\" ?\"error:\" ?\"FAILED\" ?\"Error running command\" ?\"exit status\" ?\"fatal:\" ?\"no such file\""
+
+  metric_transformation {
+    name          = "ProvisioningErrors"
+    namespace     = "ARIA/Provisioning"
+    value         = "1"
+    default_value = "0"
+  }
+
+  depends_on = [aws_cloudwatch_log_group.codebuild_logs]
+}
+
+resource "aws_cloudwatch_metric_alarm" "provisioning_errors" {
+  count               = local.notifications_enabled ? 1 : 0
+  alarm_name          = "${local.codebuild_name}-errors"
+  alarm_description   = <<-EOT
+    One or more error lines were detected in the ${local.codebuild_name} CodeBuild log.
+    CloudWatch Logs: ${local.log_group_name}
+    GitHub repo: ${var.github_repo_url} (branch: ${var.github_branch})
+    Open the log group above and filter by stream name to find the failing build.
+  EOT
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ProvisioningErrors"
+  namespace           = "ARIA/Provisioning"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.provisioning_failures[0].arn]
+
+  tags = var.tags
+
+  depends_on = [aws_cloudwatch_log_metric_filter.provisioning_errors]
+}

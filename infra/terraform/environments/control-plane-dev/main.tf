@@ -164,10 +164,12 @@ module "ecs" {
       { name = "CODEBUILD_AWS_REGION", value = var.aws_region },
       { name = "CONTROL_PLANE_SECRET_ARN", value = aws_secretsmanager_secret.control_plane_internal_secret.arn },
       { name = "CONTROL_PLANE_CORS_ORIGINS", value = join(",", var.allowed_origins) },
+      { name = "USER_INSTANCE_TABLE", value = aws_dynamodb_table.user_instances.name },
     ],
-    var.codebuild_project_name != "" ? [
-      { name = "CODEBUILD_PROJECT_NAME", value = var.codebuild_project_name },
-    ] : [],
+    # Prefer the module-managed project name; fall back to the manual override variable
+    local.codebuild_enabled ? [
+      { name = "CODEBUILD_PROJECT_NAME", value = module.provisioning_codebuild[0].codebuild_project_name },
+    ] : (var.codebuild_project_name != "" ? [{ name = "CODEBUILD_PROJECT_NAME", value = var.codebuild_project_name }] : []),
     var.instance_base_url != "" ? [
       { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = var.instance_base_url },
     ] : [],
@@ -182,6 +184,57 @@ module "ecs" {
   tenant_id    = var.tenant_id
   pricing_tier = var.pricing_tier
   tags         = local.common_tags
+}
+
+# ── Optional: per-tenant provisioning via CodeBuild ──────────────────────────
+# Enabled when terraform_state_bucket is set. In plain dev the control plane
+# uses instant-provisioning (no CodeBuild). Set these vars in terraform.tfvars
+# when you want to exercise the full provisioning pipeline in dev.
+
+locals {
+  codebuild_enabled = var.terraform_state_bucket != "" && var.ecr_repository_url != ""
+}
+
+# Lightweight DynamoDB table for tracking provisioned instances (mirrors prod).
+# Created unconditionally so the control-plane ECS task always has a table to write to.
+resource "aws_dynamodb_table" "user_instances" {
+  name         = "${var.app_name}-user-instances"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  range_key    = "instanceId"
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  attribute {
+    name = "instanceId"
+    type = "S"
+  }
+
+  tags = local.common_tags
+}
+
+module "provisioning_codebuild" {
+  count  = local.codebuild_enabled ? 1 : 0
+  source = "../../modules/provisioning-codebuild"
+
+  app_name                    = var.app_name
+  aws_region                  = var.aws_region
+  aws_account_id              = data.aws_caller_identity.current.account_id
+  terraform_state_bucket      = var.terraform_state_bucket
+  terraform_state_bucket_arn  = "arn:aws:s3:::${var.terraform_state_bucket}"
+  terraform_state_kms_key_arn = var.terraform_state_kms_key_arn
+  terraform_state_lock_table  = var.terraform_state_lock_table
+  user_instance_table_arn     = aws_dynamodb_table.user_instances.arn
+  user_instance_table_name    = aws_dynamodb_table.user_instances.name
+  ecr_repository_arn          = "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${var.app_name}"
+  github_repo_url             = var.github_repo_url
+  github_branch               = var.github_branch
+  alert_email                 = var.alert_email
+
+  tags = local.common_tags
 }
 
 # ── CloudTrail ────────────────────────────────────────────────────────────────

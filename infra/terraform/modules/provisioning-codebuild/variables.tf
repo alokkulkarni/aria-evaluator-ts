@@ -59,6 +59,16 @@ variable "github_branch" {
   default     = "main"
 }
 
+variable "alert_email" {
+  description = <<-EOT
+    Email address that receives provisioning failure notifications.
+    When set, creates an SNS topic + subscription and wires EventBridge + CloudWatch alarms to it.
+    Leave empty to skip all notification infrastructure.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)
