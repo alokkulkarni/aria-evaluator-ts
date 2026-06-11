@@ -335,15 +335,22 @@ resource "aws_secretsmanager_secret" "app_secrets" {
   })
 }
 
+resource "random_password" "nextauth_secret" {
+  length  = 48
+  special = false
+}
+
+# Terraform seeds this secret once on first apply (lifecycle.ignore_changes prevents overwrites).
+# Populate OAuth credentials via: infra/scripts/bootstrap-oauth-secrets.sh <env>
 resource "aws_secretsmanager_secret_version" "app_secrets" {
   secret_id = aws_secretsmanager_secret.app_secrets.id
 
   secret_string = jsonencode({
-    NEXTAUTH_SECRET      = var.nextauth_secret
-    GOOGLE_CLIENT_ID     = var.google_client_id
-    GOOGLE_CLIENT_SECRET = var.google_client_secret
-    GITHUB_CLIENT_ID     = var.github_client_id
-    GITHUB_CLIENT_SECRET = var.github_client_secret
+    NEXTAUTH_SECRET      = random_password.nextauth_secret.result
+    GOOGLE_CLIENT_ID     = "PENDING_BOOTSTRAP"
+    GOOGLE_CLIENT_SECRET = "PENDING_BOOTSTRAP"
+    GITHUB_CLIENT_ID     = "PENDING_BOOTSTRAP"
+    GITHUB_CLIENT_SECRET = "PENDING_BOOTSTRAP"
   })
 
   lifecycle { ignore_changes = [secret_string] }

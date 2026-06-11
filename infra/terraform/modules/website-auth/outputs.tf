@@ -28,3 +28,13 @@ output "vpc_id" {
 output "log_group_name" {
   value = aws_cloudwatch_log_group.auth.name
 }
+
+output "oauth_secret_arn" {
+  value       = aws_secretsmanager_secret.auth.arn
+  description = "ARN of the Secrets Manager secret. Pass to bootstrap-oauth-secrets.sh to populate credentials."
+}
+
+output "oauth_secret_name" {
+  value       = aws_secretsmanager_secret.auth.name
+  description = "Name of the Secrets Manager secret (e.g. aria-auth-dev-secrets)."
+}

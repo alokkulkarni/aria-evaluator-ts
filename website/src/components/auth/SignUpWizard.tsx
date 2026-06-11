@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
-import { ApiError, createSSOToken, createTenant, registerUser } from '@/lib/api'
+import { ApiError, apiFetch, createSSOToken, createTenant, registerUser } from '@/lib/api'
 import { signInWithSocialProvider, type SocialProvider } from '@/lib/social-auth'
 import { hashPasswordForTransit } from '@/lib/crypto'
 import { getPlanById, PLANS } from '@/lib/plans'
@@ -35,6 +35,13 @@ const accountSchema = z
     message: 'Passwords must match',
     path: ['confirmPassword'],
   })
+
+// For social login — only name/email required, no password
+const accountSchemaSocial = z.object({
+  name: z.string().min(2, 'Enter your full name'),
+  company: z.string().optional(),
+  email: z.string().email('Enter a valid email address'),
+})
 
 const steps = [
   { id: 1, label: 'Account' },
@@ -177,14 +184,12 @@ export function SignUpWizard() {
 
   const goToStep = (step: SignUpState['step']) => setState((current) => ({ ...current, step }))
 
+  const isSocialAuth = state.authProvider === 'google' || state.authProvider === 'github'
+
   const handleAccountContinue = () => {
-    const result = accountSchema.safeParse({
-      name: state.name,
-      company: state.company,
-      email: state.email,
-      password: state.password,
-      confirmPassword,
-    })
+    const result = isSocialAuth
+      ? accountSchemaSocial.safeParse({ name: state.name, company: state.company, email: state.email })
+      : accountSchema.safeParse({ name: state.name, company: state.company, email: state.email, password: state.password, confirmPassword })
 
     if (!result.success) {
       const nextErrors = result.error.issues.reduce<Record<string, string>>((acc, issue) => {
@@ -197,14 +202,16 @@ export function SignUpWizard() {
     }
 
     setFieldErrors({})
-    setState((current) => ({ ...current, authProvider: 'email', step: 2 }))
+    setState((current) => ({ ...current, authProvider: isSocialAuth ? current.authProvider : 'email', step: 2 }))
   }
 
   const handleSocialSignUp = (provider: SocialProvider) => {
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem('signup_social_provider', provider)
     }
-    void signInWithSocialProvider(provider, `/sign-up?step=plan&provider=${provider}`)
+    // Return to step=account so the user sees their pre-filled name/email from OAuth
+    // before proceeding. Password fields are hidden for social login.
+    void signInWithSocialProvider(provider, `/sign-up?step=account&provider=${provider}`)
   }
 
   const handleCreateWorkspace = async () => {
@@ -224,6 +231,16 @@ export function SignUpWizard() {
           company: state.company,
         })
         authToken = registration.token
+      } else if (!authToken) {
+        // Social login user — accessToken may be absent if the control plane was
+        // unavailable at sign-in time. Attempt to register/find the user now.
+        const email = state.email || session?.user?.email || ''
+        const name = state.name || session?.user?.name || ''
+        const response = await apiFetch<{ user?: { accessToken?: string } }>('/auth/oauth', {
+          method: 'POST',
+          body: JSON.stringify({ provider: state.authProvider, email, name }),
+        })
+        authToken = response.user?.accessToken
       }
       if (!authToken) {
         throw new Error('Your sign-in session expired. Please sign in again to continue.')
@@ -321,35 +338,47 @@ export function SignUpWizard() {
               <p className="text-sm leading-6 text-slate-600">Create your account with email or use Google / GitHub to get started quickly.</p>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => handleSocialSignUp('google')}
-                className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-                  <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.2-1.9 2.9l3 2.3c1.7-1.6 2.8-3.9 2.8-6.8 0-.6-.1-1.3-.2-1.8H12Z" />
-                  <path fill="#34A853" d="M12 21c2.6 0 4.8-.9 6.4-2.4l-3-2.3c-.8.6-2 1-3.4 1-2.6 0-4.7-1.8-5.5-4.1l-3.1 2.4C5 18.9 8.2 21 12 21Z" />
-                  <path fill="#4A90E2" d="M6.5 13.2c-.2-.6-.3-1.2-.3-1.8s.1-1.2.3-1.8l-3.1-2.4C2.5 8.7 2 10.3 2 12s.5 3.3 1.4 4.8l3.1-2.4Z" />
-                  <path fill="#FBBC05" d="M12 6.7c1.5 0 2.8.5 3.8 1.5l2.8-2.8C16.8 3.8 14.6 3 12 3 8.2 3 5 5.1 3.4 8.2l3.1 2.4C7.3 8.4 9.4 6.7 12 6.7Z" />
-                </svg>
-                Continue with Google
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSocialSignUp('github')}
-                className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
-                </svg>
-                Continue with GitHub
-              </button>
-            </div>
+            {isSocialAuth ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                <p className="font-medium">
+                  Signed in with {state.authProvider === 'google' ? 'Google' : 'GitHub'}
+                  {session?.user?.email ? ` · ${session.user.email}` : ''}
+                </p>
+                <p className="mt-1 text-emerald-700">Confirm your details below and click Continue to choose your plan.</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSocialSignUp('google')}
+                    className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+                      <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.2-1.9 2.9l3 2.3c1.7-1.6 2.8-3.9 2.8-6.8 0-.6-.1-1.3-.2-1.8H12Z" />
+                      <path fill="#34A853" d="M12 21c2.6 0 4.8-.9 6.4-2.4l-3-2.3c-.8.6-2 1-3.4 1-2.6 0-4.7-1.8-5.5-4.1l-3.1 2.4C5 18.9 8.2 21 12 21Z" />
+                      <path fill="#4A90E2" d="M6.5 13.2c-.2-.6-.3-1.2-.3-1.8s.1-1.2.3-1.8l-3.1-2.4C2.5 8.7 2 10.3 2 12s.5 3.3 1.4 4.8l3.1-2.4Z" />
+                      <path fill="#FBBC05" d="M12 6.7c1.5 0 2.8.5 3.8 1.5l2.8-2.8C16.8 3.8 14.6 3 12 3 8.2 3 5 5.1 3.4 8.2l3.1 2.4C7.3 8.4 9.4 6.7 12 6.7Z" />
+                    </svg>
+                    Continue with Google
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSocialSignUp('github')}
+                    className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                    </svg>
+                    Continue with GitHub
+                  </button>
+                </div>
 
-            <p className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Social sign-up takes you straight to plan selection.
-            </p>
+                <p className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                  Social sign-up — we&apos;ll confirm your details before choosing a plan.
+                </p>
+              </>
+            )}
 
             <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
@@ -388,32 +417,36 @@ export function SignUpWizard() {
                 />
                 {fieldErrors.email ? <p className="text-sm text-rose-600">{fieldErrors.email}</p> : null}
               </div>
-              <div className="space-y-2">
-                <label htmlFor="signup-password" className="text-sm font-medium text-slate-700">
-                  Password
-                </label>
-                <input
-                  id="signup-password"
-                  type="password"
-                  value={state.password}
-                  onChange={(event) => setState((current) => ({ ...current, password: event.target.value }))}
-                  placeholder="At least 8 characters"
-                />
-                {fieldErrors.password ? <p className="text-sm text-rose-600">{fieldErrors.password}</p> : null}
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <label htmlFor="signup-confirm-password" className="text-sm font-medium text-slate-700">
-                  Confirm password
-                </label>
-                <input
-                  id="signup-confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  placeholder="Repeat your password"
-                />
-                {fieldErrors.confirmPassword ? <p className="text-sm text-rose-600">{fieldErrors.confirmPassword}</p> : null}
-              </div>
+              {!isSocialAuth ? (
+                <>
+                  <div className="space-y-2">
+                    <label htmlFor="signup-password" className="text-sm font-medium text-slate-700">
+                      Password
+                    </label>
+                    <input
+                      id="signup-password"
+                      type="password"
+                      value={state.password}
+                      onChange={(event) => setState((current) => ({ ...current, password: event.target.value }))}
+                      placeholder="At least 12 characters"
+                    />
+                    {fieldErrors.password ? <p className="text-sm text-rose-600">{fieldErrors.password}</p> : null}
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label htmlFor="signup-confirm-password" className="text-sm font-medium text-slate-700">
+                      Confirm password
+                    </label>
+                    <input
+                      id="signup-confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      placeholder="Repeat your password"
+                    />
+                    {fieldErrors.confirmPassword ? <p className="text-sm text-rose-600">{fieldErrors.confirmPassword}</p> : null}
+                  </div>
+                </>
+              ) : null}
             </div>
 
             <div className="flex justify-end">

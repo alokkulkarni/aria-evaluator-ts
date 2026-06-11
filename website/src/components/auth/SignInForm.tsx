@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signIn } from 'next-auth/react'
-import { FormEvent, useState } from 'react'
+import { signIn, useSession } from 'next-auth/react'
+import { FormEvent, useEffect, useState } from 'react'
 
 import { AriaLogo } from '@/components/shared/AriaLogo'
 import { signInWithSocialProvider, type SocialProvider } from '@/lib/social-auth'
@@ -15,6 +15,14 @@ export function SignInForm() {
   const returnTo = searchParams.get('return') ?? '/api/launch-instance'
   const authError = searchParams.get('error')
   const authProvider = searchParams.get('provider')
+  const { data: session } = useSession()
+
+  // If already authenticated, skip the sign-in page entirely
+  useEffect(() => {
+    if (session) {
+      router.replace(returnTo)
+    }
+  }, [session, returnTo, router])
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -41,8 +49,12 @@ export function SignInForm() {
   const handleSocialSignIn = async (provider: SocialProvider) => {
     setError(null)
     setLoadingProvider(provider)
-    await signInWithSocialProvider(provider, returnTo)
-    setLoadingProvider(null)
+    try {
+      await signInWithSocialProvider(provider, returnTo)
+    } catch {
+      setError(`Could not start ${provider === 'google' ? 'Google' : 'GitHub'} sign-in. Please try again.`)
+      setLoadingProvider(null)
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

@@ -85,6 +85,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         ? profile.name
         : (user.name ?? null)
 
+      // Store what we know from the OAuth provider before any control-plane call
+      user.email = email
+      if (displayName) user.name = displayName
+      ;(user as ControlPlaneUser).authProvider = provider
+      ;(user as ControlPlaneUser).isNewUser = true
+      ;(user as ControlPlaneUser).role = 'owner'
+
+      // Best-effort: register/find user in control plane to obtain an accessToken.
+      // If the control plane is unavailable or returns a non-409 error, we still
+      // allow the sign-in — the accessToken will be obtained lazily at workspace
+      // creation time. Only a 409 EMAIL_EXISTS_WITH_DIFFERENT_PROVIDER blocks sign-in.
       try {
         const response = await serverApiFetch<{ user: ControlPlaneUser }>('/auth/oauth', {
           method: 'POST',
@@ -92,16 +103,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         })
 
         const cpUser = response.user
-        user.id = cpUser.id
-        user.email = cpUser.email
+        if (cpUser.id) user.id = cpUser.id
+        user.email = cpUser.email ?? email
         user.name = cpUser.name ?? user.name
-        ;(user as ControlPlaneUser).authProvider = cpUser.authProvider
+        ;(user as ControlPlaneUser).authProvider = cpUser.authProvider ?? provider
         ;(user as ControlPlaneUser).isNewUser = cpUser.isNewUser
-        ;(user as ControlPlaneUser).role = cpUser.role
+        ;(user as ControlPlaneUser).role = cpUser.role ?? 'owner'
         ;(user as ControlPlaneUser).tenantId = cpUser.tenantId
         ;(user as ControlPlaneUser).accessToken = cpUser.accessToken
-
-        return true
       } catch (error) {
         if (error instanceof ApiError && error.status === 409) {
           const payload = parseApiErrorPayload(error.message)
@@ -109,8 +118,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return `/sign-in?error=email_provider_mismatch&provider=${payload.provider}`
           }
         }
-        return `/sign-in?error=social_signin_failed&provider=${provider}`
+        // All other errors (network, missing URL, 404, 500) — log and continue.
+        // The user still gets a valid NextAuth session; workspace creation will
+        // re-attempt control-plane registration if accessToken is absent.
+        console.warn(`[auth] Control plane unavailable for OAuth registration (${provider}):`,
+          error instanceof Error ? error.message : String(error))
       }
+
+      return true
     },
     async session({ session, token }) {
       if (session.user) {

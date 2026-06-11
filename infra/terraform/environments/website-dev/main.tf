@@ -35,12 +35,9 @@ module "auth_backend" {
   desired_count = 1
   image_tag     = var.auth_backend_image_tag
 
-  # Auth secrets
-  nextauth_secret      = var.nextauth_secret
-  google_client_id     = var.google_client_id
-  google_client_secret = var.google_client_secret
-  github_client_id     = var.github_client_id
-  github_client_secret = var.github_client_secret
+  # OAuth credentials are NOT passed through Terraform.
+  # Run: infra/scripts/bootstrap-oauth-secrets.sh dev
+  # after the first terraform apply to populate credentials in Secrets Manager.
 
   control_plane_url  = var.control_plane_url
   log_retention_days = 14

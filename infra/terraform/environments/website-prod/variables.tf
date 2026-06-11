@@ -40,6 +40,26 @@ variable "enable_cognito" {
   default     = true
 }
 
+# ── Cognito Google identity provider ──────────────────────────────────────────
+# These are needed at terraform apply time to configure aws_cognito_identity_provider.
+# They end up in Terraform state as Cognito resource attributes — this is unavoidable
+# for Cognito. They do NOT flow into the auth-backend Secrets Manager secret;
+# NextAuth.js runtime credentials (GOOGLE_CLIENT_ID etc.) are populated separately
+# by: infra/scripts/bootstrap-oauth-secrets.sh prod
+variable "google_client_id" {
+  description = "Google OAuth Client ID — used only for Cognito identity provider configuration."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth Client Secret — used only for Cognito identity provider configuration."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "apple_client_id" {
   description = "Apple Services ID for Cognito Sign in with Apple."
   type        = string
@@ -63,36 +83,6 @@ variable "apple_private_key" {
   type        = string
   sensitive   = true
   default     = ""
-}
-
-# ── Auth Secrets (supply via CI/CD pipeline env vars, never commit) ────────────
-
-variable "nextauth_secret" {
-  description = "NextAuth.js signing secret (32+ chars)"
-  type        = string
-  sensitive   = true
-}
-
-variable "google_client_id" {
-  type      = string
-  sensitive = true
-}
-
-variable "google_client_secret" {
-  type      = string
-  sensitive = true
-}
-
-variable "github_client_id" {
-  type      = string
-  sensitive = true
-  default   = ""
-}
-
-variable "github_client_secret" {
-  type      = string
-  sensitive = true
-  default   = ""
 }
 
 # ── Domain & TLS ────────────────────────────────────────────────────────────────

@@ -414,26 +414,39 @@ resource "aws_iam_role_policy" "task_control_plane_discovery" {
 
 # ── Secrets Manager ────────────────────────────────────────────────────────────
 
+# Auto-generated signing secret — never needs to be in tfvars or state-exposed.
+# Rotate by tainting this resource: terraform taint module.auth_backend.random_password.nextauth_secret
+resource "random_password" "nextauth_secret" {
+  length  = 48
+  special = false
+}
+
 resource "aws_secretsmanager_secret" "auth" {
   name = "${local.name_prefix}-secrets"
   tags = local.common_tags
 }
 
+# Terraform writes the secret ONCE on first apply (seed values).
+# lifecycle.ignore_changes means subsequent applies never overwrite the secret —
+# real Google/GitHub credentials are populated out-of-band by the bootstrap script:
+#   infra/scripts/bootstrap-oauth-secrets.sh <env>
 resource "aws_secretsmanager_secret_version" "auth" {
   secret_id = aws_secretsmanager_secret.auth.id
 
   secret_string = jsonencode(merge(
     {
-      NEXTAUTH_SECRET      = var.nextauth_secret
-      GOOGLE_CLIENT_ID     = var.google_client_id
-      GOOGLE_CLIENT_SECRET = var.google_client_secret
-      GITHUB_CLIENT_ID     = var.github_client_id
-      GITHUB_CLIENT_SECRET = var.github_client_secret
+      NEXTAUTH_SECRET      = random_password.nextauth_secret.result
+      GOOGLE_CLIENT_ID     = "PENDING_BOOTSTRAP"
+      GOOGLE_CLIENT_SECRET = "PENDING_BOOTSTRAP"
+      GITHUB_CLIENT_ID     = "PENDING_BOOTSTRAP"
+      GITHUB_CLIENT_SECRET = "PENDING_BOOTSTRAP"
     },
     trimspace(var.cognito_client_secret) != "" ? {
       COGNITO_CLIENT_SECRET = var.cognito_client_secret
     } : {},
   ))
+
+  lifecycle { ignore_changes = [secret_string] }
 }
 
 # ── ECS Task Definition ───────────────────────────────────────────────────────

@@ -85,40 +85,6 @@ variable "max_capacity" {
 
 # ── Auth & Secrets ─────────────────────────────────────────────────────────────
 
-variable "nextauth_secret" {
-  description = "32-character secret for NextAuth.js JWT signing"
-  type        = string
-  sensitive   = true
-}
-
-variable "google_client_id" {
-  description = "Google OAuth 2.0 Client ID"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "google_client_secret" {
-  description = "Google OAuth 2.0 Client Secret"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "github_client_id" {
-  description = "GitHub OAuth App Client ID"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "github_client_secret" {
-  description = "GitHub OAuth App Client Secret"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 # ── Domain & TLS ────────────────────────────────────────────────────────────────
 
 variable "domain_name" {

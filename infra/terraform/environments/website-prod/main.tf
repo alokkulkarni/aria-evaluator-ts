@@ -110,12 +110,9 @@ module "auth_backend" {
   image_tag     = var.auth_backend_image_tag
   image_uri     = local.use_prebuilt_auth ? var.auth_backend_image_uri : ""
 
-  # Auth secrets
-  nextauth_secret       = var.nextauth_secret
-  google_client_id      = var.google_client_id
-  google_client_secret  = var.google_client_secret
-  github_client_id      = var.github_client_id
-  github_client_secret  = var.github_client_secret
+  # OAuth credentials are NOT passed through Terraform.
+  # Run: infra/scripts/bootstrap-oauth-secrets.sh prod
+  # after the first terraform apply to populate credentials in Secrets Manager.
   cognito_enabled       = var.enable_cognito
   cognito_client_id     = try(module.cognito[0].app_client_id, "")
   cognito_client_secret = try(module.cognito[0].app_client_secret, "")
