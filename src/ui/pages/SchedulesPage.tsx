@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch, toApiUrl } from '../lib/api.js';
 import { NavSchedulesIcon, RunFailIcon, RunRunningIcon } from '../components/icons.js';
+import { usePlanGate } from '../lib/plan-gate.js';
 
 interface Schedule {
   id: string;
@@ -61,6 +62,7 @@ function formatFrequency(frequency: string, hour: number, minute: number, dayOfW
 }
 
 export function SchedulesPage() {
+  const { isBlocked, showUpgradeNudge } = usePlanGate();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [scheduleRuns, setScheduleRuns] = useState<ScheduleRun[]>([]);
@@ -194,7 +196,7 @@ export function SchedulesPage() {
           Schedules
         </h1>
         <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
+          onClick={() => { if (!showCreateForm && isBlocked('schedule')) { showUpgradeNudge('schedule'); return; } setShowCreateForm(!showCreateForm); }}
           className="btn-primary px-4 py-2"
         >
           {showCreateForm ? 'Cancel' : '+ New Schedule'}

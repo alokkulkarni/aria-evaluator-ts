@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import { CodeBuildClient, StartBuildCommand } from '@aws-sdk/client-codebuild';
 
 type BillingPeriod = 'monthly' | 'annual';
 type PricingTier = 'free' | 'individual' | 'enterprise_starter' | 'enterprise_pro' | 'enterprise_unlimited';
@@ -25,6 +26,9 @@ interface ControlPlaneUser {
   isNewUser: boolean;
   tenantId?: string;
   lastLoginAt?: string;
+  emailVerified?: boolean;
+  passwordResetToken?: string;   // hashed SHA-256 of the raw token
+  passwordResetExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +76,7 @@ interface ControlPlaneTenant {
     scenariosUsed: number;
     maxScenarios: number;
   };
+  lastHeartbeatAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -165,12 +170,40 @@ const LOCAL_SEED_PLAN: PricingTier = 'individual';
 const LOCAL_SEED_REGION = 'eu-west-2';
 const LOCAL_SEED_BILLING_PERIOD: BillingPeriod = 'monthly';
 
-const PLAN_LIMITS: Record<PricingTier, { maxRuns: number; maxScenarios: number }> = {
-  free: { maxRuns: 5, maxScenarios: 10 },
-  individual: { maxRuns: 200, maxScenarios: 30 },
-  enterprise_starter: { maxRuns: 900, maxScenarios: 120 },
-  enterprise_pro: { maxRuns: 3000, maxScenarios: 300 },
-  enterprise_unlimited: { maxRuns: -1, maxScenarios: -1 },
+// ── CodeBuild provisioning config ────────────────────────────────────────────
+// When CODEBUILD_PROJECT_NAME is set, real AWS provisioning is triggered.
+// When unset (local / dev without AWS), provision falls back to immediate-running.
+const CODEBUILD_PROJECT_NAME = process.env['CODEBUILD_PROJECT_NAME']?.trim();
+const CODEBUILD_AWS_REGION = process.env['CODEBUILD_AWS_REGION']?.trim()
+  ?? process.env['AWS_REGION']?.trim()
+  ?? 'eu-west-2';
+const CONTROL_PLANE_CALLBACK_URL = process.env['CONTROL_PLANE_INTERNAL_URL']?.trim()
+  ?? `http://localhost:${process.env['CONTROL_PLANE_PORT']?.trim() ?? '3002'}`;
+
+// The Secrets Manager ARN for the internal secret.
+// Injected by Terraform via SSM parameter lookup — never the raw secret value.
+// CodeBuild uses this ARN to fetch the secret at runtime via AWS CLI.
+const CONTROL_PLANE_SECRET_ARN = process.env['CONTROL_PLANE_SECRET_ARN']?.trim() ?? '';
+
+// CONTROL_PLANE_INTERNAL_SECRET is still read for the heartbeat/callback receiver side.
+// It is injected via ECS secrets (Secrets Manager valueFrom) — not plaintext.
+const CONTROL_PLANE_INTERNAL_SECRET = process.env['CONTROL_PLANE_INTERNAL_SECRET']?.trim() ?? '';
+
+// Tier → CodeBuild tfvar mapping
+const TIER_PRICING_TRACK: Record<PricingTier, string> = {
+  free: 'individual',
+  individual: 'individual',
+  enterprise_starter: 'enterprise',
+  enterprise_pro: 'enterprise',
+  enterprise_unlimited: 'enterprise',
+};
+
+const PLAN_LIMITS: Record<PricingTier, { maxRuns: number; maxScenarios: number; maxModels: number; maxUsers: number; suspendHours: number }> = {
+  free:                 { maxRuns: 5,    maxScenarios: 10,  maxModels: 1,  maxUsers: 1,  suspendHours: 1  },
+  individual:           { maxRuns: 200,  maxScenarios: 30,  maxModels: 2,  maxUsers: 1,  suspendHours: 3  },
+  enterprise_starter:   { maxRuns: 900,  maxScenarios: 120, maxModels: 8,  maxUsers: 10, suspendHours: 3  },
+  enterprise_pro:       { maxRuns: 3000, maxScenarios: 300, maxModels: 20, maxUsers: 50, suspendHours: 3  },
+  enterprise_unlimited: { maxRuns: -1,   maxScenarios: -1,  maxModels: -1, maxUsers: -1, suspendHours: -1 },
 };
 
 const REGIONS = [
@@ -591,7 +624,7 @@ const loginSchema = z.object({
 });
 
 const oauthSignInSchema = z.object({
-  provider: z.enum(['google', 'apple']),
+  provider: z.enum(['google', 'github', 'apple']),
   email: z.string().trim().email(),
   name: z.string().trim().optional().nullable(),
 });
@@ -865,25 +898,15 @@ app.post('/internal/tenant-by-user', async (req, res) => {
 
 app.post('/tenant/provision', async (req, res) => {
   const user = await getAuthUser(req);
-  if (!user) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const parsed = provisionSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid tenant provisioning payload' });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid tenant provisioning payload' }); return; }
 
   const region = REGIONS.find((entry) => entry.id === parsed.data.region);
-  if (!region) {
-    res.status(400).json({ error: 'Unknown region' });
-    return;
-  }
+  if (!region) { res.status(400).json({ error: 'Unknown region' }); return; }
   if (!region.availableForTiers.includes(parsed.data.plan)) {
-    res.status(400).json({ error: 'Selected plan is not available in the requested region' });
-    return;
+    res.status(400).json({ error: 'Selected plan is not available in the requested region' }); return;
   }
 
   const limits = PLAN_LIMITS[parsed.data.plan];
@@ -891,6 +914,7 @@ app.post('/tenant/provision', async (req, res) => {
   const instanceUrl = makeTenantInstanceUrl(tenantId);
   const now = nowIso();
 
+  // Write tenant record immediately as 'provisioning' so status polling works
   await mutateState((state) => {
     const existingTenant = state.tenants.find((entry) => entry.id === tenantId);
     const tenant: ControlPlaneTenant = {
@@ -899,7 +923,7 @@ app.post('/tenant/provision', async (req, res) => {
       plan: parsed.data.plan,
       region: parsed.data.region,
       billingPeriod: parsed.data.billingPeriod,
-      status: 'running',
+      status: 'provisioning',
       instanceUrl,
       usage: {
         runsThisMonth: existingTenant?.usage.runsThisMonth ?? 0,
@@ -910,25 +934,211 @@ app.post('/tenant/provision', async (req, res) => {
       createdAt: existingTenant?.createdAt ?? now,
       updatedAt: now,
     };
-
     if (existingTenant) {
       Object.assign(existingTenant, tenant);
     } else {
       state.tenants.push(tenant);
     }
-
     user.tenantId = tenantId;
     user.updatedAt = now;
   });
 
+  // ── Real CodeBuild provisioning (when CODEBUILD_PROJECT_NAME is set) ──────
+  if (CODEBUILD_PROJECT_NAME) {
+    try {
+      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
+      await codebuild.send(new StartBuildCommand({
+        projectName: CODEBUILD_PROJECT_NAME,
+        environmentVariablesOverride: [
+          { name: 'USER_ID',       value: tenantId,                             type: 'PLAINTEXT' },
+          { name: 'PLAN_TYPE',     value: parsed.data.plan,                     type: 'PLAINTEXT' },
+          { name: 'PRICING_TRACK', value: TIER_PRICING_TRACK[parsed.data.plan], type: 'PLAINTEXT' },
+          { name: 'TENANT_REGION', value: parsed.data.region,                   type: 'PLAINTEXT' },
+          { name: 'ENVIRONMENT',   value: process.env['ARIA_DEPLOY_ENV'] ?? 'prod', type: 'PLAINTEXT' },
+          { name: 'ADMIN_EMAIL',   value: user.email,                           type: 'PLAINTEXT' },
+          // Pass secret ARN (not the secret value) — buildspec fetches it at runtime via AWS CLI
+          ...(CONTROL_PLANE_SECRET_ARN
+            ? [{ name: 'CONTROL_PLANE_SECRET_ARN', value: CONTROL_PLANE_SECRET_ARN, type: 'PLAINTEXT' as const }]
+            : []
+          ),
+        ],
+      }));
+      console.info(`[provision] CodeBuild build started — tenant: ${tenantId}, plan: ${parsed.data.plan}, region: ${parsed.data.region}`);
+    } catch (err) {
+      // Mark failed and surface error to caller
+      await mutateState((s) => {
+        const t = s.tenants.find((x) => x.id === tenantId);
+        if (t) { t.status = 'error'; t.updatedAt = nowIso(); }
+      });
+      console.error(`[provision] CodeBuild start failed: ${(err as Error).message}`);
+      res.status(502).json({ error: 'Failed to start provisioning job', detail: (err as Error).message });
+      return;
+    }
+  } else {
+    // ── Local / dev fallback — no AWS, mark running immediately ───────────
+    console.info(`[provision] Local mode — skipping CodeBuild, marking tenant ${tenantId} as running`);
+    await mutateState((s) => {
+      const t = s.tenants.find((x) => x.id === tenantId);
+      if (t) { t.status = 'running'; t.updatedAt = nowIso(); }
+    });
+  }
+
   res.status(201).json({
     ok: true,
     tenantId,
-    status: 'running',
+    status: CODEBUILD_PROJECT_NAME ? 'provisioning' : 'running',
     instanceUrl,
     ssoUrl: null,
   });
 });
+
+// GET /tenant/provision/status — lightweight polling endpoint for provisioning progress
+app.get('/tenant/provision/status', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.id === user.tenantId);
+  if (!tenant) { res.status(404).json({ error: 'No tenant found' }); return; }
+
+  // Map internal status to simplified provisioning phases for the UI
+  const phase: string = (() => {
+    switch (tenant.status) {
+      case 'provisioning': return 'provisioning';
+      case 'running':      return 'complete';
+      case 'error':        return 'failed';
+      default:             return tenant.status;
+    }
+  })();
+
+  res.json({
+    tenantId: tenant.id,
+    status: tenant.status,
+    phase,
+    instanceUrl: tenant.status === 'running' ? tenant.instanceUrl : null,
+    updatedAt: tenant.updatedAt,
+  });
+});
+
+app.post('/tenant/suspend', async (req, res) => {
+  const user = await getAuthUser(req)
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return }
+
+  const state = await loadState()
+  const tenant = state.tenants.find((t) => t.id === user.tenantId)
+  if (!tenant) { res.status(404).json({ error: 'No tenant found' }); return }
+  if (tenant.status === 'suspended') { res.json({ ok: true, status: 'suspended' }); return }
+  if (tenant.status !== 'running') {
+    res.status(409).json({ error: `Cannot suspend instance with status: ${tenant.status}` })
+    return
+  }
+
+  await mutateState((s) => {
+    const t = s.tenants.find((x) => x.id === user.tenantId)
+    if (t) { t.status = 'suspended'; t.updatedAt = nowIso() }
+  })
+
+  res.json({ ok: true, status: 'suspended' })
+})
+
+app.post('/tenant/resume', async (req, res) => {
+  const user = await getAuthUser(req)
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return }
+
+  const state = await loadState()
+  const tenant = state.tenants.find((t) => t.id === user.tenantId)
+  if (!tenant) { res.status(404).json({ error: 'No tenant found' }); return }
+  if (tenant.status === 'running') { res.json({ ok: true, status: 'running' }); return }
+  if (tenant.status !== 'suspended') {
+    res.status(409).json({ error: `Cannot resume instance with status: ${tenant.status}` })
+    return
+  }
+
+  await mutateState((s) => {
+    const t = s.tenants.find((x) => x.id === user.tenantId)
+    if (t) { t.status = 'running'; t.updatedAt = nowIso() }
+  })
+
+  res.json({ ok: true, status: 'running', instanceUrl: tenant.instanceUrl })
+})
+
+app.get('/tenant/users', async (req, res) => {
+  const user = await getAuthUser(req)
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return }
+
+  const state = await loadState()
+  const tenantUsers = state.users.filter((u) => u.tenantId === user.tenantId)
+  res.json(tenantUsers.map((u) => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    status: 'active',
+    invitedAt: u.createdAt,
+  })))
+})
+
+app.post('/tenant/users/invite', async (req, res) => {
+  const user = await getAuthUser(req)
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return }
+  if (user.role !== 'owner' && user.role !== 'admin') {
+    res.status(403).json({ error: 'Only owners and admins can invite users' })
+    return
+  }
+
+  const parsed = z.object({
+    email: z.string().email(),
+    role: z.enum(['admin', 'member']).default('member'),
+  }).safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid payload' }); return }
+
+  const state = await loadState()
+  const existing = state.users.find((u) => u.email === parsed.data.email && u.tenantId === user.tenantId)
+  if (existing) { res.status(409).json({ error: 'User already in workspace' }); return }
+
+  const newUserId = randomBytes(12).toString('hex')
+  const now = nowIso()
+  await mutateState((s) => {
+    s.users.push({
+      id: newUserId,
+      email: parsed.data.email,
+      name: null as unknown as string,
+      role: parsed.data.role,
+      authProvider: 'email',
+      passwordHash: passwordHash(randomBytes(32).toString('base64url')),
+      isNewUser: true,
+      tenantId: user.tenantId ?? '',
+      createdAt: now,
+      updatedAt: now,
+    })
+  })
+
+  res.status(201).json({ ok: true, userId: newUserId, email: parsed.data.email, role: parsed.data.role })
+})
+
+app.delete('/tenant/users/:userId', async (req, res) => {
+  const user = await getAuthUser(req)
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return }
+  if (user.role !== 'owner' && user.role !== 'admin') {
+    res.status(403).json({ error: 'Only owners and admins can remove users' })
+    return
+  }
+
+  const { userId } = req.params
+  if (userId === user.id) { res.status(400).json({ error: 'Cannot remove yourself' }); return }
+
+  const state = await loadState()
+  const target = state.users.find((u) => u.id === userId && u.tenantId === user.tenantId)
+  if (!target) { res.status(404).json({ error: 'User not found in workspace' }); return }
+  if (target.role === 'owner') { res.status(400).json({ error: 'Cannot remove workspace owner' }); return }
+
+  await mutateState((s) => {
+    const idx = s.users.findIndex((u) => u.id === userId)
+    if (idx !== -1) s.users.splice(idx, 1)
+  })
+
+  res.json({ ok: true })
+})
 
 app.post('/instance/sso-token', async (req, res) => {
   const user = await getAuthUser(req);
@@ -1323,6 +1533,206 @@ app.delete('/account', async (req, res) => {
   });
 
   res.json({ ok: true, message: 'Account and workspace permanently deleted' });
+});
+
+// ── Auth: email confirm, forgot/reset password ───────────────────────────────
+
+app.post('/auth/confirm', async (req, res) => {
+  const parsed = z.object({
+    email: z.string().trim().email(),
+    code: z.string().min(1),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'email and code are required' }); return; }
+
+  const state = await loadState();
+  const user = state.users.find((u) => u.email.toLowerCase() === parsed.data.email.toLowerCase());
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+  // In local/dev mode any non-empty code is accepted; production would validate a real OTP.
+  await mutateState((s) => {
+    const u = s.users.find((x) => x.id === user.id);
+    if (u) { u.emailVerified = true; u.updatedAt = nowIso(); }
+  });
+
+  res.json({ ok: true });
+});
+
+app.post('/auth/forgot-password', async (req, res) => {
+  const parsed = z.object({ email: z.string().trim().email() }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'email is required' }); return; }
+
+  const state = await loadState();
+  const user = state.users.find((u) => u.email.toLowerCase() === parsed.data.email.toLowerCase());
+
+  // Return 200 regardless to avoid email enumeration.
+  if (!user || user.authProvider !== 'email') { res.json({ ok: true }); return; }
+
+  const rawToken = randomBytes(32).toString('hex');
+  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+  await mutateState((s) => {
+    const u = s.users.find((x) => x.id === user.id);
+    if (u) {
+      u.passwordResetToken = tokenHash;
+      u.passwordResetExpiresAt = expiresAt;
+      u.updatedAt = nowIso();
+    }
+  });
+
+  // In production this token is emailed; in local/dev we return it directly for testing.
+  const isLocalDev = DEPLOY_ENV === 'local' || DEPLOY_ENV === '' || DEPLOY_ENV === 'development';
+  res.json({ ok: true, ...(isLocalDev && { resetToken: rawToken, expiresAt }) });
+});
+
+app.post('/auth/reset-password', async (req, res) => {
+  const parsed = z.object({
+    email: z.string().trim().email(),
+    token: z.string().min(1),
+    newPassword: z.string().min(8),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'email, token, and newPassword are required' }); return; }
+
+  const state = await loadState();
+  const user = state.users.find((u) => u.email.toLowerCase() === parsed.data.email.toLowerCase());
+  if (!user) { res.status(400).json({ error: 'Invalid or expired reset token' }); return; }
+  if (!user.passwordResetToken || !user.passwordResetExpiresAt) {
+    res.status(400).json({ error: 'Invalid or expired reset token' }); return;
+  }
+  if (new Date(user.passwordResetExpiresAt) < new Date()) {
+    res.status(400).json({ error: 'Reset token has expired' }); return;
+  }
+
+  const providedHash = createHash('sha256').update(parsed.data.token).digest('hex');
+  const expectedBuf = Buffer.from(user.passwordResetToken, 'hex');
+  const providedBuf = Buffer.from(providedHash, 'hex');
+  const valid = expectedBuf.length === providedBuf.length && timingSafeEqual(expectedBuf, providedBuf);
+  if (!valid) { res.status(400).json({ error: 'Invalid or expired reset token' }); return; }
+
+  const newHash = passwordHash(parsed.data.newPassword);
+  await mutateState((s) => {
+    const u = s.users.find((x) => x.id === user.id);
+    if (u) {
+      u.passwordHash = newHash;
+      u.passwordResetToken = undefined;
+      u.passwordResetExpiresAt = undefined;
+      u.updatedAt = nowIso();
+    }
+  });
+
+  res.json({ ok: true });
+});
+
+// ── Tenant usage ──────────────────────────────────────────────────────────────
+
+app.get('/tenant/usage', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.id === user.tenantId);
+  if (!tenant) { res.status(404).json({ error: 'No tenant found' }); return; }
+
+  const now = new Date();
+  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  res.json({
+    period,
+    runsThisMonth: tenant.usage.runsThisMonth,
+    maxRuns: tenant.usage.maxRuns,
+    scenariosUsed: tenant.usage.scenariosUsed,
+    maxScenarios: tenant.usage.maxScenarios,
+    lastHeartbeatAt: tenant.lastHeartbeatAt ?? null,
+  });
+});
+
+// ── Instance heartbeat (called by evaluator instances) ────────────────────────
+
+app.post('/instance/heartbeat', async (req, res) => {
+  if (!validateInternalSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const parsed = z.object({
+    tenantId: z.string().min(1),
+    metrics: z.object({
+      runsThisMonth: z.number().int().nonnegative().optional(),
+      scenariosUsed: z.number().int().nonnegative().optional(),
+      activeUsers: z.number().int().nonnegative().optional(),
+    }).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'tenantId is required' }); return; }
+
+  const { tenantId, metrics } = parsed.data;
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.id === tenantId);
+  if (!tenant) { res.status(404).json({ error: 'Tenant not found' }); return; }
+
+  await mutateState((s) => {
+    const t = s.tenants.find((x) => x.id === tenantId);
+    if (!t) return;
+    t.lastHeartbeatAt = nowIso();
+    // If instance was starting, mark it running now that we received a heartbeat
+    if (t.status === 'provisioning' || (t.status as string) === 'starting') t.status = 'running';
+    if (metrics) {
+      if (metrics.runsThisMonth !== undefined) t.usage.runsThisMonth = metrics.runsThisMonth;
+      if (metrics.scenariosUsed !== undefined) t.usage.scenariosUsed = metrics.scenariosUsed;
+    }
+    t.updatedAt = nowIso();
+  });
+
+  res.json({ ok: true });
+});
+
+// ── Internal provisioner callbacks ───────────────────────────────────────────
+
+app.post('/internal/provision/complete', async (req, res) => {
+  if (!validateInternalSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const parsed = z.object({
+    tenantId: z.string().min(1),
+    instanceUrl: z.string().url(),
+    outputs: z.record(z.unknown()).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'tenantId and instanceUrl are required' }); return; }
+
+  const { tenantId, instanceUrl } = parsed.data;
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.id === tenantId);
+  if (!tenant) { res.status(404).json({ error: 'Tenant not found' }); return; }
+
+  await mutateState((s) => {
+    const t = s.tenants.find((x) => x.id === tenantId);
+    if (t) {
+      t.status = 'running';
+      t.instanceUrl = instanceUrl;
+      t.updatedAt = nowIso();
+    }
+  });
+
+  console.info(`[provision] Tenant ${tenantId} provisioned successfully: ${instanceUrl}`);
+  res.json({ ok: true });
+});
+
+app.post('/internal/provision/failed', async (req, res) => {
+  if (!validateInternalSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const parsed = z.object({
+    tenantId: z.string().min(1),
+    errorMessage: z.string().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'tenantId is required' }); return; }
+
+  const { tenantId, errorMessage } = parsed.data;
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.id === tenantId);
+  if (!tenant) { res.status(404).json({ error: 'Tenant not found' }); return; }
+
+  await mutateState((s) => {
+    const t = s.tenants.find((x) => x.id === tenantId);
+    if (t) { t.status = 'error'; t.updatedAt = nowIso(); }
+  });
+
+  console.error(`[provision] Tenant ${tenantId} provisioning failed: ${errorMessage ?? 'unknown error'}`);
+  res.json({ ok: true });
 });
 
 // ── Background: retry failed history writes every 5 minutes ─────────────────

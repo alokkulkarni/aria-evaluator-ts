@@ -112,10 +112,43 @@ module "alb" {
   tags                     = local.common_tags
 }
 
+# ── SSM: publish internal URL so CodeBuild and other services can discover it ──
 resource "aws_ssm_parameter" "control_plane_internal_url" {
   name  = "/aria/control-plane/${var.environment}/internal-url"
   type  = "String"
   value = "http://${module.alb.alb_dns_name}"
+
+  tags = local.common_tags
+}
+
+# ── Secrets Manager: auto-generate the internal shared secret ─────────────────
+# The secret is created once and rotated via Secrets Manager. CodeBuild reads it
+# at build time via IAM; the ECS task reads it via the `secrets` array (never
+# appears in plaintext environment variables).
+resource "aws_secretsmanager_secret" "control_plane_internal_secret" {
+  name                    = "/aria/control-plane/${var.environment}/internal-secret"
+  description             = "Shared secret for CodeBuild → control-plane callback auth"
+  recovery_window_in_days = 7
+
+  tags = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "control_plane_internal_secret" {
+  secret_id = aws_secretsmanager_secret.control_plane_internal_secret.id
+  # Auto-generated on first apply; update manually or via rotation Lambda.
+  secret_string = var.control_plane_internal_secret != "" ? var.control_plane_internal_secret : random_password.internal_secret.result
+}
+
+resource "random_password" "internal_secret" {
+  length  = 48
+  special = false
+}
+
+# ── SSM: also publish the secret ARN so CodeBuild can locate it without hardcoding ──
+resource "aws_ssm_parameter" "control_plane_internal_secret_arn" {
+  name  = "/aria/control-plane/${var.environment}/internal-secret-arn"
+  type  = "String"
+  value = aws_secretsmanager_secret.control_plane_internal_secret.arn
 
   tags = local.common_tags
 }
@@ -146,9 +179,28 @@ module "ecs" {
   s3_state_prefix               = var.s3_state_prefix
   s3_sync_interval_seconds      = 30
   log_retention_days            = var.log_retention_days
-  extra_environment_vars = [
-    { name = "CONTROL_PLANE_PORT", value = tostring(var.container_port) },
-    { name = "CONTROL_PLANE_STATE_DIR", value = "/app/state/control-plane" },
+  extra_environment_vars = concat(
+    [
+      { name = "CONTROL_PLANE_PORT", value = tostring(var.container_port) },
+      { name = "CONTROL_PLANE_STATE_DIR", value = "/app/state/control-plane" },
+      # Internal URL is read from SSM at startup — injected as plain env var since it is not secret
+      { name = "CONTROL_PLANE_INTERNAL_URL", value = aws_ssm_parameter.control_plane_internal_url.value },
+      { name = "CODEBUILD_AWS_REGION", value = var.aws_region },
+      # Pass secret ARN as plaintext — CodeBuild uses it to fetch the actual secret value
+      { name = "CONTROL_PLANE_SECRET_ARN", value = aws_secretsmanager_secret.control_plane_internal_secret.arn },
+      { name = "CONTROL_PLANE_CORS_ORIGINS", value = join(",", var.allowed_origins) },
+      { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = var.instance_base_url },
+    ],
+    var.codebuild_project_name != "" ? [
+      { name = "CODEBUILD_PROJECT_NAME", value = var.codebuild_project_name },
+    ] : [],
+  )
+  # Internal secret injected via ECS secrets (Secrets Manager valueFrom) — never plaintext
+  extra_secrets = [
+    {
+      name      = "CONTROL_PLANE_INTERNAL_SECRET"
+      valueFrom = aws_secretsmanager_secret.control_plane_internal_secret.arn
+    },
   ]
   saas_mode    = false
   tenant_id    = var.tenant_id

@@ -1,89 +1,153 @@
 version: 0.2
 
-# CodeBuild buildspec for provisioning evaluator instances
-# Triggered by Lambda with user_id and plan_type parameters
-# Clones repo and runs: terraform apply -var tenant_id=<uuid> -var pricing_tier=<plan>
+# CodeBuild buildspec for provisioning ARIA Evaluator tenant instances.
+# Triggered by the control-plane with per-build env var overrides.
+#
+# Secret handling:
+#   CONTROL_PLANE_SECRET_ARN is passed as a plaintext env var override (it is
+#   just an ARN — not the secret itself). The actual secret value is fetched via
+#   AWS CLI at runtime so it is never stored in build logs or env var dumps.
+#   CONTROL_PLANE_INTERNAL_URL is read from SSM automatically.
 
 phases:
   pre_build:
     commands:
-      - echo "Installing Terraform..."
-      - wget -q https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_linux_amd64.zip
-      - unzip -q terraform_1.7.0_linux_amd64.zip -d /usr/local/bin/
-      - rm terraform_1.7.0_linux_amd64.zip
+      - echo "==> Installing Terraform ${TERRAFORM_VERSION:-1.9.0}..."
+      - |
+        TF_VERSION="${TERRAFORM_VERSION:-1.9.0}"
+        wget -q "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+        unzip -q "terraform_${TF_VERSION}_linux_amd64.zip" -d /usr/local/bin/
+        rm "terraform_${TF_VERSION}_linux_amd64.zip"
       - terraform version
-      
-      - echo "Installing AWS CLI v2..."
-      - curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-      - unzip -q awscliv2.zip
-      - ./aws/install
-      - rm -rf awscliv2.zip aws/
-      
-      - echo "Configuring git for repo access..."
+
+      - echo "==> Configuring git..."
       - git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+
+      - echo "==> Fetching runtime secrets from AWS services..."
+      - |
+        # Fetch internal URL from SSM (not secret — just service discovery)
+        CP_URL=$(aws ssm get-parameter \
+          --name "/aria/control-plane/${ENVIRONMENT:-prod}/internal-url" \
+          --region "${AWS_REGION}" \
+          --query "Parameter.Value" \
+          --output text 2>/dev/null || echo "")
+
+        # Fetch the actual secret value from Secrets Manager via ARN
+        # CONTROL_PLANE_SECRET_ARN is passed as a plaintext env var override (safe — it's just an ARN)
+        if [ -n "${CONTROL_PLANE_SECRET_ARN}" ]; then
+          CP_SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id "${CONTROL_PLANE_SECRET_ARN}" \
+            --region "${AWS_REGION}" \
+            --query "SecretString" \
+            --output text 2>/dev/null || echo "")
+        else
+          CP_SECRET=""
+        fi
+
+        export RESOLVED_CP_URL="${CP_URL}"
+        export RESOLVED_CP_SECRET="${CP_SECRET}"
+        echo "Control plane URL resolved: ${RESOLVED_CP_URL:-<not found>}"
 
   build:
     commands:
-      - echo "Cloning evaluator-app-prod terraform code..."
-      - git clone --depth 1 --branch ${GITHUB_BRANCH:-main} ${GITHUB_REPO:-https://github.com/alokkulkarni/aria-evaluator-ts.git} /tmp/repo
+      - echo "==> Cloning repo (branch ${GITHUB_BRANCH:-main})..."
+      - git clone --depth 1 --branch "${GITHUB_BRANCH:-main}" "${GITHUB_REPO}" /tmp/repo
       - cd /tmp/repo/infra/terraform/environments/prod
-      
-      - echo "Initializing Terraform with remote state..."
+
+      - echo "==> Terraform init (tenant=${USER_ID}, region=${TENANT_REGION:-$AWS_REGION})..."
       - |
         terraform init \
           -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
-          -backend-config="key=users/${USER_ID}/terraform.tfstate" \
-          -backend-config="region=${AWS_REGION}" \
+          -backend-config="key=tenants/${USER_ID}/terraform.tfstate" \
+          -backend-config="region=${TENANT_REGION:-$AWS_REGION}" \
           -backend-config="dynamodb_table=${TERRAFORM_STATE_LOCK_TABLE}" \
           -backend-config="kms_key_id=${TERRAFORM_STATE_KMS_KEY_ARN}" \
           -backend-config="encrypt=true" \
           -reconfigure
-      
-      - echo "Validating Terraform configuration..."
+
       - terraform validate
-      
-      - echo "Planning Terraform apply for user ${USER_ID} with plan ${PLAN_TYPE}..."
+
+      - echo "==> Terraform plan (plan=${PLAN_TYPE}, track=${PRICING_TRACK:-individual})..."
       - |
+        # Re-fetch control plane URL and secret — env vars exported in pre_build
+        # do not survive across CodeBuild phases (each command block is a new shell).
+        BUILD_CP_URL=$(aws ssm get-parameter \
+          --name "/aria/control-plane/${ENVIRONMENT:-prod}/internal-url" \
+          --region "${AWS_REGION}" \
+          --query "Parameter.Value" \
+          --output text 2>/dev/null || echo "")
+
+        if [ -n "${CONTROL_PLANE_SECRET_ARN}" ]; then
+          BUILD_CP_SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id "${CONTROL_PLANE_SECRET_ARN}" \
+            --region "${AWS_REGION}" \
+            --query "SecretString" \
+            --output text 2>/dev/null || echo "")
+        else
+          BUILD_CP_SECRET=""
+        fi
+
         terraform plan \
           -var="tenant_id=${USER_ID}" \
           -var="pricing_tier=${PLAN_TYPE}" \
-          -var="pricing_track=$([ '${PLAN_TYPE}' = 'free' ] && echo 'individual' || echo 'enterprise')" \
+          -var="pricing_track=${PRICING_TRACK:-individual}" \
+          -var="aws_region=${TENANT_REGION:-$AWS_REGION}" \
           -var="environment=prod" \
+          -var="control_plane_internal_url=${BUILD_CP_URL}" \
+          -var="control_plane_internal_secret=${BUILD_CP_SECRET}" \
           -out=/tmp/tfplan
-      
-      - echo "Applying Terraform configuration..."
-      - |
-        terraform apply \
-          -auto-approve \
-          /tmp/tfplan
-      
-      - echo "Capturing output..."
+
+      - echo "==> Terraform apply..."
+      - terraform apply -auto-approve /tmp/tfplan
+
+      - echo "==> Capturing outputs..."
       - terraform output -json > /tmp/outputs.json
-      - cat /tmp/outputs.json
 
   post_build:
     commands:
-      - echo "Updating DynamoDB with instance mapping..."
       - |
-        INSTANCE_ID=$(jq -r '.evaluator_instance_id.value' /tmp/outputs.json)
-        INSTANCE_URL=$(jq -r '.evaluator_instance_url.value' /tmp/outputs.json)
-        
-        aws dynamodb put-item \
-          --table-name ${USER_INSTANCE_TABLE} \
-          --item "{
-            \"user_id\": {\"S\": \"${USER_ID}\"},
-            \"instance_id\": {\"S\": \"${INSTANCE_ID}\"},
-            \"instance_url\": {\"S\": \"${INSTANCE_URL}\"},
-            \"plan_type\": {\"S\": \"${PLAN_TYPE}\"},
-            \"status\": {\"S\": \"active\"},
-            \"created_at\": {\"N\": \"$(date +%s)\"},
-            \"last_login\": {\"N\": \"0\"}
-          }" \
-          --region ${AWS_REGION}
-      
-      - echo "Provisioning complete!"
-      - echo "Instance ID: $INSTANCE_ID"
-      - echo "Instance URL: $INSTANCE_URL"
+        set +e
+        INSTANCE_URL=$(jq -r '.cloudfront_domain_name.value // .alb_dns_name.value // empty' /tmp/outputs.json 2>/dev/null)
+        BUILD_STATUS=$CODEBUILD_BUILD_SUCCEEDING
+
+        # Re-fetch secrets (env vars are scoped per phase in CodeBuild)
+        CP_URL=$(aws ssm get-parameter \
+          --name "/aria/control-plane/${ENVIRONMENT:-prod}/internal-url" \
+          --region "${AWS_REGION}" \
+          --query "Parameter.Value" \
+          --output text 2>/dev/null || echo "")
+
+        if [ -n "${CONTROL_PLANE_SECRET_ARN}" ]; then
+          CP_SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id "${CONTROL_PLANE_SECRET_ARN}" \
+            --region "${AWS_REGION}" \
+            --query "SecretString" \
+            --output text 2>/dev/null || echo "")
+        else
+          CP_SECRET=""
+        fi
+
+        if [ "$BUILD_STATUS" = "1" ] && [ -n "$INSTANCE_URL" ] && [ -n "$CP_URL" ]; then
+          echo "==> Provisioning succeeded. Notifying control plane..."
+          FULL_URL="https://${INSTANCE_URL}"
+          curl -sf -X POST "${CP_URL}/internal/provision/complete" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${CP_SECRET}" \
+            -d "{\"tenantId\":\"${USER_ID}\",\"instanceUrl\":\"${FULL_URL}\"}" \
+            && echo "Control plane notified: ${FULL_URL}" \
+            || echo "WARNING: failed to notify control plane (status will update via heartbeat)"
+        else
+          echo "==> Provisioning failed. Notifying control plane..."
+          ERR_MSG=$(tail -20 /var/log/aws/codebuild/build.log 2>/dev/null | tr '\"' "'" | tr '\n' ' ' | cut -c1-200)
+          if [ -n "$CP_URL" ]; then
+            curl -sf -X POST "${CP_URL}/internal/provision/failed" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${CP_SECRET}" \
+              -d "{\"tenantId\":\"${USER_ID}\",\"errorMessage\":\"${ERR_MSG}\"}" \
+              || echo "WARNING: failed to notify control plane of failure"
+          fi
+          exit 1
+        fi
 
 artifacts:
   files:
@@ -94,15 +158,4 @@ artifacts:
 cache:
   paths:
     - '/root/.terraform/**/*'
-
-# Log output
-on_failure:
-  - command: |
-      echo "Provisioning failed! Check logs above for details."
-      aws dynamodb update-item \
-        --table-name ${USER_INSTANCE_TABLE} \
-        --key "{\"user_id\": {\"S\": \"${USER_ID}\"}}" \
-        --update-expression "SET #s = :s" \
-        --expression-attribute-names '{"#s":"status"}' \
-        --expression-attribute-values '{":s":{"S":"failed"}}' \
-        --region ${AWS_REGION} || true
+    - '/root/.terraform.d/plugin-cache/**/*'

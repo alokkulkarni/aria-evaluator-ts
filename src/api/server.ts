@@ -13,6 +13,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { initDb, prisma } from '../db/client.js';
 import redis from '../lib/cache.js';
 import { startRunJobWorker } from '../jobs/run-jobs.js';
+import { startHeartbeatEmitter, stopHeartbeatEmitter } from '../jobs/heartbeat.js';
 import { appPaths, ensureManagedStateDirs, getStateLayoutWarnings } from '../runtime/paths.js';
 import { attachAuthContext, authRouter, ssoRouter, requireAuth, ensureDefaultAdminAccount } from './auth.js';
 import { authCredentialsRouter } from './routes/auth-credentials.js';
@@ -31,6 +32,7 @@ import { observabilityRouter } from './routes/observability.js';
 import { schedulesRouter } from './routes/schedules.js';
 import { workspaceRouter } from './routes/workspace.js';
 import { usageRouter } from './routes/usage.js';
+import { usersRouter } from './routes/users.js';
 import { startScheduleExecutor, stopScheduleExecutor } from '../jobs/schedule-executor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -198,6 +200,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/workspace', workspaceRouter);
 app.use('/api/usage', usageRouter);
+app.use('/api/users', usersRouter);
 app.use('/api/openapi', openapiRouter);
 
 // ── Static file serving ────────────────────────────────────────────────────────
@@ -266,6 +269,7 @@ if (process.env['NODE_ENV'] !== 'test') {
     await ensureDefaultAdminAccount();
     await startRunJobWorker();
     await startScheduleExecutor();
+    startHeartbeatEmitter();
 
     const server = createServer(app);
     server.listen(PORT, () => {
@@ -274,6 +278,30 @@ if (process.env['NODE_ENV'] !== 'test') {
       console.log(`   UI:     http://localhost:${PORT}`);
       console.log(`   CCP:    http://localhost:${PORT}/evaluator-ccp.html\n`);
     });
+
+    // ── Graceful shutdown ─────────────────────────────────────────────────────
+    const shutdown = (signal: string) => {
+      console.log(`\n[shutdown] Received ${signal} — closing server…`);
+      server.close(async () => {
+        try {
+          stopScheduleExecutor();
+          stopHeartbeatEmitter();
+          await prisma.$disconnect();
+        } catch (err) {
+          console.error('[shutdown] Cleanup error:', (err as Error).message);
+        } finally {
+          console.log('[shutdown] Clean exit');
+          process.exit(0);
+        }
+      });
+      // Force exit after 10 seconds if graceful close stalls
+      setTimeout(() => {
+        console.error('[shutdown] Forced exit after timeout');
+        process.exit(1);
+      }, 10_000).unref();
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
   })().catch((err: unknown) => {
     console.error(`Failed to start API: ${(err as Error).message}`);
     process.exit(1);

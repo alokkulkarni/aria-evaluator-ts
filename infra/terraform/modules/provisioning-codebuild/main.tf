@@ -227,7 +227,7 @@ resource "aws_iam_role_policy" "codebuild_terraform" {
   })
 }
 
-# Secrets Manager permission for sensitive variables
+# Secrets Manager: read provisioner secrets and the control-plane internal secret
 resource "aws_iam_role_policy" "codebuild_secrets" {
   name = "${local.codebuild_name}-secrets"
   role = aws_iam_role.codebuild_role.id
@@ -241,7 +241,31 @@ resource "aws_iam_role_policy" "codebuild_secrets" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = "arn:aws:secretsmanager:${var.aws_region}:${var.aws_account_id}:secret:${var.app_name}-provisioner-*"
+        Resource = [
+          "arn:aws:secretsmanager:${var.aws_region}:${var.aws_account_id}:secret:${var.app_name}-provisioner-*",
+          # Control-plane internal secret — path matches what control-plane-{env} creates
+          "arn:aws:secretsmanager:${var.aws_region}:${var.aws_account_id}:secret:/aria/control-plane/*"
+        ]
+      }
+    ]
+  })
+}
+
+# SSM: read control-plane service-discovery parameters (internal URL, secret ARN)
+resource "aws_iam_role_policy" "codebuild_ssm" {
+  name = "${local.codebuild_name}-ssm"
+  role = aws_iam_role.codebuild_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters"
+        ]
+        Resource = "arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/aria/control-plane/*"
       }
     ]
   })

@@ -94,6 +94,42 @@ module "alb" {
   tags                     = local.common_tags
 }
 
+# ── SSM: publish internal URL ─────────────────────────────────────────────────
+resource "aws_ssm_parameter" "control_plane_internal_url" {
+  name  = "/aria/control-plane/${var.environment}/internal-url"
+  type  = "String"
+  value = "http://${module.alb.alb_dns_name}"
+
+  tags = local.common_tags
+}
+
+# ── Secrets Manager: auto-generate internal shared secret ─────────────────────
+resource "aws_secretsmanager_secret" "control_plane_internal_secret" {
+  name                    = "/aria/control-plane/${var.environment}/internal-secret"
+  description             = "Shared secret for CodeBuild → control-plane callback auth"
+  recovery_window_in_days = 7
+
+  tags = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "control_plane_internal_secret" {
+  secret_id     = aws_secretsmanager_secret.control_plane_internal_secret.id
+  secret_string = var.control_plane_internal_secret != "" ? var.control_plane_internal_secret : random_password.internal_secret.result
+}
+
+resource "random_password" "internal_secret" {
+  length  = 48
+  special = false
+}
+
+resource "aws_ssm_parameter" "control_plane_internal_secret_arn" {
+  name  = "/aria/control-plane/${var.environment}/internal-secret-arn"
+  type  = "String"
+  value = aws_secretsmanager_secret.control_plane_internal_secret.arn
+
+  tags = local.common_tags
+}
+
 module "ecs" {
   source = "../../modules/ecs"
 
@@ -120,9 +156,27 @@ module "ecs" {
   s3_state_prefix               = var.s3_state_prefix
   s3_sync_interval_seconds      = 30
   log_retention_days            = var.log_retention_days
-  extra_environment_vars = [
-    { name = "CONTROL_PLANE_PORT", value = tostring(var.container_port) },
-    { name = "CONTROL_PLANE_STATE_DIR", value = "/app/state/control-plane" },
+  extra_environment_vars = concat(
+    [
+      { name = "CONTROL_PLANE_PORT", value = tostring(var.container_port) },
+      { name = "CONTROL_PLANE_STATE_DIR", value = "/app/state/control-plane" },
+      { name = "CONTROL_PLANE_INTERNAL_URL", value = aws_ssm_parameter.control_plane_internal_url.value },
+      { name = "CODEBUILD_AWS_REGION", value = var.aws_region },
+      { name = "CONTROL_PLANE_SECRET_ARN", value = aws_secretsmanager_secret.control_plane_internal_secret.arn },
+      { name = "CONTROL_PLANE_CORS_ORIGINS", value = join(",", var.allowed_origins) },
+    ],
+    var.codebuild_project_name != "" ? [
+      { name = "CODEBUILD_PROJECT_NAME", value = var.codebuild_project_name },
+    ] : [],
+    var.instance_base_url != "" ? [
+      { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = var.instance_base_url },
+    ] : [],
+  )
+  extra_secrets = [
+    {
+      name      = "CONTROL_PLANE_INTERNAL_SECRET"
+      valueFrom = aws_secretsmanager_secret.control_plane_internal_secret.arn
+    },
   ]
   saas_mode    = false
   tenant_id    = var.tenant_id

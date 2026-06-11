@@ -273,3 +273,27 @@ variable "cpu_scale_target" {
   type        = number
   default     = 70
 }
+
+variable "max_runs_per_month" {
+  description = "Override MAX_RUNS_PER_MONTH for this instance (empty = use tier default)"
+  type        = string
+  default     = ""
+}
+
+variable "max_scenarios_per_run" {
+  description = "Override MAX_SCENARIOS_PER_RUN for this instance (empty = use tier default)"
+  type        = string
+  default     = ""
+}
+
+variable "max_models" {
+  description = "Override MAX_MODELS for this instance (empty = use tier default)"
+  type        = string
+  default     = ""
+}
+
+variable "max_users" {
+  description = "Override MAX_USERS for this instance (empty = use tier default)"
+  type        = string
+  default     = ""
+}

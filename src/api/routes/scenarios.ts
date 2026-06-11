@@ -7,6 +7,8 @@ import yaml from 'js-yaml';
 
 import { getRequestAuth } from '../auth.js';
 import { prisma } from '../../db/client.js';
+import { checkScenarioQuota } from '../../shared/quota-enforcement.js';
+import { getUsageLimits } from '../../shared/usage-limits.js';
 import { loadScenariosFromDir } from '../../conversation/scenario-loader.js';
 import type { Scenario } from '../../types/scenario.js';
 
@@ -679,6 +681,21 @@ scenariosRouter.post('/file', async (req, res) => {
 
   if (typeof rawPath !== 'string' || typeof content !== 'string') {
     return res.status(400).json({ error: 'path and content required' });
+  }
+
+  // Only check quota for new files, not appends (appends add to an existing file)
+  if (append !== true) {
+    const quota = await checkScenarioQuota();
+    if (!quota.allowed) {
+      return res.status(402).json({
+        error: quota.error,
+        code: quota.code,
+        limit: quota.limit,
+        current: quota.current,
+        maximum: quota.maximum,
+        upgradeUrl: getUsageLimits().upgradeUrl,
+      });
+    }
   }
 
   const resolvedPath = resolveScenarioFilePath(rawPath);

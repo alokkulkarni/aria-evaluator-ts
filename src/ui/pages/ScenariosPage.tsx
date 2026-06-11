@@ -1,6 +1,7 @@
 // src/ui/pages/ScenariosPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
+import { usePlanGate } from '../lib/plan-gate.js';
 import type { Scenario } from '../../types/scenario.js';
 import { ScenarioBuilderModal } from './ScenarioBuilderModal.js';
 import {
@@ -48,6 +49,7 @@ function supportedChannels(provider: Provider): Array<'chat' | 'voice'> {
 }
 
 export function ScenariosPage() {
+  const { isBlocked, showUpgradeNudge } = usePlanGate();
   const [files, setFiles] = useState<string[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,6 +197,7 @@ export function ScenariosPage() {
   }
 
   async function startRun(scenario: Scenario, channel: 'chat' | 'voice') {
+    if (isBlocked('run')) { showUpgradeNudge('run'); return; }
     cleanup();
     setRunState('running');
     setLiveEvents([]);
@@ -209,6 +212,7 @@ export function ScenariosPage() {
   }
 
   async function startBothRun(scenario: Scenario) {
+    if (isBlocked('run')) { showUpgradeNudge('run'); return; }
     cleanup();
     setRunState('running');
     setLiveEvents(['-- Chat --']);
@@ -370,7 +374,7 @@ export function ScenariosPage() {
         </div>
         <div className="flex gap-2 items-center">
           <button
-            onClick={() => setBuilder({ mode: 'create' })}
+            onClick={() => { if (isBlocked('scenario')) { showUpgradeNudge('scenario'); return; } setBuilder({ mode: 'create' }); }}
             className="btn-primary px-4 py-2 text-sm font-semibold">
             <PowerIcon className="h-4 w-4" aria-hidden="true" />
             New Scenario

@@ -21,7 +21,7 @@ interface DashboardLink {
 const links: DashboardLink[] = [
   { label: 'Overview', href: '/dashboard', match: '/dashboard', matchMode: 'exact', requiresEmptyHash: true, icon: LayoutDashboard },
   { label: 'My Instance', href: '/dashboard#instance', icon: Server },
-  { label: 'Users', href: '/dashboard#team', icon: Users },
+  { label: 'Users', href: '/dashboard/users', match: '/dashboard/users', matchMode: 'prefix', icon: Users },
   { label: 'Billing', href: '/dashboard/billing', match: '/dashboard/billing', matchMode: 'prefix', icon: CreditCard },
   { label: 'Settings', href: '/dashboard#settings', icon: Settings },
 ]

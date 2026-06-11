@@ -82,6 +82,61 @@ export async function checkRunQuota(scenarioCount: number, provider: string): Pr
   return { allowed: true };
 }
 
+/**
+ * Check whether creating/uploading a new scenario is allowed.
+ * maxScenariosPerRun is the per-run limit; total stored scenarios are
+ * capped separately — we reuse maxScenariosPerRun × 10 as a soft total cap.
+ * (e.g. free=100 total, individual=300 total, enterprise_starter=1200 total)
+ */
+export async function checkScenarioQuota(): Promise<QuotaCheckResult> {
+  const limits = getUsageLimits();
+  if (!limits.enabled || limits.maxScenariosPerRun < 0) return { allowed: true };
+
+  // Soft total cap = 10 × per-run limit
+  const maxTotal = limits.maxScenariosPerRun * 10;
+  const currentTotal = await prisma.scenario.count({
+    where: { lifecycleStatus: { not: 'deprecated' } },
+  });
+
+  if (currentTotal >= maxTotal) {
+    return {
+      allowed: false,
+      error: `Scenario storage limit reached (${currentTotal}/${maxTotal}). Upgrade your plan or archive unused scenarios.`,
+      code: 'LIMIT_EXCEEDED',
+      limit: 'MAX_SCENARIOS_TOTAL',
+      current: currentTotal,
+      maximum: maxTotal,
+    };
+  }
+  return { allowed: true };
+}
+
+/**
+ * Check whether adding a new user is allowed (enterprise plan gate).
+ * Individual/free plans allow only 1 user (the owner); enterprise plans have a higher cap.
+ */
+export async function checkUserQuota(): Promise<QuotaCheckResult> {
+  const limits = getUsageLimits();
+  if (!limits.enabled || limits.maxUsers < 0) return { allowed: true };
+
+  const currentUsers = await prisma.user.count({
+    where: { suspended: false },
+  });
+
+  if (currentUsers >= limits.maxUsers) {
+    return {
+      allowed: false,
+      error: `User limit reached (${currentUsers}/${limits.maxUsers}). Upgrade to Enterprise to add more users.`,
+      code: 'LIMIT_EXCEEDED',
+      limit: 'MAX_USERS',
+      current: currentUsers,
+      maximum: limits.maxUsers,
+    };
+  }
+
+  return { allowed: true };
+}
+
 /** Return current month usage stats for the /api/usage endpoint. */
 export async function getMonthlyUsageStats(): Promise<{
   runsThisMonth: number;

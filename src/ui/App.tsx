@@ -7,9 +7,12 @@ import { ReviewQueuePage } from './pages/ReviewQueuePage.js';
 import { TranscriptsPage } from './pages/TranscriptsPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
+import { UsersPage } from './pages/UsersPage.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { AnalysisPage } from './pages/AnalysisPage.js';
 import { SchedulesPage } from './pages/SchedulesPage.js';
+import { UsageBanner } from './components/UsageBanner.js';
+import { PlanGateProvider } from './lib/plan-gate.js';
 import {
   AppLogoIcon,
   NavAnalysisIcon,
@@ -25,7 +28,7 @@ import {
 } from './components/icons.js';
 import { apiFetch } from './lib/api.js';
 
-type Page = 'workspace' | 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings';
+type Page = 'workspace' | 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings' | 'users';
 
 interface AuthenticatedUser {
   id: string;
@@ -129,7 +132,7 @@ const TOUR_STORAGE_PREFIX = 'aria-evaluator:dashboard-tour';
 function getRequestedPage(): Page | null {
   if (typeof window === 'undefined') return 'dashboard';
   const page = new URLSearchParams(window.location.search).get('page');
-  if (page === 'workspace' || page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'schedules' || page === 'settings') {
+  if (page === 'workspace' || page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'schedules' || page === 'settings' || page === 'users') {
     return page;
   }
   return null;
@@ -333,6 +336,7 @@ const NAV: { id: Page; label: string; icon: React.ComponentType<{ className?: st
   { id: 'schedules', label: 'Schedules', icon: NavSchedulesIcon },
   { id: 'transcripts', label: 'Transcripts', icon: NavTranscriptsIcon },
   { id: 'reports', label: 'Reports', icon: NavReportsIcon },
+  { id: 'users', label: 'Team', icon: NavSettingsIcon },
   { id: 'settings', label: 'Settings', icon: NavSettingsIcon },
 ];
 
@@ -425,6 +429,7 @@ export default function App() {
   }
 
   return (
+    <PlanGateProvider>
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-8xl items-center gap-4 px-4 sm:px-6 lg:px-8">
@@ -481,6 +486,8 @@ export default function App() {
         </div>
       </header>
 
+      <UsageBanner />
+
       <main className="flex-1 max-w-8xl mx-auto w-full px-4 py-8 sm:px-6 lg:px-8">
         {page === 'workspace' && user.workspaceEligible && <WorkspacePage onOpenDashboard={() => setPage('dashboard')} />}
         {page === 'dashboard' && <Dashboard onNavigate={setPage} onNewRun={handleNewRun} />}
@@ -491,6 +498,7 @@ export default function App() {
         {page === 'schedules' && <SchedulesPage />}
         {page === 'transcripts' && <TranscriptsPage initialFilename={initialTranscriptFile} />}
         {page === 'reports' && <ReportsPage />}
+        {page === 'users' && <UsersPage />}
         {page === 'settings' && <SettingsPage />}
       </main>
 
@@ -502,5 +510,6 @@ export default function App() {
         onClose={closeTour}
       />
     </div>
+    </PlanGateProvider>
   );
 }

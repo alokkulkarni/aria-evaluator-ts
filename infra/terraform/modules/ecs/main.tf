@@ -42,12 +42,15 @@ locals {
   )
 
   all_environment = concat(local.base_environment, var.extra_environment_vars)
-  container_secrets = var.god_mode_secret_arn != "" ? [
-    {
-      name      = "ARIA_GOD_MODE_TOKEN"
-      valueFrom = var.god_mode_secret_arn
-    }
-  ] : []
+  container_secrets = concat(
+    var.god_mode_secret_arn != "" ? [
+      {
+        name      = "ARIA_GOD_MODE_TOKEN"
+        valueFrom = var.god_mode_secret_arn
+      }
+    ] : [],
+    var.extra_secrets,
+  )
   mount_points = var.efs_access_point_id != "" ? [
     {
       sourceVolume  = "aria-state"

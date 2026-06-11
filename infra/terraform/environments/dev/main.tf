@@ -126,7 +126,7 @@ module "ecs" {
   s3_sync_interval_seconds      = var.s3_sync_interval_seconds
   log_retention_days            = var.log_retention_days
 
-  # Merge Redis env vars with extra vars
+  # Merge Redis env vars with extra vars and optional plan limit overrides
   extra_environment_vars = concat(
     [
       {
@@ -142,7 +142,11 @@ module "ecs" {
         value = "0"
       },
     ],
-    var.extra_environment_vars
+    var.extra_environment_vars,
+    var.max_runs_per_month != "" ? [{ name = "MAX_RUNS_PER_MONTH", value = var.max_runs_per_month }] : [],
+    var.max_scenarios_per_run != "" ? [{ name = "MAX_SCENARIOS_PER_RUN", value = var.max_scenarios_per_run }] : [],
+    var.max_models != "" ? [{ name = "MAX_MODELS", value = var.max_models }] : [],
+    var.max_users != "" ? [{ name = "MAX_USERS", value = var.max_users }] : [],
   )
 
   saas_mode                     = false # dev is always standalone

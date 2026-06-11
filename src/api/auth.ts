@@ -6,6 +6,7 @@ import { prisma } from '../db/client.js';
 import { getCachedAuthSession, cacheAuthSession, invalidateCachedAuthSession } from '../lib/cache.js';
 import { recordAuditEventSafe } from './audit-log.js';
 import { getWebsiteSignOutUrl } from './control-plane.js';
+import { checkUserQuota } from '../shared/quota-enforcement.js';
 
 const SECURE_SESSION_COOKIE_NAME = '__Host-aria_session';
 const DEV_SESSION_COOKIE_NAME = 'aria_session';
@@ -460,6 +461,20 @@ async function createSessionForUser(userId: string): Promise<{ sessionId: string
     select: { id: true },
   });
   return { sessionId: session.id, token, expiresAt };
+}
+
+/**
+ * Creates a session for an OAuth-authenticated user and sets the session cookie.
+ * Called by the OAuth callback handlers so they use the same cookie-based session
+ * system as the password login flow.
+ */
+export async function createAndSetOAuthSession(userId: string, res: Response): Promise<void> {
+  const session = await createSessionForUser(userId);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { lastLoginAt: new Date() },
+  });
+  setSessionCookie(res, session.token, session.expiresAt);
 }
 
 export function getRequestAuth(req: Request): AuthContext | null {
@@ -1173,6 +1188,12 @@ async function upsertSsoUser(params: {
       },
     });
     return { userId: existing.id, isNewUser: false };
+  }
+
+  // New user — check user quota before creating
+  const quotaResult = await checkUserQuota();
+  if (!quotaResult.allowed) {
+    throw Object.assign(new Error(quotaResult.error ?? 'User limit reached'), { code: 'LIMIT_EXCEEDED', status: 402 });
   }
 
   const created = await prisma.user.create({

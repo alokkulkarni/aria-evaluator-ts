@@ -1,9 +1,10 @@
 import NextAuth from 'next-auth'
-import Cognito from 'next-auth/providers/cognito'
+import Google from 'next-auth/providers/google'
+import GitHub from 'next-auth/providers/github'
 import Credentials from 'next-auth/providers/credentials'
 import { ApiError, serverApiFetch } from '@/lib/api'
 
-type AuthProvider = 'email' | 'google' | 'apple'
+type AuthProvider = 'email' | 'google' | 'github'
 
 interface ControlPlaneUser {
   id: string
@@ -14,31 +15,6 @@ interface ControlPlaneUser {
   tenantId?: string
   accessToken?: string
   isNewUser?: boolean
-}
-
-function getSocialProviderFromCognitoProfile(profile: unknown): AuthProvider | null {
-  if (!profile || typeof profile !== 'object') return null
-  const candidate = profile as Record<string, unknown>
-
-  const identitiesRaw = candidate.identities
-  if (typeof identitiesRaw === 'string') {
-    try {
-      const identities = JSON.parse(identitiesRaw) as Array<Record<string, unknown>>
-      const providerName = identities[0]?.providerName
-      if (providerName === 'Google') return 'google'
-      if (providerName === 'SignInWithApple' || providerName === 'Apple') return 'apple'
-    } catch {
-      // fall through to other hints in the profile payload
-    }
-  }
-
-  const cognitoUsername = candidate['cognito:username']
-  if (typeof cognitoUsername === 'string') {
-    if (cognitoUsername.startsWith('Google_')) return 'google'
-    if (cognitoUsername.startsWith('SignInWithApple_') || cognitoUsername.startsWith('Apple_')) return 'apple'
-  }
-
-  return null
 }
 
 function parseApiErrorPayload(raw: string): { code?: string; provider?: AuthProvider } | null {
@@ -52,55 +28,43 @@ function parseApiErrorPayload(raw: string): { code?: string; provider?: AuthProv
 const authSecret = (() => {
   const configured = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET
   if (configured) return configured
-
   const deployEnv = (process.env.ARIA_DEPLOY_ENV ?? process.env.ENVIRONMENT ?? '').toLowerCase()
   if (deployEnv === 'prod' || deployEnv === 'production') {
     throw new Error('NEXTAUTH_SECRET or AUTH_SECRET is required in production')
   }
-
   console.warn('[auth] NEXTAUTH_SECRET is not set; using fallback secret. Set NEXTAUTH_SECRET for production.')
   return 'aria-website-default-secret-change-me'
 })()
 
-const useCognitoSocialAuth = Boolean(
-  process.env.COGNITO_CLIENT_ID &&
-    process.env.COGNITO_CLIENT_SECRET &&
-    process.env.COGNITO_ISSUER,
-)
-
-const providers = [
-  ...(useCognitoSocialAuth
-    ? [
-        Cognito({
-          clientId: process.env.COGNITO_CLIENT_ID!,
-          clientSecret: process.env.COGNITO_CLIENT_SECRET!,
-          issuer: process.env.COGNITO_ISSUER!,
-          checks: ['pkce', 'state', 'nonce'],
-        }),
-      ]
-    : []),
-  Credentials({
-    credentials: {
-      email: { label: 'Email', type: 'email' },
-      password: { label: 'Password', type: 'password' },
-    },
-    async authorize(credentials) {
-      const email = typeof credentials?.email === 'string' ? credentials.email.trim() : ''
-      const password = typeof credentials?.password === 'string' ? credentials.password : ''
-      if (!email || !password) return null
-
-      const response = await serverApiFetch<{ user: ControlPlaneUser }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      })
-
-      return response.user
-    },
-  }),
-]
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers,
+  providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    GitHub({
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    }),
+    Credentials({
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        const email = typeof credentials?.email === 'string' ? credentials.email.trim() : ''
+        const password = typeof credentials?.password === 'string' ? credentials.password : ''
+        if (!email || !password) return null
+
+        const response = await serverApiFetch<{ user: ControlPlaneUser }>('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password }),
+        })
+
+        return response.user
+      },
+    }),
+  ],
   trustHost: true,
   pages: {
     signIn: '/sign-in',
@@ -110,20 +74,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account, profile }) {
       if (!account || account.provider === 'credentials') return true
 
-      const provider = account.provider === 'cognito' ? getSocialProviderFromCognitoProfile(profile) : null
-      if (!provider) return '/sign-in?error=social_signin_failed'
+      const provider = account.provider as AuthProvider
+      if (provider !== 'google' && provider !== 'github') return '/sign-in?error=social_signin_failed'
 
-      const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : ''
+      // next-auth normalises profile.email for both Google and GitHub
+      const email = typeof profile?.email === 'string' ? profile.email.trim().toLowerCase() : ''
       if (!email) return `/sign-in?error=missing_social_email&provider=${provider}`
+
+      const displayName = typeof profile?.name === 'string' && profile.name
+        ? profile.name
+        : (user.name ?? null)
 
       try {
         const response = await serverApiFetch<{ user: ControlPlaneUser }>('/auth/oauth', {
           method: 'POST',
-          body: JSON.stringify({
-            provider,
-            email,
-            name: typeof user.name === 'string' ? user.name : null,
-          }),
+          body: JSON.stringify({ provider, email, name: displayName }),
         })
 
         const cpUser = response.user
@@ -144,7 +109,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return `/sign-in?error=email_provider_mismatch&provider=${payload.provider}`
           }
         }
-
         return `/sign-in?error=social_signin_failed&provider=${provider}`
       }
     },
@@ -159,7 +123,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.tenantId = token.tenantId as string | undefined
         session.user.accessToken = token.accessToken as string | undefined
       }
-
       return session
     },
     async jwt({ token, user, trigger }) {
@@ -170,7 +133,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.tenantId = (user as ControlPlaneUser).tenantId
         token.accessToken = (user as ControlPlaneUser).accessToken
       }
-
       return token
     },
   },

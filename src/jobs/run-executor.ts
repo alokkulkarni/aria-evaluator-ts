@@ -256,8 +256,38 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
       finalError = 'Run deleted while execution was in progress';
     }
   } catch (err) {
-    finalStatus = 'failed';
-    finalError = (err as Error).message;
+    const errMessage = (err as Error).message;
+    // If any transcript paths were collected before the error, save a partial
+    // result and mark the run as completed (partial) so a report still generates.
+    // If no turns were produced at all, fall back to the normal 'failed' path.
+    if (transcriptPaths.size > 0) {
+      const warningMessage = `⚠ Run completed with adapter error: ${errMessage}`;
+      publishLogEvent(warningMessage);
+      finalStatus = 'completed';
+      finalError = null;
+      if (!(await isRunDeleted(runId))) {
+        const persistedRefs = await ingestRunArtifacts(
+          runId,
+          transcriptPaths,
+          reportJsonPath,
+          reportHtmlPath,
+          'completed',
+        ).catch((ingestErr) => {
+          console.error(`Failed to ingest partial artifacts for run ${runId}: ${(ingestErr as Error).message}`);
+          return { reportJsonRef: null, reportHtmlRef: null };
+        });
+        reportJsonRef = persistedRefs.reportJsonRef;
+        reportHtmlRef = persistedRefs.reportHtmlRef;
+        // Append warning to the eval result summary if one was created
+        await prisma.evalResult.updateMany({
+          where: { runId },
+          data: { summary: warningMessage },
+        }).catch(() => { /* best-effort */ });
+      }
+    } else {
+      finalStatus = 'failed';
+      finalError = errMessage;
+    }
   } finally {
     try {
       unlinkSync(tmpScenarioPath);

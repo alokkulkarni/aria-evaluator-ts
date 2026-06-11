@@ -18,6 +18,7 @@ import { recordAuditEventSafe } from '../audit-log.js';
 import { registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings } from '../runtime-settings.js';
 import { checkRunQuota } from '../../shared/quota-enforcement.js';
+import { getUsageLimits } from '../../shared/usage-limits.js';
 
 export const runsRouter = Router();
 
@@ -626,6 +627,7 @@ runsRouter.post('/', async (req, res) => {
       limit: quotaResult.limit,
       current: quotaResult.current,
       maximum: quotaResult.maximum,
+      upgradeUrl: getUsageLimits().upgradeUrl,
     });
   }
 

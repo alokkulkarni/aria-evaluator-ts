@@ -110,3 +110,30 @@ variable "cpu_scale_target" {
   type        = number
   default     = 70
 }
+
+variable "codebuild_project_name" {
+  description = "CodeBuild project name for tenant provisioning. Leave empty to skip CodeBuild (local/dev)."
+  type        = string
+  default     = ""
+}
+
+variable "allowed_origins" {
+  description = "CORS allowed origins for the control-plane API (comma-separated when passed as env var)"
+  type        = list(string)
+  default     = ["http://localhost:3000", "http://localhost:3001"]
+}
+
+variable "instance_base_url" {
+  description = "Base URL used by the control plane to generate tenant instance links (e.g. the dev website CloudFront URL)"
+  type        = string
+  default     = ""
+}
+
+# control_plane_internal_url is now auto-derived from module.alb.alb_dns_name via aws_ssm_parameter
+
+variable "control_plane_internal_secret" {
+  description = "Optional: provide a specific secret value. Leave empty to auto-generate via random_password."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

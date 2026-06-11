@@ -9,19 +9,22 @@ export interface TierLimits {
   maxScenariosPerRun: number;
   maxRunsPerMonth: number;
   maxModels: number;
+  maxUsers: number;   // -1 = unlimited (enterprise), 1 = individual/free (owner only)
 }
 
 export interface UsageLimits extends TierLimits {
   enabled: boolean;
   tier: PricingTier | null;
+  saasMode: boolean;   // true when running as a provisioned SaaS instance
+  upgradeUrl: string | null;
 }
 
 const DEFAULT_LIMITS_BY_TIER: Record<PricingTier, TierLimits> = {
-  free:                 { maxScenariosPerRun: 10,  maxRunsPerMonth: 5,    maxModels: 1  },
-  individual:           { maxScenariosPerRun: 30,  maxRunsPerMonth: 200,  maxModels: 2  },
-  enterprise_starter:   { maxScenariosPerRun: 120, maxRunsPerMonth: 900,  maxModels: 8  },
-  enterprise_pro:       { maxScenariosPerRun: 300, maxRunsPerMonth: 3000, maxModels: 20 },
-  enterprise_unlimited: { maxScenariosPerRun: -1,  maxRunsPerMonth: -1,   maxModels: -1 },
+  free:                 { maxScenariosPerRun: 10,  maxRunsPerMonth: 5,    maxModels: 1,  maxUsers: 1  },
+  individual:           { maxScenariosPerRun: 30,  maxRunsPerMonth: 200,  maxModels: 2,  maxUsers: 1  },
+  enterprise_starter:   { maxScenariosPerRun: 120, maxRunsPerMonth: 900,  maxModels: 8,  maxUsers: 10 },
+  enterprise_pro:       { maxScenariosPerRun: 300, maxRunsPerMonth: 3000, maxModels: 20, maxUsers: 50 },
+  enterprise_unlimited: { maxScenariosPerRun: -1,  maxRunsPerMonth: -1,   maxModels: -1, maxUsers: -1 },
 };
 
 const VALID_TIERS: ReadonlySet<string> = new Set<string>([
@@ -55,13 +58,20 @@ function isLocalEnvironment(): boolean {
 }
 
 export function getUsageLimits(): UsageLimits {
+  const saasMode = !!(process.env['TENANT_ID']?.trim());
+  const websiteUrl = process.env['ARIA_WEBSITE_URL']?.trim() ?? null;
+  const upgradeUrl = websiteUrl ? `${websiteUrl}/dashboard/billing` : null;
+
   if (isLocalEnvironment()) {
     return {
       enabled: false,
       tier: null,
+      saasMode: false,
+      upgradeUrl: null,
       maxScenariosPerRun: -1,
       maxRunsPerMonth: -1,
       maxModels: -1,
+      maxUsers: -1,
     };
   }
 
@@ -71,13 +81,17 @@ export function getUsageLimits(): UsageLimits {
   const explicitScenarioLimit = parseLimit(process.env['MAX_SCENARIOS_PER_RUN'] ?? process.env['MAX_SCENARIOS']);
   const explicitRunLimit = parseLimit(process.env['MAX_RUNS_PER_MONTH'] ?? process.env['MAX_RUNS']);
   const explicitModelLimit = parseLimit(process.env['MAX_MODELS']);
+  const explicitUserLimit = parseLimit(process.env['MAX_USERS']);
 
   return {
     enabled: true,
     tier,
+    saasMode,
+    upgradeUrl,
     maxScenariosPerRun: explicitScenarioLimit ?? tierLimits.maxScenariosPerRun,
     maxRunsPerMonth: explicitRunLimit ?? tierLimits.maxRunsPerMonth,
     maxModels: explicitModelLimit ?? tierLimits.maxModels,
+    maxUsers: explicitUserLimit ?? tierLimits.maxUsers,
   };
 }
 

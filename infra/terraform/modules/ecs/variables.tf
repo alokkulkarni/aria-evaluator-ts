@@ -258,3 +258,12 @@ variable "cpu_scale_target" {
   type        = number
   default     = 70
 }
+
+variable "extra_secrets" {
+  description = "Additional secrets to inject into the container via ECS secrets (valueFrom ARN). Each entry is { name, valueFrom }."
+  type = list(object({
+    name      = string
+    valueFrom = string
+  }))
+  default = []
+}

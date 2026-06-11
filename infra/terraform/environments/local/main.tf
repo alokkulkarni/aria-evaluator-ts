@@ -14,6 +14,14 @@ locals {
     { name = "GITHUB_REDIRECT_URI", value = "http://localhost:3001/auth/oauth/github/callback" },
     { name = "BULL_QUEUE_CONCURRENCY", value = "5" },
   ]
+
+  # Plan limit overrides (optional — empty values are omitted)
+  limit_environment_vars = concat(
+    var.max_runs_per_month != "" ? [{ name = "MAX_RUNS_PER_MONTH", value = var.max_runs_per_month }] : [],
+    var.max_scenarios_per_run != "" ? [{ name = "MAX_SCENARIOS_PER_RUN", value = var.max_scenarios_per_run }] : [],
+    var.max_models != "" ? [{ name = "MAX_MODELS", value = var.max_models }] : [],
+    var.max_users != "" ? [{ name = "MAX_USERS", value = var.max_users }] : [],
+  )
 }
 
 module "docker_local" {
@@ -30,7 +38,7 @@ module "docker_local" {
   container_port = 3001
   host_port      = var.host_port
 
-  extra_environment_vars = concat(var.extra_environment_vars, local.phase1_environment_vars)
+  extra_environment_vars = concat(var.extra_environment_vars, local.phase1_environment_vars, local.limit_environment_vars)
 
   # ── External Bedrock proxy ───────────────────────────────────────────────────
   # The Bedrock proxy now runs as a completely standalone service deployed with:

@@ -77,21 +77,27 @@ module "tenant" {
   max_capacity                     = var.max_capacity
   cpu_scale_target                 = var.cpu_scale_target
 
-  # Pass Redis connection info from redis.tf
-  extra_environment_vars = [
-    {
-      name  = "REDIS_HOST"
-      value = module.redis.endpoint_address
-    },
-    {
-      name  = "REDIS_PORT"
-      value = tostring(module.redis.endpoint_port)
-    },
-    {
-      name  = "REDIS_DB"
-      value = "0"
-    },
-  ]
+  # Pass Redis connection info from redis.tf and optional plan limit overrides
+  extra_environment_vars = concat(
+    [
+      {
+        name  = "REDIS_HOST"
+        value = module.redis.endpoint_address
+      },
+      {
+        name  = "REDIS_PORT"
+        value = tostring(module.redis.endpoint_port)
+      },
+      {
+        name  = "REDIS_DB"
+        value = "0"
+      },
+    ],
+    var.max_runs_per_month != "" ? [{ name = "MAX_RUNS_PER_MONTH", value = var.max_runs_per_month }] : [],
+    var.max_scenarios_per_run != "" ? [{ name = "MAX_SCENARIOS_PER_RUN", value = var.max_scenarios_per_run }] : [],
+    var.max_models != "" ? [{ name = "MAX_MODELS", value = var.max_models }] : [],
+    var.max_users != "" ? [{ name = "MAX_USERS", value = var.max_users }] : [],
+  )
 
   tags = var.tags
 }

@@ -6,6 +6,8 @@ import { prisma } from '../../db/client.js';
 import { createQueuedRun } from '../../jobs/run-jobs.js';
 import type { RunJobPayload, RunProvider } from '../../jobs/run-job-payload.js';
 import { recordAuditEventSafe } from '../audit-log.js';
+import { checkRunQuota } from '../../shared/quota-enforcement.js';
+import { getUsageLimits } from '../../shared/usage-limits.js';
 import { addHours, addDays, addMonths, parseISO, isValid, addMinutes } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { randomUUID } from 'node:crypto';
@@ -75,6 +77,19 @@ function parseSingleQueryString(raw: unknown): string | undefined {
 
 // POST /api/schedules — Create schedule
 schedulesRouter.post('/', async (req, res) => {
+  // Gate schedule creation behind run quota — a schedule that can never run is useless
+  const quota = await checkRunQuota(1, req.body?.provider ?? 'connect');
+  if (!quota.allowed) {
+    return res.status(402).json({
+      error: quota.error,
+      code: quota.code,
+      limit: quota.limit,
+      current: quota.current,
+      maximum: quota.maximum,
+      upgradeUrl: getUsageLimits().upgradeUrl,
+    });
+  }
+
   try {
     const {
       name,

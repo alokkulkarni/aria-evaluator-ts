@@ -1,6 +1,7 @@
 // src/ui/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import { usePlanGate } from '../lib/plan-gate.js';
 import { formatLatency, formatTokenCount } from '../lib/format.js';
 import {
   ChevronRightIcon,
@@ -79,6 +80,7 @@ interface Props {
 }
 
 export function Dashboard({ onNavigate, onNewRun }: Props) {
+  const { isBlocked, showUpgradeNudge } = usePlanGate();
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<ObservabilityMetrics | null>(null);
@@ -86,6 +88,7 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
   const [usage, setUsage] = useState<{
     tier: string | null;
     enabled: boolean;
+    upgradeUrl: string | null;
     limits: { maxScenariosPerRun: number; maxRunsPerMonth: number; maxModels: number };
     usage: { runsThisMonth: number; distinctProviderCount: number; distinctProviders: string[] };
   } | null>(null);
@@ -217,7 +220,7 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
           ].map((a) => (
             <button
               key={a.label}
-              onClick={() => a.newRun && onNewRun ? onNewRun() : onNavigate(a.page)}
+              onClick={() => { if (a.newRun) { if (isBlocked('run')) { showUpgradeNudge('run'); return; } onNewRun?.(); } else { onNavigate(a.page); } }}
               className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white ring-1 ring-white/10 transition hover:bg-white/20"
             >
               <span className="inline-flex items-center gap-1.5">
@@ -386,6 +389,16 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                     max={usage.limits.maxScenariosPerRun}
                   />
                 </div>
+                {usage.upgradeUrl && usage.limits.maxRunsPerMonth > 0 && usage.usage.runsThisMonth >= usage.limits.maxRunsPerMonth * 0.8 && (
+                  <a
+                    href={usage.upgradeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 block w-full rounded-lg bg-blue-700 py-1.5 text-center text-xs font-semibold text-white hover:bg-blue-800"
+                  >
+                    {usage.usage.runsThisMonth >= usage.limits.maxRunsPerMonth ? 'Limit reached — upgrade plan →' : 'Upgrade plan →'}
+                  </a>
+                )}
               </div>
             )}
           </div>
@@ -402,7 +415,7 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
             {recent.length === 0 ? (
               <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
                 No runs yet.{' '}
-                <button onClick={() => onNewRun ? onNewRun() : onNavigate('runs')} className="ml-1 font-medium text-blue-700 hover:underline">
+                <button onClick={() => { if (isBlocked('run')) { showUpgradeNudge('run'); return; } onNewRun ? onNewRun() : onNavigate('runs'); }} className="ml-1 font-medium text-blue-700 hover:underline">
                   Start one →
                 </button>
               </div>

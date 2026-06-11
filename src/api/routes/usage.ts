@@ -15,10 +15,13 @@ usageRouter.get('/', async (_req, res) => {
     res.json({
       tier: limits.tier,
       enabled: limits.enabled,
+      saasMode: limits.saasMode,
+      upgradeUrl: limits.upgradeUrl,
       limits: {
         maxScenariosPerRun: limits.maxScenariosPerRun,
         maxRunsPerMonth: limits.maxRunsPerMonth,
         maxModels: limits.maxModels,
+        maxUsers: limits.maxUsers,
       },
       usage: {
         runsThisMonth: stats.runsThisMonth,

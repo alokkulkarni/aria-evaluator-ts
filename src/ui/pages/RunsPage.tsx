@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
+import { usePlanGate } from '../lib/plan-gate.js';
 import { formatTokenCount } from '../lib/format.js';
 import { StatusBadge } from './Dashboard.js';
 import {
@@ -1159,6 +1160,7 @@ function NewRunModal({
 }
 
 export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?: boolean; onModalAutoOpened?: () => void }) {
+  const { isBlocked, showUpgradeNudge, refresh: refreshPlan } = usePlanGate();
   const [runs, setRuns] = useState<Run[]>([]);
   const [selected, setSelected] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1217,10 +1219,12 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
   }
 
   function openNewRun(): void {
+    if (isBlocked('run')) { showUpgradeNudge('run'); return; }
     setShowModal(true);
   }
 
   function handleRunStarted(runId: string): void {
+    refreshPlan();
     loadRuns();
     setTimeout(async () => {
       const full = await fetchRunDetail(runId);
