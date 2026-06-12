@@ -31,6 +31,11 @@ export interface ProvisioningSnapshot {
     status: string | null
     startedAt: string | null
     endTime: string | null
+    // First phase that's already failed (CodeBuild keeps the top-level
+    // status=IN_PROGRESS while POST_BUILD cleanup runs, so we need the
+    // per-phase status to know when to flip the UI to "failed").
+    failedPhase: string | null
+    failedPhaseMessage: string | null
   } | null
   updatedAt?: string
 }
@@ -55,10 +60,23 @@ function deriveStage(snapshot: ProvisioningSnapshot | null, fallbackIdx: number)
   // Tenant-level outcomes win over build details.
   if (snapshot.status === 'running') return { kind: 'done' }
   if (snapshot.status === 'error') {
+    const failedPhase = snapshot.build?.failedPhase
     return {
       kind: 'failed',
-      activeIdx: phaseToStepIdx(snapshot.build?.phase, fallbackIdx),
-      reason: 'Provisioning failed. See details below.',
+      activeIdx: phaseToStepIdx(failedPhase, phaseToStepIdx(snapshot.build?.phase, fallbackIdx)),
+      reason: reasonForFailedPhase(snapshot.build?.failedPhase, snapshot.build?.failedPhaseMessage)
+        ?? 'Provisioning failed. See details below.',
+    }
+  }
+
+  // Phase-level failure detected even though CodeBuild's top-level status
+  // is still IN_PROGRESS (cleanup phases keep running). Surface immediately.
+  if (snapshot.build?.failedPhase) {
+    return {
+      kind: 'failed',
+      activeIdx: phaseToStepIdx(snapshot.build.failedPhase, fallbackIdx),
+      reason: reasonForFailedPhase(snapshot.build.failedPhase, snapshot.build.failedPhaseMessage)
+        ?? 'A build phase failed. Restart provisioning to try again.',
     }
   }
 
@@ -80,6 +98,16 @@ function deriveStage(snapshot: ProvisioningSnapshot | null, fallbackIdx: number)
   // Still running. Prefer the live CodeBuild phase; only use the time-based
   // fallback when the build object hasn't surfaced a phase yet.
   return { kind: 'pending', activeIdx: phaseToStepIdx(snapshot.build?.phase, fallbackIdx) }
+}
+
+function reasonForFailedPhase(phase: string | null | undefined, message: string | null | undefined): string | null {
+  if (!phase) return null
+  const trimmedMsg = (message ?? '').trim().slice(0, 280)
+  const phaseLabel = phase.replace(/_/g, ' ').toLowerCase()
+  if (trimmedMsg) {
+    return `${phase} phase failed: ${trimmedMsg}`
+  }
+  return `The ${phaseLabel} phase failed. Restart provisioning to try again.`
 }
 
 function phaseToStepIdx(phase: string | null | undefined, fallback: number): number {

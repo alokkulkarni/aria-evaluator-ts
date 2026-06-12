@@ -1198,6 +1198,8 @@ app.get('/tenant/provision/status', async (req, res) => {
   let buildPhase: string | null = null;
   let buildStatus: string | null = null;
   let buildEndTime: string | null = null;
+  let failedPhaseType: string | null = null;
+  let failedPhaseMessage: string | null = null;
   if (tenant.provisioningBuildId && tenant.status === 'provisioning' && CODEBUILD_PROJECT_NAME) {
     try {
       const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
@@ -1208,6 +1210,20 @@ app.get('/tenant/provision/status', async (req, res) => {
         buildStatus = build.buildStatus ?? null;
         buildEndTime = build.endTime ? build.endTime.toISOString() : null;
 
+        // Scan the phases array for the FIRST phase that already failed.
+        // CodeBuild keeps the top-level buildStatus = IN_PROGRESS while
+        // POST_BUILD / UPLOAD_ARTIFACTS / FINALIZING run cleanup after a
+        // failed BUILD phase, so relying on buildStatus alone makes the UI
+        // appear "still running" for minutes after the real failure.
+        const failedPhase = build.phases?.find((p) => p.phaseStatus === 'FAILED' || p.phaseStatus === 'FAULT' || p.phaseStatus === 'TIMED_OUT' || p.phaseStatus === 'STOPPED');
+        if (failedPhase) {
+          failedPhaseType = failedPhase.phaseType ?? null;
+          failedPhaseMessage = failedPhase.contexts?.[0]?.message ?? null;
+        }
+
+        const isTerminalFailureStatus = buildStatus === 'FAILED' || buildStatus === 'STOPPED' || buildStatus === 'TIMED_OUT' || buildStatus === 'FAULT';
+        const hasPhaseFailure = failedPhase !== undefined;
+
         // If CodeBuild reports terminal success but tenant hasn't been flipped
         // yet (rare race — buildspec mutates state at end), reflect that here.
         if (buildStatus === 'SUCCEEDED' && tenant.status === 'provisioning') {
@@ -1215,7 +1231,7 @@ app.get('/tenant/provision/status', async (req, res) => {
             const t = s.tenants.find((x) => x.id === tenant.id);
             if (t && t.status === 'provisioning') { t.status = 'running'; t.updatedAt = nowIso(); }
           });
-        } else if ((buildStatus === 'FAILED' || buildStatus === 'STOPPED' || buildStatus === 'TIMED_OUT' || buildStatus === 'FAULT') && tenant.status === 'provisioning') {
+        } else if ((isTerminalFailureStatus || hasPhaseFailure) && tenant.status === 'provisioning') {
           await mutateState((s) => {
             const t = s.tenants.find((x) => x.id === tenant.id);
             if (t && t.status === 'provisioning') { t.status = 'error'; t.updatedAt = nowIso(); }
@@ -1252,6 +1268,8 @@ app.get('/tenant/provision/status', async (req, res) => {
           status: buildStatus,
           endTime: buildEndTime,
           startedAt: tenant.provisioningStartedAt ?? null,
+          failedPhase: failedPhaseType,
+          failedPhaseMessage,
         }
       : null,
   });

@@ -4,8 +4,13 @@
 terraform {
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+      source = "hashicorp/aws"
+      # Module is compatible with both v5 and v6. Pinning narrower than the
+      # other modules (which use >= 5.0, < 7.0) creates an empty intersection
+      # when the root env pins ~> 6.0 — terraform init fails with "no
+      # available releases match the given constraints". Always keep module
+      # constraints as wide as the module actually supports.
+      version = ">= 5.0, < 7.0"
     }
   }
 }
