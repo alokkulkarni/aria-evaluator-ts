@@ -102,6 +102,35 @@ phases:
             --output text 2>/dev/null || echo "")
         fi
 
+        # ── Resolve shared platform resources ───────────────────────────────
+        # These tenant-scope inputs reference platform-level infra (ECR repo,
+        # KMS key, heartbeat table, alarm SNS) that lives outside the tenant
+        # stack. We resolve them at build time from AWS_ACCOUNT_ID + known
+        # names — each can be overridden via a SSM param under
+        # /aria/shared/${ENVIRONMENT}/<key> if the deployment uses a custom
+        # name later.
+        SHARED_PATH="/aria/shared/${ENVIRONMENT:-prod}"
+
+        TENANT_ECR_REPO=$(aws ssm get-parameter --name "${SHARED_PATH}/ecr_repository_url" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
+          || echo "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/aria-evaluator")
+        TENANT_BUCKET_SUFFIX=$(aws ssm get-parameter --name "${SHARED_PATH}/bucket_suffix" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
+          || echo "${AWS_ACCOUNT_ID}")
+        TENANT_HEARTBEAT_TABLE_NAME=$(aws ssm get-parameter --name "${SHARED_PATH}/heartbeat_table_name" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
+          || echo "aria-heartbeats")
+        TENANT_HEARTBEAT_TABLE_ARN=$(aws ssm get-parameter --name "${SHARED_PATH}/heartbeat_table_arn" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
+          || echo "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${TENANT_HEARTBEAT_TABLE_NAME}")
+        TENANT_KMS_KEY_ARN=$(aws ssm get-parameter --name "${SHARED_PATH}/kms_key_arn" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
+          || echo "arn:aws:kms:${AWS_REGION}:${AWS_ACCOUNT_ID}:alias/aria-control-plane-dynamodb")
+        TENANT_ALARM_SNS_TOPIC_ARN=$(aws ssm get-parameter --name "${SHARED_PATH}/alarm_sns_topic_arn" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
+          || echo "arn:aws:sns:${AWS_REGION}:${AWS_ACCOUNT_ID}:aria-control-plane-provisioner-failures")
+
+        # Echo non-sensitive resolved values for the build log.
+        echo "Resolved tenant_ecr_repository_url=${TENANT_ECR_REPO}"
+        echo "Resolved tenant_bucket_suffix=${TENANT_BUCKET_SUFFIX}"
+        echo "Resolved tenant_heartbeat_table=${TENANT_HEARTBEAT_TABLE_NAME}"
+        echo "Resolved tenant_kms_key_arn=${TENANT_KMS_KEY_ARN}"
+        echo "Resolved tenant_alarm_sns_topic_arn=${TENANT_ALARM_SNS_TOPIC_ARN}"
+
         terraform plan \
           -var="tenant_id=${USER_ID}" \
           -var="pricing_tier=${PLAN_TYPE}" \
@@ -110,6 +139,12 @@ phases:
           -var="environment=prod" \
           -var="control_plane_internal_url=${CP_URL}" \
           -var="control_plane_internal_secret=${CP_SECRET}" \
+          -var="ecr_repository_url=${TENANT_ECR_REPO}" \
+          -var="bucket_suffix=${TENANT_BUCKET_SUFFIX}" \
+          -var="heartbeat_table_arn=${TENANT_HEARTBEAT_TABLE_ARN}" \
+          -var="heartbeat_table_name=${TENANT_HEARTBEAT_TABLE_NAME}" \
+          -var="kms_key_arn=${TENANT_KMS_KEY_ARN}" \
+          -var="alarm_sns_topic_arn=${TENANT_ALARM_SNS_TOPIC_ARN}" \
           -out=/tmp/tfplan
 
       - echo "==> Terraform apply..."

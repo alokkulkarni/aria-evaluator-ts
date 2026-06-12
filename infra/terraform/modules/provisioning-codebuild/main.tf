@@ -275,7 +275,15 @@ resource "aws_iam_role_policy" "codebuild_ssm" {
           "ssm:GetParameter",
           "ssm:GetParameters"
         ]
-        Resource = "arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/aria/control-plane/*"
+        Resource = [
+          "arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/aria/control-plane/*",
+          # Shared platform-resource overrides read by the buildspec
+          # (ecr_repository_url, bucket_suffix, heartbeat_table_*, kms_key_arn,
+          # alarm_sns_topic_arn). The buildspec has sensible fallbacks if the
+          # params don't exist — these IAM grants are for the case where a
+          # deployment chooses to set them in SSM.
+          "arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/aria/shared/*",
+        ]
       }
     ]
   })
