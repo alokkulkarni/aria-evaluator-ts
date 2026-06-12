@@ -201,7 +201,7 @@ resource "aws_cloudfront_distribution" "main" {
 
   # ── Origin 2: ALB (auth backend API) ──
   dynamic "origin" {
-    for_each = var.auth_backend_alb_dns != "" ? toset(["enabled"]) : toset([])
+    for_each = var.auth_backend_alb_dns != "" ? { enabled = true } : {}
     content {
       domain_name = var.auth_backend_alb_dns
       origin_id   = "alb-auth"
@@ -241,7 +241,7 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl     = 31536000
 
     dynamic "function_association" {
-      for_each = var.domain_name != "" ? toset(["enabled"]) : toset([])
+      for_each = var.domain_name != "" ? { enabled = true } : {}
       content {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.domain_redirect[0].arn
@@ -251,7 +251,7 @@ resource "aws_cloudfront_distribution" "main" {
 
   # ── /api/* behavior: ALB auth backend (no caching) ──
   dynamic "ordered_cache_behavior" {
-    for_each = var.auth_backend_alb_dns != "" ? toset(["enabled"]) : toset([])
+    for_each = var.auth_backend_alb_dns != "" ? { enabled = true } : {}
     content {
       path_pattern           = "/api/*"
       target_origin_id       = "alb-auth"
@@ -317,7 +317,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   dynamic "viewer_certificate" {
-    for_each = var.acm_certificate_arn_cloudfront != "" ? toset(["enabled"]) : toset([])
+    for_each = var.acm_certificate_arn_cloudfront != "" ? { enabled = true } : {}
     content {
       acm_certificate_arn      = var.acm_certificate_arn_cloudfront
       ssl_support_method       = "sni-only"
@@ -326,7 +326,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   dynamic "viewer_certificate" {
-    for_each = var.acm_certificate_arn_cloudfront == "" ? toset(["enabled"]) : toset([])
+    for_each = var.acm_certificate_arn_cloudfront == "" ? { enabled = true } : {}
     content {
       cloudfront_default_certificate = true
     }

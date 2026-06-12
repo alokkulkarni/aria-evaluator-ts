@@ -226,7 +226,7 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = var.acm_certificate_arn
 
   dynamic "default_action" {
-    for_each = local.protect_origin ? toset(["enabled"]) : toset([])
+    for_each = local.protect_origin ? { enabled = true } : {}
 
     content {
       type = "fixed-response"
@@ -240,7 +240,7 @@ resource "aws_lb_listener" "https" {
   }
 
   dynamic "default_action" {
-    for_each = local.protect_origin ? toset([]) : toset(["enabled"])
+    for_each = local.protect_origin ? {} : { enabled = true }
 
     content {
       type             = "forward"
