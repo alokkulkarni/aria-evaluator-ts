@@ -229,7 +229,23 @@ resource "aws_iam_role_policy" "codebuild_terraform" {
           "elasticloadbalancing:*",
           "kms:*",
           "secretsmanager:*",
-          "ssm:*"
+          "ssm:*",
+          # CloudFront — tenant cloudfront module creates cache policies,
+          # origin-request policies, functions, distributions, and the
+          # associated tagging. Without these the apply hits AccessDenied
+          # on the first cache-policy create.
+          "cloudfront:*",
+          # WAF for CloudFront protection
+          "wafv2:*",
+          # Application Auto Scaling for ECS service scaling
+          "application-autoscaling:*",
+          # EFS for tenants that opt into persistent storage
+          "elasticfilesystem:*",
+          # X-Ray / observability
+          "xray:*",
+          # EventBridge rules for suspend/resume lambdas
+          "events:*",
+          "scheduler:*",
         ]
         Resource = "*"
       }

@@ -117,8 +117,13 @@ phases:
         # environments/prod/terraform.tfvars (bucket_suffix = "194296"). The
         # tenant module concatenates this with the tenant_id, and an S3
         # bucket name has a 63-char ceiling, so anything longer overflows.
+        #
+        # NOTE: CodeBuild runs commands in /bin/sh (dash), which does NOT
+        # support the bash-only ${VAR: -6} negative-offset substring. Use
+        # awk for portability.
+        ACCOUNT_LAST6=$(printf '%s' "${AWS_ACCOUNT_ID}" | awk '{print substr($0, length-5)}')
         TENANT_BUCKET_SUFFIX=$(aws ssm get-parameter --name "${SHARED_PATH}/bucket_suffix" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
-          || echo "${AWS_ACCOUNT_ID: -6}")
+          || echo "${ACCOUNT_LAST6}")
         TENANT_HEARTBEAT_TABLE_NAME=$(aws ssm get-parameter --name "${SHARED_PATH}/heartbeat_table_name" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
           || echo "aria-heartbeats")
         TENANT_HEARTBEAT_TABLE_ARN=$(aws ssm get-parameter --name "${SHARED_PATH}/heartbeat_table_arn" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
