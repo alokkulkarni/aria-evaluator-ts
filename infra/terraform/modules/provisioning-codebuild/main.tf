@@ -7,12 +7,17 @@ locals {
   codebuild_environment_variables = [
     {
       name = "TERRAFORM_VERSION"
-      # 1.9+ is required because modules/tenant-module/variables.tf has a
-      # validation block that cross-references another variable
-      # (pricing_track validation reads var.pricing_tier) — that feature was
-      # only introduced in Terraform 1.9.0. 1.7.0 fails at parse with
-      # "Invalid reference in variable validation".
-      value = "1.9.8"
+      # 1.9+ is required for cross-variable validation blocks
+      # (var.pricing_track condition reads var.pricing_tier).
+      #
+      # AVOID 1.9.x — it has a regression where `dynamic` block `for_each`
+      # rejects every iterable type with "An iterable collection is required":
+      #   - list of number  → "Cannot use a list of number value"
+      #   - set of string   → "Cannot use a set of string value"
+      #   - map of bool     → "Cannot use a map of bool value"
+      # The bug is fixed from 1.10 onward. We pin a recent stable to stay
+      # close to what's used for local development (1.15 family).
+      value = "1.13.4"
       type  = "PLAINTEXT"
     },
     {
