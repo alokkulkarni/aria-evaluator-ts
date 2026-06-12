@@ -544,9 +544,20 @@ async function saveStateToDdb(current: CachedState): Promise<CachedState> {
   return { state: current.state, version: nextVersion };
 }
 
+// Cache TTL for the in-memory state. With the DDB backend, every task has
+// its own cache, so a write from task A is invisible to task B until B's
+// cache expires. Keep this short — DynamoDB GetItem is sub-10ms, so the
+// "saved" disk reads aren't worth multi-second cross-task staleness.
+const STATE_CACHE_TTL_MS = 1_500
+let stateCacheLoadedAt = 0
+
 async function loadState(): Promise<ControlPlaneState> {
-  if (stateCacheVersioned) return stateCacheVersioned.state;
+  const now = Date.now()
+  if (stateCacheVersioned && now - stateCacheLoadedAt < STATE_CACHE_TTL_MS) {
+    return stateCacheVersioned.state
+  }
   stateCacheVersioned = ddbClient ? await loadStateFromDdb() : await loadStateFromFile();
+  stateCacheLoadedAt = now
   return stateCacheVersioned.state;
 }
 
@@ -970,18 +981,32 @@ app.post('/auth/login', async (req, res) => {
 
   const { token, expiresAt } = issueToken();
   const wasNewUser = user.isNewUser;
-  user.isNewUser = false;
-  user.lastLoginAt = nowIso();
-  user.updatedAt = nowIso();
+  const loginAt = nowIso();
 
+  // Persist both the new session AND the user-record updates atomically.
+  // Previously these three user.X = ... assignments lived OUTSIDE mutateState,
+  // mutating the captured closure user — which is read-only after the DDB
+  // migration, since each loadState now deserialises a fresh object graph.
   await mutateState((draft) => {
     draft.sessions.push({
       tokenHash: hashToken(token),
       userId: user.id,
       expiresAt,
-      createdAt: nowIso(),
+      createdAt: loginAt,
     });
+    const userInState = draft.users.find((entry) => entry.id === user.id);
+    if (userInState) {
+      userInState.isNewUser = false;
+      userInState.lastLoginAt = loginAt;
+      userInState.updatedAt = loginAt;
+    }
   });
+
+  // Mirror the fields on the local user object so the response below sees
+  // the up-to-date shape without re-fetching state.
+  user.isNewUser = false;
+  user.lastLoginAt = loginAt;
+  user.updatedAt = loginAt;
 
   res.json({
     ok: true,
@@ -1077,8 +1102,15 @@ app.post('/tenant/provision', async (req, res) => {
     } else {
       state.tenants.push(tenant);
     }
-    user.tenantId = tenantId;
-    user.updatedAt = now;
+    // Persist user.tenantId by mutating the user inside this fresh state
+    // snapshot — the `user` closure captured before mutateState refers to a
+    // PRIOR state load, which was discarded when mutateState re-fetched from
+    // DynamoDB for CAS. Mutating `user` directly never reaches storage.
+    const userInState = state.users.find((entry) => entry.id === user.id);
+    if (userInState) {
+      userInState.tenantId = tenantId;
+      userInState.updatedAt = now;
+    }
   });
 
   // ── Real CodeBuild provisioning (when CODEBUILD_PROJECT_NAME is set) ──────

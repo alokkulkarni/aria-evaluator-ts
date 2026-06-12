@@ -92,14 +92,22 @@ export default function ProvisioningPage() {
     return () => { cancelled = true }
   }, [accessToken, handleComplete])
 
+  const hasFailure = errorMessage !== null
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
       <section className="page-hero mb-8">
         <div className="space-y-3">
-          <p className="page-hero-label">Workspace provisioning</p>
-          <h1 className="page-hero-title">We&apos;re building your workspace</h1>
+          <p className="page-hero-label">
+            {hasFailure ? 'Provisioning interrupted' : 'Workspace provisioning'}
+          </p>
+          <h1 className="page-hero-title">
+            {hasFailure ? 'Your workspace didn’t finish building' : 'We’re building your workspace'}
+          </h1>
           <p className="page-hero-sub">
-            Sit tight — we&apos;re creating dedicated infrastructure in your region. You&apos;ll be redirected automatically when it&apos;s ready.
+            {hasFailure
+              ? 'CodeBuild stopped before the workspace was ready. Restart provisioning below to try again — existing AWS resources will be reused.'
+              : 'Sit tight — we’re creating dedicated infrastructure in your region. You’ll be redirected automatically when it’s ready.'}
           </p>
         </div>
       </section>
