@@ -113,8 +113,12 @@ phases:
 
         TENANT_ECR_REPO=$(aws ssm get-parameter --name "${SHARED_PATH}/ecr_repository_url" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
           || echo "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/aria-evaluator")
+        # Use last 6 chars of account ID — matches the convention in
+        # environments/prod/terraform.tfvars (bucket_suffix = "194296"). The
+        # tenant module concatenates this with the tenant_id, and an S3
+        # bucket name has a 63-char ceiling, so anything longer overflows.
         TENANT_BUCKET_SUFFIX=$(aws ssm get-parameter --name "${SHARED_PATH}/bucket_suffix" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
-          || echo "${AWS_ACCOUNT_ID}")
+          || echo "${AWS_ACCOUNT_ID: -6}")
         TENANT_HEARTBEAT_TABLE_NAME=$(aws ssm get-parameter --name "${SHARED_PATH}/heartbeat_table_name" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \
           || echo "aria-heartbeats")
         TENANT_HEARTBEAT_TABLE_ARN=$(aws ssm get-parameter --name "${SHARED_PATH}/heartbeat_table_arn" --region "${AWS_REGION}" --query "Parameter.Value" --output text 2>/dev/null \

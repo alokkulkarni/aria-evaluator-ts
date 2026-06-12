@@ -24,7 +24,12 @@ locals {
   availability_zones      = slice(data.aws_availability_zones.available.names, 0, length(var.public_subnet_cidrs))
   ecs_cluster_name        = "${local.name_prefix}-cluster"
   ecs_service_name        = "${local.name_prefix}-svc"
-  composite_bucket_suffix = lower("${var.tenant_id}-${var.bucket_suffix}")
+  # Truncate tenant_id to 8 chars in the bucket suffix — the full ID is
+  # already encoded in short_name via md5(), so tenant uniqueness across
+  # buckets is preserved. Without truncation, 24-char tenant_id + 6-char
+  # bucket_suffix + the "aria-<short_name>-alb-logs-" prefix overflows the
+  # S3 63-char bucket-name limit.
+  composite_bucket_suffix = lower("${substr(var.tenant_id, 0, 8)}-${var.bucket_suffix}")
   common_tags = merge(
     var.tags,
     {
