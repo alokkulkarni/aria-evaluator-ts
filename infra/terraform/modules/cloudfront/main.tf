@@ -26,6 +26,15 @@ locals {
 resource "aws_s3_bucket" "cf_logs" {
   bucket = local.log_bucket_name
 
+  # CloudFront writes access logs continuously, so this bucket always has
+  # objects in it by the time a tenant teardown runs. Without force_destroy,
+  # `terraform destroy` fails with `BucketNotEmpty` and the whole apply
+  # rolls back with the tenant's VPC/IAM/etc. already gone — leaving the
+  # bucket orphaned and the user account stuck mid-teardown. There's no
+  # retention requirement on per-tenant CF access logs; they're already
+  # expired by the lifecycle rule below.
+  force_destroy = true
+
   tags = merge(local.common_tags, {
     Name                 = local.log_bucket_name
     "aria:resource_type" = "storage"

@@ -6,6 +6,35 @@ locals {
   availability_zones = slice(data.aws_availability_zones.available.names, 0, 2)
   repo_root          = abspath("${path.module}/../../../..")
   use_prebuilt       = var.image_uri != ""
+
+  # Content-hash-derived image tag. The old behaviour pinned image_tag to
+  # "latest", which meant:
+  #   1. terraform pushed a new image to the same ECR tag on every rebuild
+  #   2. aws_ecs_task_definition.image stayed "...:latest" — same string
+  #   3. terraform saw no change → no new task-def revision → ECS service
+  #      kept running the old container even though new bits were in ECR
+  #
+  # That's the bug that left the close-account flow running stale code and
+  # the broken /api/launch-instance route alive in the auth-backend for 8h.
+  # Deriving a deterministic content-hash tag means every meaningful change
+  # produces a new URI, terraform registers a new revision, and ECS rolls
+  # the service automatically. Force_rebuild stays as an escape-hatch input
+  # so a manual bump still rotates the tag even when source bytes are
+  # unchanged.
+  default_local_image_tag = format(
+    "tf-%s",
+    substr(
+      sha1(join("|", [
+        filesha1("${local.repo_root}/Dockerfile.control-plane"),
+        fileexists("${local.repo_root}/package-lock.json") ? filesha1("${local.repo_root}/package-lock.json") : "none",
+        tostring(var.force_rebuild),
+      ])),
+      0,
+      12,
+    ),
+  )
+  effective_image_tag = var.image_tag == "latest" ? local.default_local_image_tag : var.image_tag
+
   resolved_image_uri = local.use_prebuilt ? var.image_uri : module.docker_build[0].image_uri
 
   common_tags = merge(
@@ -31,7 +60,7 @@ module "docker_build" {
   source = "../../modules/docker-build-push"
 
   ecr_repository_url = var.ecr_repository_url
-  image_tag          = var.image_tag
+  image_tag          = local.effective_image_tag
   dockerfile         = "Dockerfile.control-plane"
   build_context      = local.repo_root
   aws_region         = var.aws_region
@@ -379,33 +408,35 @@ resource "aws_iam_role_policy_attachment" "control_plane_state_access" {
 }
 
 # ── IAM policy: SES send permission for account-closure confirmation emails ──
+#
+# Uses aws_iam_role_policy (INLINE) rather than aws_iam_policy +
+# aws_iam_role_policy_attachment (managed). The task role already had 10
+# managed policies attached (s3_state, connect, bedrock, polly, transcribe,
+# xray, custom_metrics, heartbeat_table, state_access, codebuild_access),
+# which is the AWS default per-role limit. Inline policies don't count
+# against that limit.
 
-data "aws_iam_policy_document" "control_plane_ses_send" {
-  statement {
-    sid    = "SesSendAccountClosureEmail"
-    effect = "Allow"
-    actions = [
-      "ses:SendEmail",
-      "ses:SendRawEmail",
+resource "aws_iam_role_policy" "control_plane_ses_send" {
+  name = "${var.app_name}-${var.environment}-control-plane-ses-send"
+  role = module.iam.task_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SesSendAccountClosureEmail"
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail",
+        ]
+        # SES is account-region scoped — sending requires the FROM identity
+        # to be verified, but the IAM action itself is broad. Resource="*"
+        # matches the convention used by the AWS-managed send-only patterns.
+        Resource = "*"
+      },
     ]
-    # SES is account-region scoped — sending requires the FROM identity to be
-    # verified, but the IAM action itself is broad. Resource="*" matches the
-    # convention used by the AWS-managed AmazonSESFullAccess for send-only.
-    resources = ["*"]
-  }
-}
-
-resource "aws_iam_policy" "control_plane_ses_send" {
-  name        = "${var.app_name}-${var.environment}-control-plane-ses-send"
-  description = "Allow control-plane ECS task to send account-closure confirmation emails via SES"
-  policy      = data.aws_iam_policy_document.control_plane_ses_send.json
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "control_plane_ses_send" {
-  role       = module.iam.task_role_name
-  policy_arn = aws_iam_policy.control_plane_ses_send.arn
+  })
 }
 
 # ── IAM policy: CodeBuild StartBuild + BatchGetBuilds for control-plane ──────

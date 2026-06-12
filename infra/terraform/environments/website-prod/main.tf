@@ -3,11 +3,34 @@ data "aws_region" "current" {}
 data "aws_availability_zones" "available" { state = "available" }
 
 locals {
-  availability_zones  = slice(data.aws_availability_zones.available.names, 0, 3)
-  repo_root           = abspath("${path.module}/../../../..")
-  website_root        = "${local.repo_root}/website"
-  public_url          = var.domain_name != "" ? "https://${var.domain_name}" : "https://${module.frontend.cloudfront_domain_name}"
-  use_prebuilt_auth   = var.auth_backend_image_uri != ""
+  availability_zones = slice(data.aws_availability_zones.available.names, 0, 3)
+  repo_root          = abspath("${path.module}/../../../..")
+  website_root       = "${local.repo_root}/website"
+  public_url         = var.domain_name != "" ? "https://${var.domain_name}" : "https://${module.frontend.cloudfront_domain_name}"
+  use_prebuilt_auth  = var.auth_backend_image_uri != ""
+
+  # Content-hash image tag for the auth-backend. See the matching block in
+  # environments/control-plane-prod/main.tf for the full rationale — short
+  # version: pinning to ":latest" means the task-def URI never changes, so
+  # terraform never registers a new task-def revision, so ECS keeps running
+  # whatever container started last instead of the freshly pushed bits.
+  # Deriving a deterministic tag from the inputs that actually change makes
+  # the URI change too, which forces ECS to roll. force_rebuild stays as an
+  # escape hatch.
+  default_auth_image_tag = format(
+    "tf-%s",
+    substr(
+      sha1(join("|", [
+        filesha1("${local.website_root}/auth-backend/Dockerfile"),
+        fileexists("${local.website_root}/package-lock.json") ? filesha1("${local.website_root}/package-lock.json") : "none",
+        tostring(var.force_rebuild),
+      ])),
+      0,
+      12,
+    ),
+  )
+  effective_auth_image_tag = var.auth_backend_image_tag == "latest" ? local.default_auth_image_tag : var.auth_backend_image_tag
+
   resolved_auth_image = local.use_prebuilt_auth ? var.auth_backend_image_uri : module.docker_build_auth[0].image_uri
 
   common_tags = merge(
@@ -27,7 +50,7 @@ module "docker_build_auth" {
   source = "../../modules/docker-build-push"
 
   ecr_repository_url = module.auth_backend.ecr_repository_url
-  image_tag          = var.auth_backend_image_tag
+  image_tag          = local.effective_auth_image_tag
   dockerfile         = "auth-backend/Dockerfile"
   build_context      = local.website_root
   aws_region         = var.aws_region
@@ -107,7 +130,7 @@ module "auth_backend" {
   cpu           = 256
   memory        = 512
   desired_count = 2
-  image_tag     = var.auth_backend_image_tag
+  image_tag     = local.effective_auth_image_tag
   image_uri     = local.use_prebuilt_auth ? var.auth_backend_image_uri : ""
 
   # OAuth credentials are NOT passed through Terraform.
