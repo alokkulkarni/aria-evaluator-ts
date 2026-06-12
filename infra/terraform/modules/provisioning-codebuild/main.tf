@@ -181,20 +181,34 @@ resource "aws_iam_role_policy" "codebuild_ecr" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # GetAuthorizationToken is a special action — it returns a temporary
+      # credential for `docker login` to ECR. AWS requires it on Resource="*",
+      # not on a specific repo ARN.
       {
+        Sid      = "EcrAuthForDockerLogin"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
+      # Per-repo actions. The tenant docker_build pushes to var.ecr_repository_arn
+      # (the control-plane's own image) AND to the tenant's `aria-evaluator` repo
+      # built per-tenant — widen to all repos in the account.
+      {
+        Sid    = "EcrPushPullAllRepos"
         Effect = "Allow"
         Action = [
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
           "ecr:PutImage",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
           "ecr:DescribeRepositories",
           "ecr:DescribeImages",
-          "ecr:ListImages"
+          "ecr:ListImages",
         ]
-        Resource = var.ecr_repository_arn
+        Resource = "arn:aws:ecr:${var.aws_region}:${var.aws_account_id}:repository/*"
       }
     ]
   })
