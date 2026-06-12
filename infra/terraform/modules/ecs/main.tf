@@ -102,7 +102,7 @@ resource "aws_ecs_task_definition" "app" {
   task_role_arn            = var.task_role_arn
 
   dynamic "volume" {
-    for_each = var.efs_access_point_id != "" ? [1] : []
+    for_each = var.efs_access_point_id != "" ? toset(["enabled"]) : toset([])
 
     content {
       name = "aria-state"

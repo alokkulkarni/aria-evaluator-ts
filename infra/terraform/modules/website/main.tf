@@ -105,7 +105,7 @@ resource "aws_security_group" "alb" {
 
   # Allow HTTPS if regional cert is provided
   dynamic "ingress" {
-    for_each = local.alb_https_enabled ? [1] : []
+    for_each = local.alb_https_enabled ? toset(["enabled"]) : toset([])
     content {
       from_port   = 443
       to_port     = 443
@@ -283,7 +283,7 @@ resource "aws_lb_listener" "http" {
   # When accessed directly (not via CloudFront), verify the origin secret header
   # Without it, redirect to 403 — enforces CloudFront-only access in prod
   dynamic "default_action" {
-    for_each = var.environment == "prod" ? [1] : []
+    for_each = var.environment == "prod" ? toset(["enabled"]) : toset([])
     content {
       type = "fixed-response"
       fixed_response {
@@ -296,7 +296,7 @@ resource "aws_lb_listener" "http" {
 
   # Dev: forward directly
   dynamic "default_action" {
-    for_each = var.environment != "prod" ? [1] : []
+    for_each = var.environment != "prod" ? toset(["enabled"]) : toset([])
     content {
       type             = "forward"
       target_group_arn = aws_lb_target_group.app.arn
@@ -869,7 +869,7 @@ resource "aws_cloudfront_distribution" "main" {
     # would expose the ECS container's private DNS name as the Host header, causing
     # NextAuth URL construction and Next.js server-side redirects to use the wrong host.
     dynamic "custom_header" {
-      for_each = var.domain_name != "" ? [1] : []
+      for_each = var.domain_name != "" ? toset(["enabled"]) : toset([])
       content {
         name  = "X-Forwarded-Host"
         value = var.domain_name
@@ -908,7 +908,7 @@ resource "aws_cloudfront_distribution" "main" {
     compress               = true
 
     dynamic "function_association" {
-      for_each = var.domain_name != "" ? [1] : []
+      for_each = var.domain_name != "" ? toset(["enabled"]) : toset([])
       content {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.domain_redirect[0].arn
@@ -955,7 +955,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   dynamic "viewer_certificate" {
-    for_each = var.acm_certificate_arn_us_east_1 != "" ? [1] : []
+    for_each = var.acm_certificate_arn_us_east_1 != "" ? toset(["enabled"]) : toset([])
     content {
       acm_certificate_arn      = var.acm_certificate_arn_us_east_1
       ssl_support_method       = "sni-only"
@@ -964,7 +964,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   dynamic "viewer_certificate" {
-    for_each = var.acm_certificate_arn_us_east_1 == "" ? [1] : []
+    for_each = var.acm_certificate_arn_us_east_1 == "" ? toset(["enabled"]) : toset([])
     content {
       cloudfront_default_certificate = true
     }

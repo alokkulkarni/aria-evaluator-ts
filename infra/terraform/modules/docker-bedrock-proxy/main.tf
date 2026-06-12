@@ -70,7 +70,7 @@ resource "docker_container" "proxy" {
 
   # ── AWS credentials (read-only) ────────────────────────────────────────────
   dynamic "volumes" {
-    for_each = local.aws_dir_available ? [1] : []
+    for_each = local.aws_dir_available ? toset(["enabled"]) : toset([])
     content {
       host_path      = pathexpand("~/.aws")
       container_path = "/root/.aws"

@@ -186,7 +186,7 @@ resource "docker_container" "app" {
   # configuration.  Triggered when ~/.aws/credentials or ~/.aws/config exists.
   # The mount is read-only — containers cannot modify host credentials.
   dynamic "volumes" {
-    for_each = local.aws_dir_available ? [1] : []
+    for_each = local.aws_dir_available ? toset(["enabled"]) : toset([])
     content {
       host_path      = pathexpand("~/.aws")
       container_path = "/root/.aws"
@@ -198,7 +198,7 @@ resource "docker_container" "app" {
   # visible inside the container without needing to copy them into the volume.
   # Read-only — write new scenarios via the UI which stores them in the state volume.
   dynamic "volumes" {
-    for_each = local.scenarios_dir_available ? [1] : []
+    for_each = local.scenarios_dir_available ? toset(["enabled"]) : toset([])
     content {
       host_path      = var.local_scenarios_dir
       container_path = "/app/state/scenarios"
@@ -209,7 +209,7 @@ resource "docker_container" "app" {
   # Optional: bind-mount a host SQLite DB file to preserve run history across
   # terraform destroy / apply cycles.
   dynamic "volumes" {
-    for_each = local.local_db_available ? [1] : []
+    for_each = local.local_db_available ? toset(["enabled"]) : toset([])
     content {
       host_path      = var.local_db_path
       container_path = "/app/state/data/aria-evaluator.db"

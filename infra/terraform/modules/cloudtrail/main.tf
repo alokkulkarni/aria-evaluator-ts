@@ -66,7 +66,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail" {
     filter {}
 
     dynamic "expiration" {
-      for_each = var.s3_log_retention_days > 0 ? [1] : []
+      for_each = var.s3_log_retention_days > 0 ? toset(["enabled"]) : toset([])
       content {
         days = var.s3_log_retention_days
       }
@@ -236,7 +236,7 @@ resource "aws_cloudtrail" "main" {
 
     # S3 object-level data events for all buckets
     dynamic "data_resource" {
-      for_each = var.enable_s3_data_events ? [1] : []
+      for_each = var.enable_s3_data_events ? toset(["enabled"]) : toset([])
       content {
         type   = "AWS::S3::Object"
         values = ["arn:aws:s3"]
@@ -245,7 +245,7 @@ resource "aws_cloudtrail" "main" {
 
     # Lambda invocation data events for all functions
     dynamic "data_resource" {
-      for_each = var.enable_lambda_data_events ? [1] : []
+      for_each = var.enable_lambda_data_events ? toset(["enabled"]) : toset([])
       content {
         type   = "AWS::Lambda::Function"
         values = ["arn:aws:lambda"]
@@ -254,7 +254,7 @@ resource "aws_cloudtrail" "main" {
   }
 
   dynamic "insight_selector" {
-    for_each = var.enable_insight_events ? [1] : []
+    for_each = var.enable_insight_events ? toset(["enabled"]) : toset([])
     content {
       insight_type = "ApiCallRateInsight"
     }

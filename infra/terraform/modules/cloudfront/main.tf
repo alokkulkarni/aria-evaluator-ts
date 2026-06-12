@@ -263,7 +263,7 @@ resource "aws_cloudfront_distribution" "main" {
     domain_name = var.alb_dns_name
 
     dynamic "custom_header" {
-      for_each = var.cloudfront_origin_secret != "" ? [1] : []
+      for_each = var.cloudfront_origin_secret != "" ? toset(["enabled"]) : toset([])
 
       content {
         name  = "X-CF-Origin-Secret"
@@ -288,7 +288,7 @@ resource "aws_cloudfront_distribution" "main" {
     cache_policy_id        = aws_cloudfront_cache_policy.static.id
 
     dynamic "function_association" {
-      for_each = var.saas_mode ? [1] : []
+      for_each = var.saas_mode ? toset(["enabled"]) : toset([])
       content {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.auth_redirect[0].arn
@@ -307,7 +307,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
 
     dynamic "function_association" {
-      for_each = var.saas_mode ? [1] : []
+      for_each = var.saas_mode ? toset(["enabled"]) : toset([])
       content {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.auth_redirect[0].arn
@@ -326,7 +326,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
 
     dynamic "function_association" {
-      for_each = var.saas_mode ? [1] : []
+      for_each = var.saas_mode ? toset(["enabled"]) : toset([])
       content {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.auth_redirect[0].arn
@@ -345,7 +345,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
 
     dynamic "function_association" {
-      for_each = var.saas_mode ? [1] : []
+      for_each = var.saas_mode ? toset(["enabled"]) : toset([])
       content {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.auth_redirect[0].arn
@@ -364,7 +364,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
 
     dynamic "function_association" {
-      for_each = var.saas_mode ? [1] : []
+      for_each = var.saas_mode ? toset(["enabled"]) : toset([])
       content {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.auth_redirect[0].arn

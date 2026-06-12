@@ -110,7 +110,7 @@ data "aws_iam_policy_document" "suspend_check" {
   }
 
   dynamic "statement" {
-    for_each = var.alert_email != "" ? [1] : []
+    for_each = var.alert_email != "" ? toset(["enabled"]) : toset([])
 
     content {
       sid       = "SendWarningEmail"
