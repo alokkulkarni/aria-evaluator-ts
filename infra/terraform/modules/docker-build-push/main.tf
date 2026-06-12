@@ -78,6 +78,10 @@ resource "null_resource" "build_and_push" {
       DOCKER_BUILDKIT = "1"
     }
 
+    # CodeBuild runs local-exec through /bin/sh (dash), which doesn't support
+    # `set -o pipefail`. Force bash so the `set -euo pipefail` line works.
+    interpreter = ["/bin/bash", "-c"]
+
     command = <<-EOT
       set -euo pipefail
 

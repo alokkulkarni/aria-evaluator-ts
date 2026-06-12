@@ -317,6 +317,10 @@ resource "aws_codebuild_project" "provisioner" {
     image                       = "aws/codebuild/standard:7.0"
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
+    # Required for the docker-build-push module's local-exec to start the
+    # Docker daemon inside the build container (needed when terraform apply
+    # has a null_resource that runs `docker build` / `docker push`).
+    privileged_mode = true
     dynamic "environment_variable" {
       for_each = local.codebuild_environment_variables
       content {
