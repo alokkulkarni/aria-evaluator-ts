@@ -154,6 +154,12 @@ variable "instance_base_url" {
   default     = "https://ariaeval.io"
 }
 
+variable "ses_from_address" {
+  description = "Verified SES From address for account-closure confirmation emails. Leave empty to skip outgoing email."
+  type        = string
+  default     = ""
+}
+
 # ── Security & Authentication Variables ────────────────────────────────────────
 
 variable "cognito_user_pool_id" {

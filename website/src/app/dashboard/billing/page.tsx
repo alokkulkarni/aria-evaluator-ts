@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertTriangle, CheckCircle, CreditCard, FileText, RefreshCw, Shield } from 'lucide-react'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -123,12 +123,18 @@ export default function BillingPage() {
     setClosingAccount(true)
     setCloseError(null)
     try {
-      await apiFetch('/account', {
+      // The control-plane now returns 202 with status='destroying' and kicks
+      // off a CodeBuild destroy job. The /dashboard/closing page polls
+      // /account/delete/status, surfaces progress, and signs the user out
+      // when the workspace is fully torn down + the confirmation email is
+      // queued. If the response is `completed` (no workspace existed) we
+      // still pass through the closing page so the user sees confirmation.
+      await apiFetch<{ status?: string }>('/account', {
         method: 'DELETE',
         authToken,
         body: JSON.stringify({ confirmEmail: closeConfirmEmail }),
       })
-      await signOut({ callbackUrl: '/' })
+      router.push('/dashboard/closing')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to close account. Verify your email is correct.'
       if (isMounted.current) setCloseError(message)

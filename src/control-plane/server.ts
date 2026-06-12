@@ -16,10 +16,11 @@ import {
   PutItemCommand,
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2';
 
 type BillingPeriod = 'monthly' | 'annual';
 type PricingTier = 'free' | 'individual' | 'enterprise_starter' | 'enterprise_pro' | 'enterprise_unlimited';
-type InstanceStatus = 'not_provisioned' | 'provisioning' | 'running' | 'suspended' | 'error';
+type InstanceStatus = 'not_provisioned' | 'provisioning' | 'running' | 'suspended' | 'destroying' | 'error';
 type AuthProvider = 'email' | 'google' | 'github' | 'apple';
 
 interface ControlPlaneUser {
@@ -77,6 +78,12 @@ interface ControlPlaneTenant {
   // to surface the live CodeBuild phase to the UI.
   provisioningBuildId?: string;
   provisioningStartedAt?: string;
+  // Same shape, for the teardown build kicked off by DELETE /account. The
+  // /account/delete/status endpoint polls CodeBuild with this id, surfaces
+  // phase, and finalises the deletion (removes user/sessions/tenant from
+  // state) when the destroy build reports SUCCEEDED.
+  destroyBuildId?: string;
+  destroyStartedAt?: string;
   ssoTokenHash?: string;
   ssoTokenExpiresAt?: string;
   billingStartedAt?: string;
@@ -1224,12 +1231,33 @@ app.get('/tenant/provision/status', async (req, res) => {
         const isTerminalFailureStatus = buildStatus === 'FAILED' || buildStatus === 'STOPPED' || buildStatus === 'TIMED_OUT' || buildStatus === 'FAULT';
         const hasPhaseFailure = failedPhase !== undefined;
 
+        // Discover the real instance URL from CodeBuild's exported variables.
+        // The buildspec exports TENANT_INSTANCE_URL after a successful apply.
+        // We can't rely on the buildspec's curl-to-control-plane fallback
+        // because the control-plane ALB is internal and not reachable from
+        // CodeBuild's AWS-managed VPC.
+        const exported = build.exportedEnvironmentVariables ?? [];
+        const exportedInstanceUrl = exported
+          .find((entry) => entry.name === 'TENANT_INSTANCE_URL')
+          ?.value
+          ?.trim();
+        const discoveredInstanceUrl = exportedInstanceUrl && exportedInstanceUrl.length > 0
+          ? exportedInstanceUrl
+          : null;
+
         // If CodeBuild reports terminal success but tenant hasn't been flipped
         // yet (rare race — buildspec mutates state at end), reflect that here.
         if (buildStatus === 'SUCCEEDED' && tenant.status === 'provisioning') {
           await mutateState((s) => {
             const t = s.tenants.find((x) => x.id === tenant.id);
-            if (t && t.status === 'provisioning') { t.status = 'running'; t.updatedAt = nowIso(); }
+            if (t && t.status === 'provisioning') {
+              t.status = 'running';
+              // Replace the placeholder instanceUrl (created at /tenant/provision
+              // time) with the real CloudFront URL discovered above. Falls back
+              // to the existing value when the build didn't surface one.
+              if (discoveredInstanceUrl) t.instanceUrl = discoveredInstanceUrl;
+              t.updatedAt = nowIso();
+            }
           });
         } else if ((isTerminalFailureStatus || hasPhaseFailure) && tenant.status === 'provisioning') {
           await mutateState((s) => {
@@ -1831,23 +1859,140 @@ app.delete('/account', async (req, res) => {
   const state = await loadState();
   const tenant = state.tenants.find((t) => t.userId === user.id);
 
-  let historyRecord: DeletedAccountRecord | null = null;
-  let historyBuildError: string | null = null;
+  // No tenant → no AWS infrastructure exists. Fall through to the legacy
+  // synchronous deletion path (state-only cleanup) and return 200.
+  if (!tenant) {
+    await finaliseAccountDeletion(user, null, 'No workspace was provisioned for this account');
+    res.json({ ok: true, status: 'completed', message: 'Account closed' });
+    return;
+  }
+
+  // Workspace exists — kick off `terraform destroy` via CodeBuild. We mark
+  // the tenant as 'destroying' and return 202 immediately so the UI can poll
+  // /account/delete/status. The final state cleanup (removing user, sessions,
+  // tenant) happens when the destroy build is observed to be SUCCEEDED.
+  if (!CODEBUILD_PROJECT_NAME) {
+    // Local/dev mode — no CodeBuild available. Fall through to synchronous
+    // state-only deletion, matching the historical behaviour.
+    console.info(`[account] Local mode: skipping destroy, removing state for ${user.email}`);
+    await finaliseAccountDeletion(user, tenant, 'CODEBUILD_PROJECT_NAME not set; skipped infra teardown');
+    res.json({ ok: true, status: 'completed', message: 'Account closed (no infra teardown in local mode)' });
+    return;
+  }
 
   try {
-    historyRecord = buildDeletedAccountRecord(user, tenant);
+    const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
+    const startResponse = await codebuild.send(new StartBuildCommand({
+      projectName: CODEBUILD_PROJECT_NAME,
+      environmentVariablesOverride: [
+        { name: 'ACTION',        value: 'destroy',                                  type: 'PLAINTEXT' },
+        { name: 'USER_ID',       value: tenant.id,                                  type: 'PLAINTEXT' },
+        { name: 'PLAN_TYPE',     value: tenant.plan,                                type: 'PLAINTEXT' },
+        { name: 'PRICING_TRACK', value: TIER_PRICING_TRACK[tenant.plan],            type: 'PLAINTEXT' },
+        { name: 'TENANT_REGION', value: tenant.region,                              type: 'PLAINTEXT' },
+        { name: 'ENVIRONMENT',   value: process.env['ARIA_DEPLOY_ENV'] ?? 'prod',   type: 'PLAINTEXT' },
+        { name: 'ADMIN_EMAIL',   value: user.email,                                 type: 'PLAINTEXT' },
+        ...(CONTROL_PLANE_SECRET_ARN
+          ? [{ name: 'CONTROL_PLANE_SECRET_ARN', value: CONTROL_PLANE_SECRET_ARN, type: 'PLAINTEXT' as const }]
+          : []),
+      ],
+    }));
+
+    const buildId = startResponse.build?.id;
+    const startedAt = nowIso();
+    await mutateState((s) => {
+      const t = s.tenants.find((x) => x.id === tenant.id);
+      if (!t) return;
+      t.status = 'destroying';
+      t.destroyBuildId = buildId;
+      t.destroyStartedAt = startedAt;
+      t.updatedAt = startedAt;
+    });
+
+    console.info(`[account] Destroy build started for ${user.email} (tenant ${tenant.id}): ${buildId}`);
+    res.status(202).json({
+      ok: true,
+      status: 'destroying',
+      tenantId: tenant.id,
+      buildId: buildId ?? null,
+      message: 'Workspace teardown in progress. Account will be closed when teardown finishes.',
+    });
+  } catch (err) {
+    console.error(`[account] Failed to start destroy build for ${user.email}: ${(err as Error).message}`);
+    res.status(502).json({ error: 'Failed to start workspace teardown', detail: (err as Error).message });
+  }
+});
+
+// SES "account closed" email. Skipped silently if SES_FROM_ADDRESS is unset
+// (typical for local/dev). Doesn't throw on send failures — the caller logs.
+async function sendAccountClosedEmail(
+  toAddress: string,
+  toName: string,
+  reasonForSkippedInfraTeardown: string | null,
+): Promise<void> {
+  const fromAddress = process.env['SES_FROM_ADDRESS']?.trim();
+  if (!fromAddress) {
+    console.info(`[account-email] SES_FROM_ADDRESS not set, skipping confirmation email to ${toAddress}`);
+    return;
+  }
+  const region = process.env['SES_REGION']?.trim() || process.env['AWS_REGION']?.trim() || 'eu-west-2';
+  const sesClient = new SESv2Client({ region });
+
+  const teardownNote = reasonForSkippedInfraTeardown
+    ? `\n\nNote: ${reasonForSkippedInfraTeardown}`
+    : '\n\nAll AWS infrastructure for your workspace has been torn down. You should see corresponding billing entries stop within the next billing cycle.';
+
+  const subject = 'Your ARIA Evaluator account has been closed';
+  const textBody = `Hi ${toName},\n\nThis confirms that your ARIA Evaluator account (${toAddress}) has been closed and your workspace has been destroyed.${teardownNote}\n\nIf this wasn't you, contact support@ariaeval.io immediately.\n\nThanks for trying ARIA Evaluator.\n\n— The ARIA Evaluator team`;
+  const htmlBody = `<p>Hi ${toName},</p><p>This confirms that your ARIA Evaluator account (<strong>${toAddress}</strong>) has been closed and your workspace has been destroyed.</p>${
+    reasonForSkippedInfraTeardown
+      ? `<p>Note: ${reasonForSkippedInfraTeardown}</p>`
+      : '<p>All AWS infrastructure for your workspace has been torn down. You should see corresponding billing entries stop within the next billing cycle.</p>'
+  }<p>If this wasn&apos;t you, contact <a href="mailto:support@ariaeval.io">support@ariaeval.io</a> immediately.</p><p>Thanks for trying ARIA Evaluator.</p><p>— The ARIA Evaluator team</p>`;
+
+  try {
+    await sesClient.send(new SendEmailCommand({
+      FromEmailAddress: fromAddress,
+      Destination: { ToAddresses: [toAddress] },
+      Content: {
+        Simple: {
+          Subject: { Data: subject, Charset: 'UTF-8' },
+          Body: {
+            Text: { Data: textBody, Charset: 'UTF-8' },
+            Html: { Data: htmlBody, Charset: 'UTF-8' },
+          },
+        },
+      },
+    }));
+    console.info(`[account-email] Closure email sent to ${toAddress}`);
+  } catch (err) {
+    console.warn(`[account-email] SES send failed for ${toAddress}: ${(err as Error).message}`);
+    throw err;
+  }
+}
+
+// Helper: remove the user, sessions, and tenant from state, write the
+// deleted-account history record, and queue a confirmation email. Called
+// both from the no-tenant path on /account DELETE and from the destroy-build
+// success path in /account/delete/status.
+async function finaliseAccountDeletion(
+  user: ControlPlaneUser,
+  tenant: ControlPlaneTenant | null,
+  reasonForSkippedInfraTeardown: string | null = null,
+): Promise<void> {
+  let historyRecord: DeletedAccountRecord | null = null;
+  let historyBuildError: string | null = null;
+  try {
+    historyRecord = buildDeletedAccountRecord(user, tenant ?? undefined);
   } catch (err: unknown) {
     historyBuildError = (err as Error).message;
     console.error(`[history] Failed to build deleted account record for ${user.id}:`, historyBuildError);
   }
 
-  // Delete from main tables. If history record was built successfully, write it
-  // atomically in the same mutation. If not, queue a pending write.
   await mutateState((draft) => {
     if (historyRecord) {
       draft.deletedAccounts.push(historyRecord);
     } else {
-      // History build failed — queue for async retry so deletion still proceeds
       const pending: PendingHistoryWrite = {
         id: randomBytes(8).toString('hex'),
         record: {
@@ -1866,7 +2011,6 @@ app.delete('/account', async (req, res) => {
         attempts: 1,
       };
       draft.pendingHistoryWrites.push(pending);
-      console.error(`[history] Queued pending history write ${pending.id} for async retry`);
     }
 
     draft.tenants = draft.tenants.filter((t) => t.userId !== user.id);
@@ -1874,7 +2018,97 @@ app.delete('/account', async (req, res) => {
     draft.users = draft.users.filter((u) => u.id !== user.id);
   });
 
-  res.json({ ok: true, message: 'Account and workspace permanently deleted' });
+  // Fire-and-forget confirmation email. Logged but never blocks the cleanup.
+  sendAccountClosedEmail(user.email, user.name ?? user.email, reasonForSkippedInfraTeardown).catch((err) => {
+    console.warn(`[account] Failed to send closure email to ${user.email}: ${(err as Error).message}`);
+  });
+}
+
+// GET /account/delete/status — poll while the workspace is being torn down.
+// Returns the live CodeBuild phase if a destroy build is in flight, and
+// finalises the account deletion when the destroy build reports SUCCEEDED.
+app.get('/account/delete/status', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.userId === user.id);
+  if (!tenant) {
+    // No tenant for this user — either deletion already finalised in a prior
+    // poll (state was wiped, user record gone, but caller still has a session
+    // token; treat as completed) or the user never had a workspace.
+    res.json({ status: 'completed', phase: 'completed', buildPhase: null, message: 'No workspace remains' });
+    return;
+  }
+
+  if (tenant.status !== 'destroying' && tenant.status !== 'error') {
+    res.json({
+      status: tenant.status,
+      phase: tenant.status,
+      buildPhase: null,
+      message: 'No teardown in progress',
+    });
+    return;
+  }
+
+  let buildPhase: string | null = null;
+  let buildStatus: string | null = null;
+  let failedPhase: string | null = null;
+  let failedPhaseMessage: string | null = null;
+
+  if (tenant.destroyBuildId && CODEBUILD_PROJECT_NAME) {
+    try {
+      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
+      const result = await codebuild.send(new BatchGetBuildsCommand({ ids: [tenant.destroyBuildId] }));
+      const build = result.builds?.[0];
+      if (build) {
+        buildPhase = build.currentPhase ?? null;
+        buildStatus = build.buildStatus ?? null;
+        const failed = build.phases?.find((p) => p.phaseStatus === 'FAILED' || p.phaseStatus === 'FAULT' || p.phaseStatus === 'TIMED_OUT' || p.phaseStatus === 'STOPPED');
+        if (failed) {
+          failedPhase = failed.phaseType ?? null;
+          failedPhaseMessage = failed.contexts?.[0]?.message ?? null;
+        }
+
+        // Finalise on terminal success: remove user/sessions/tenant, send the
+        // confirmation email. We do this BEFORE responding so the client sees
+        // a single "completed" snapshot.
+        if (buildStatus === 'SUCCEEDED' && tenant.status === 'destroying') {
+          await finaliseAccountDeletion(user, tenant, null);
+          res.json({
+            status: 'completed',
+            phase: 'completed',
+            buildPhase,
+            buildStatus,
+            message: 'Workspace destroyed and account closed',
+          });
+          return;
+        }
+
+        const isTerminalFailure = buildStatus === 'FAILED' || buildStatus === 'STOPPED' || buildStatus === 'TIMED_OUT' || buildStatus === 'FAULT' || failed !== undefined;
+        if (isTerminalFailure && tenant.status === 'destroying') {
+          await mutateState((s) => {
+            const t = s.tenants.find((x) => x.id === tenant.id);
+            if (t && t.status === 'destroying') { t.status = 'error'; t.updatedAt = nowIso(); }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[account/status] CodeBuild lookup failed for ${tenant.destroyBuildId}: ${(err as Error).message}`);
+    }
+  }
+
+  const refreshed = (await loadState()).tenants.find((t) => t.id === tenant.id) ?? tenant;
+  res.json({
+    status: refreshed.status,
+    phase: refreshed.status,
+    buildPhase,
+    buildStatus,
+    failedPhase,
+    failedPhaseMessage,
+    buildId: tenant.destroyBuildId ?? null,
+    startedAt: tenant.destroyStartedAt ?? null,
+  });
 });
 
 // ── Auth: email confirm, forgot/reset password ───────────────────────────────

@@ -202,6 +202,9 @@ module "ecs" {
       { name = "CONTROL_PLANE_STATE_TABLE", value = aws_dynamodb_table.control_plane_state.name },
       { name = "AWS_REGION", value = var.aws_region },
     ],
+    # SES sender for the account-closure confirmation email. Skipped silently
+    # by sendAccountClosedEmail when the address isn't set.
+    var.ses_from_address != "" ? [{ name = "SES_FROM_ADDRESS", value = var.ses_from_address }] : [],
   )
   # Internal secret injected via ECS secrets (Secrets Manager valueFrom) — never plaintext
   extra_secrets = [
@@ -373,6 +376,36 @@ resource "aws_iam_policy" "control_plane_state_access" {
 resource "aws_iam_role_policy_attachment" "control_plane_state_access" {
   role       = module.iam.task_role_name
   policy_arn = aws_iam_policy.control_plane_state_access.arn
+}
+
+# ── IAM policy: SES send permission for account-closure confirmation emails ──
+
+data "aws_iam_policy_document" "control_plane_ses_send" {
+  statement {
+    sid    = "SesSendAccountClosureEmail"
+    effect = "Allow"
+    actions = [
+      "ses:SendEmail",
+      "ses:SendRawEmail",
+    ]
+    # SES is account-region scoped — sending requires the FROM identity to be
+    # verified, but the IAM action itself is broad. Resource="*" matches the
+    # convention used by the AWS-managed AmazonSESFullAccess for send-only.
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "control_plane_ses_send" {
+  name        = "${var.app_name}-${var.environment}-control-plane-ses-send"
+  description = "Allow control-plane ECS task to send account-closure confirmation emails via SES"
+  policy      = data.aws_iam_policy_document.control_plane_ses_send.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "control_plane_ses_send" {
+  role       = module.iam.task_role_name
+  policy_arn = aws_iam_policy.control_plane_ses_send.arn
 }
 
 # ── IAM policy: CodeBuild StartBuild + BatchGetBuilds for control-plane ──────

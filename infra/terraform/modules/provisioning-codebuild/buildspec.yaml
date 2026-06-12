@@ -14,6 +14,19 @@ version: 0.2
 #   plane (/internal/provision/failed) including tenant ID, plan, region, and
 #   the last 50 lines of the build log.  Separately, EventBridge fires an SNS
 #   email (configured in Terraform) with a CloudWatch deep link for the build.
+#
+# Successful provisioning URL surfacing:
+#   The post_build phase exports TENANT_INSTANCE_URL (the full https:// URL of
+#   the freshly-created tenant CloudFront distribution / ALB) as a CodeBuild
+#   exported variable. The control-plane's /tenant/provision/status endpoint
+#   reads exportedEnvironmentVariables from BatchGetBuilds when the build
+#   finishes SUCCEEDED and persists the value into tenant.instanceUrl. This
+#   replaces the curl POST to /internal/provision/complete, which can't
+#   succeed from CodeBuild's AWS-managed VPC (the control-plane's ALB is
+#   internal, only reachable from peered/in-VPC resources).
+env:
+  exported-variables:
+    - TENANT_INSTANCE_URL
 
 phases:
   pre_build:
@@ -82,7 +95,9 @@ phases:
 
       - terraform validate
 
-      - echo "==> Terraform plan (plan=${PLAN_TYPE}, track=${PRICING_TRACK:-individual})..."
+      - 'echo "==> ACTION=${ACTION:-apply}"'
+
+      - echo "==> Resolving tenant variables..."
       - |
         # Re-fetch control plane creds — env vars exported in pre_build do not survive
         # across CodeBuild phases (each command block runs in a fresh shell).
@@ -140,7 +155,8 @@ phases:
         echo "Resolved tenant_kms_key_arn=${TENANT_KMS_KEY_ARN}"
         echo "Resolved tenant_alarm_sns_topic_arn=${TENANT_ALARM_SNS_TOPIC_ARN}"
 
-        terraform plan \
+        # Collect the var flags once — both apply and destroy take the same set.
+        TF_VARS=$(printf '%s ' \
           -var="tenant_id=${USER_ID}" \
           -var="pricing_tier=${PLAN_TYPE}" \
           -var="pricing_track=${PRICING_TRACK:-individual}" \
@@ -153,14 +169,22 @@ phases:
           -var="heartbeat_table_arn=${TENANT_HEARTBEAT_TABLE_ARN}" \
           -var="heartbeat_table_name=${TENANT_HEARTBEAT_TABLE_NAME}" \
           -var="kms_key_arn=${TENANT_KMS_KEY_ARN}" \
-          -var="alarm_sns_topic_arn=${TENANT_ALARM_SNS_TOPIC_ARN}" \
-          -out=/tmp/tfplan
+          -var="alarm_sns_topic_arn=${TENANT_ALARM_SNS_TOPIC_ARN}")
 
-      - echo "==> Terraform apply..."
-      - terraform apply -auto-approve /tmp/tfplan
-
-      - echo "==> Capturing outputs..."
-      - terraform output -json > /tmp/outputs.json
+        if [ "${ACTION:-apply}" = "destroy" ]; then
+          echo "==> Terraform destroy (tenant=${USER_ID})..."
+          # eval expands the quoted TF_VARS string so each -var stays its own
+          # argument (otherwise the shell passes them as a single mashed token).
+          eval terraform destroy -auto-approve $TF_VARS
+          echo "==> Tenant ${USER_ID} infrastructure destroyed."
+        else
+          echo "==> Terraform plan (plan=${PLAN_TYPE}, track=${PRICING_TRACK:-individual})..."
+          eval terraform plan $TF_VARS -out=/tmp/tfplan
+          echo "==> Terraform apply..."
+          terraform apply -auto-approve /tmp/tfplan
+          echo "==> Capturing outputs..."
+          terraform output -json > /tmp/outputs.json
+        fi
 
   post_build:
     commands:
@@ -168,6 +192,18 @@ phases:
         set +e
         INSTANCE_URL=$(jq -r '.cloudfront_domain_name.value // .alb_dns_name.value // empty' /tmp/outputs.json 2>/dev/null)
         BUILD_STATUS=$CODEBUILD_BUILD_SUCCEEDING
+
+        # Surface the full URL as a CodeBuild exported variable so the
+        # control-plane can fetch it via BatchGetBuilds.exportedEnvironmentVariables
+        # without depending on the curl-to-internal-ALB notification path.
+        # Set even on failure (empty string) so the variable is always present
+        # — the control-plane treats an empty value as "still unknown".
+        if [ -n "$INSTANCE_URL" ]; then
+          export TENANT_INSTANCE_URL="https://${INSTANCE_URL}"
+        else
+          export TENANT_INSTANCE_URL=""
+        fi
+        echo "TENANT_INSTANCE_URL exported: ${TENANT_INSTANCE_URL}"
 
         # Re-fetch secrets — each phase is a separate shell in CodeBuild
         CP_URL=$(aws ssm get-parameter \
