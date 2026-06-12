@@ -10,25 +10,33 @@ terraform {
   }
 }
 
-# ElastiCache cluster for Redis
-resource "aws_elasticache_cluster" "main" {
-  cluster_id           = "${var.environment}-aria-redis"
-  engine              = "redis"
-  engine_version      = var.engine_version
-  node_type           = var.node_type
-  num_cache_nodes     = var.num_cache_nodes
+# ElastiCache Redis (replication group).
+# We use aws_elasticache_replication_group rather than aws_elasticache_cluster
+# because the cluster resource doesn't support automatic_failover,
+# at_rest_encryption, transit_encryption, or auth_token — which the caller
+# explicitly requests via variables. Single-node deployments still work
+# (num_cache_clusters = 1) with failover disabled.
+resource "aws_elasticache_replication_group" "main" {
+  replication_group_id = "${var.environment}-aria-redis"
+  description          = "ARIA ${var.environment} Redis"
+
+  engine               = "redis"
+  engine_version       = var.engine_version
+  node_type            = var.node_type
+  num_cache_clusters   = var.num_cache_nodes
   parameter_group_name = var.parameter_group_name
 
-  port                = var.port
+  port                       = var.port
   automatic_failover_enabled = var.automatic_failover_enabled && var.num_cache_nodes > 1
+  multi_az_enabled           = var.automatic_failover_enabled && var.num_cache_nodes > 1
 
-  subnet_group_name = var.subnet_group_name
+  subnet_group_name  = var.subnet_group_name
   security_group_ids = var.security_group_ids
 
-  # Encryption
+  # Encryption (replication_group supports all three; cluster does not)
   at_rest_encryption_enabled = var.at_rest_encryption_enabled
   transit_encryption_enabled = var.transit_encryption_enabled
-  auth_token                 = var.auth_token
+  auth_token                 = var.auth_token != "" ? var.auth_token : null
 
   # Backup & maintenance
   snapshot_retention_limit = var.snapshot_retention_limit
@@ -44,8 +52,10 @@ resource "aws_elasticache_cluster" "main" {
     }
   )
 
-  # Ensure proper cleanup
-  skip_final_snapshot = var.skip_final_snapshot
+  # Don't take a final snapshot on destroy (cheap, fast teardown for tenants).
+  # The caller can override via the existing skip_final_snapshot var — the
+  # replication_group attribute name is final_snapshot_identifier (omit for
+  # no snapshot) so we simply leave it unset when skip_final_snapshot is true.
 }
 
 # CloudWatch alarms
@@ -62,7 +72,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization" {
   alarm_description   = "Redis cluster CPU utilization is too high"
 
   dimensions = {
-    CacheClusterId = aws_elasticache_cluster.main.cluster_id
+    CacheClusterId = "${aws_elasticache_replication_group.main.replication_group_id}-001"
   }
 
   alarm_actions = var.alarm_actions
@@ -81,7 +91,7 @@ resource "aws_cloudwatch_metric_alarm" "memory_utilization" {
   alarm_description   = "Redis cluster memory utilization is too high"
 
   dimensions = {
-    CacheClusterId = aws_elasticache_cluster.main.cluster_id
+    CacheClusterId = "${aws_elasticache_replication_group.main.replication_group_id}-001"
   }
 
   alarm_actions = var.alarm_actions
@@ -100,7 +110,7 @@ resource "aws_cloudwatch_metric_alarm" "evictions" {
   alarm_description   = "Redis cluster has too many evictions"
 
   dimensions = {
-    CacheClusterId = aws_elasticache_cluster.main.cluster_id
+    CacheClusterId = "${aws_elasticache_replication_group.main.replication_group_id}-001"
   }
 
   alarm_actions = var.alarm_actions

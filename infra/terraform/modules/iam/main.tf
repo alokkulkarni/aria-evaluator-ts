@@ -414,3 +414,48 @@ resource "aws_iam_role_policy_attachment" "execution_secret" {
   role       = aws_iam_role.ecs_task_execution.name
   policy_arn = aws_iam_policy.execution_secret[0].arn
 }
+
+# ── Execution-role access to additional task-startup secrets ──────────────────
+# When the task definition uses `secrets = [{ valueFrom = "<sm:arn>", ... }]`,
+# ECS itself fetches the value before container start using the EXECUTION role.
+# These ARNs must be granted to ecs_task_execution (NOT ecs_task).
+data "aws_iam_policy_document" "execution_secrets_list" {
+  count = length(var.execution_secret_arns) > 0 ? 1 : 0
+
+  statement {
+    sid       = "ReadExecutionSecrets"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = var.execution_secret_arns
+  }
+
+  statement {
+    sid       = "DecryptExecutionSecrets"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["secretsmanager.${var.aws_region}.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_policy" "execution_secrets_list" {
+  count = length(var.execution_secret_arns) > 0 ? 1 : 0
+
+  name        = "${local.name_prefix}-execution-secrets"
+  description = "Allow ECS execution role to fetch task-definition `secrets` from Secrets Manager"
+  policy      = data.aws_iam_policy_document.execution_secrets_list[0].json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "execution_secrets_list" {
+  count = length(var.execution_secret_arns) > 0 ? 1 : 0
+
+  role       = aws_iam_role.ecs_task_execution.name
+  policy_arn = aws_iam_policy.execution_secrets_list[0].arn
+}

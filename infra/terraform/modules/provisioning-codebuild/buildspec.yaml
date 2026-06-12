@@ -62,7 +62,10 @@ phases:
 
       # Capture the exact commit so it appears in logs and failure emails
       - COMMIT_SHA=$(git -C /tmp/repo rev-parse --short HEAD 2>/dev/null || echo "unknown")
-      - echo "Repo commit: ${COMMIT_SHA}"
+      # Single-quote the whole scalar: an unquoted "X: Y" is parsed as a YAML
+      # mapping ("X" → "Y"), which is how the previous build failed at line 65
+      # with "found subkeys instead". Single quotes preserve `: ` literally.
+      - 'echo "Repo commit: ${COMMIT_SHA}"'
 
       - cd /tmp/repo/infra/terraform/environments/prod
 

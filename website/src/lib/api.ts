@@ -68,6 +68,13 @@ export async function createTenant(data: { plan: string; region: string; billing
   })
 }
 
+export async function reprovisionTenant(authToken?: string) {
+  return apiFetch<{ ok: boolean; tenantId: string; status: 'provisioning' | 'running'; buildId?: string | null }>(
+    '/tenant/reprovision',
+    { method: 'POST', authToken },
+  )
+}
+
 export async function getTenantStatus(authToken?: string) {
   return apiFetch('/tenant/me', { authToken })
 }

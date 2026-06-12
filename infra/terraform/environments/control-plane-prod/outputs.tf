@@ -109,8 +109,13 @@ output "vpc_cidr" {
 }
 
 output "private_route_table_ids" {
-  description = "Control-plane private route table IDs — peer stacks add routes to their CIDR here"
+  description = "Control-plane private route table IDs (subset of all_route_table_ids)"
   value       = module.networking.private_route_table_ids
+}
+
+output "all_route_table_ids" {
+  description = "All control-plane route table IDs (public + private). Peer stacks should add reverse routes to every one of these so the internal ALB's return path works regardless of which subnet its ENIs land in."
+  value       = module.networking.all_route_table_ids
 }
 
 output "alb_security_group_id" {

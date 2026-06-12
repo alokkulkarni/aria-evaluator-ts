@@ -23,7 +23,11 @@ locals {
   control_plane_state     = try(data.terraform_remote_state.control_plane[0].outputs, null)
   control_plane_vpc_id    = try(local.control_plane_state.vpc_id, "")
   control_plane_vpc_cidr  = try(local.control_plane_state.vpc_cidr, "")
-  control_plane_rt_ids    = try(local.control_plane_state.private_route_table_ids, [])
+  # Use ALL route tables on the control-plane side (public + private), because
+  # the internal ALB's ENIs live in PUBLIC subnets (see investigation notes
+  # 2026-06-12). If we only routed via the private RTs, the SYN-ACK from the
+  # ALB drops on the floor and the auth-backend sees a ConnectTimeout.
+  control_plane_rt_ids = try(local.control_plane_state.all_route_table_ids, [])
   control_plane_alb_sg_id = try(local.control_plane_state.alb_security_group_id, "")
 }
 
@@ -51,12 +55,17 @@ resource "aws_route" "auth_to_control_plane" {
   vpc_peering_connection_id = aws_vpc_peering_connection.auth_to_control_plane[0].id
 }
 
-# Reverse routes: each control-plane private route table → auth VPC CIDR.
+# Reverse routes: every control-plane route table → auth VPC CIDR.
 # Lives in this stack (not control-plane-prod) so the peering and both ends
 # of the routing change atomically when control_plane_url is set.
+#
+# Uses for_each keyed on the route-table ID (not count) so each route's
+# Terraform address is stable. With count, reordering `all_route_table_ids`
+# shifts indices and forces destroy+recreate, which orphans the live AWS
+# route and produces "RouteAlreadyExists" on re-apply.
 resource "aws_route" "control_plane_to_auth" {
-  count                     = local.peering_enabled ? length(local.control_plane_rt_ids) : 0
-  route_table_id            = local.control_plane_rt_ids[count.index]
+  for_each                  = local.peering_enabled ? toset(local.control_plane_rt_ids) : toset([])
+  route_table_id            = each.key
   destination_cidr_block    = module.auth_backend.vpc_cidr_block
   vpc_peering_connection_id = aws_vpc_peering_connection.auth_to_control_plane[0].id
 }

@@ -19,6 +19,10 @@ locals {
     logs           = "com.amazonaws.${data.aws_region.current.region}.logs"
     sts            = "com.amazonaws.${data.aws_region.current.region}.sts"
     secretsmanager = "com.amazonaws.${data.aws_region.current.region}.secretsmanager"
+    # CodeBuild needed by the control-plane to call StartBuildCommand for
+    # tenant provisioning. Without it the SDK call times out at ~30s (no NAT
+    # in private subnets) → CloudFront returns 504 to the browser.
+    codebuild = "com.amazonaws.${data.aws_region.current.region}.codebuild"
   }
 }
 
@@ -81,6 +85,13 @@ resource "aws_route_table" "public" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-public-rt"
   })
+
+  # Peer stacks (e.g. website-prod) add cross-VPC routes to this table via
+  # standalone aws_route resources. Without ignore_changes the inline `route`
+  # block would clobber those entries on every apply.
+  lifecycle {
+    ignore_changes = [route]
+  }
 }
 
 resource "aws_route_table_association" "public" {
@@ -139,6 +150,13 @@ resource "aws_security_group" "alb" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-alb-sg"
   })
+
+  # Peer stacks (e.g. website-prod) add cross-VPC ingress rules to this SG via
+  # standalone aws_security_group_rule resources. Without ignore_changes the
+  # inline `ingress` blocks would clobber those rules on every apply.
+  lifecycle {
+    ignore_changes = [ingress, egress]
+  }
 }
 
 resource "aws_security_group" "ecs_service" {
@@ -267,6 +285,21 @@ resource "aws_vpc_endpoint" "s3" {
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-s3-endpoint"
+  })
+}
+
+# Gateway endpoint for DynamoDB. Free. Needed by the control-plane to read
+# and write its state table from private subnets (no NAT in this VPC).
+resource "aws_vpc_endpoint" "dynamodb" {
+  count = var.private_subnets_enabled ? 1 : 0
+
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = concat([aws_route_table.public.id], aws_route_table.private[*].id)
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-dynamodb-endpoint"
   })
 }
 

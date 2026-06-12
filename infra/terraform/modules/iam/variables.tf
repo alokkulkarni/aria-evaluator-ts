@@ -48,6 +48,12 @@ variable "god_mode_secret_arn" {
   sensitive   = true
 }
 
+variable "execution_secret_arns" {
+  description = "Additional Secrets Manager ARNs that the ECS execution role must read at container startup (used by `secrets` in the task definition, not `task_role`)."
+  type        = list(string)
+  default     = []
+}
+
 variable "tenant_id" {
   description = "Tenant identifier used for naming and tagging"
   type        = string

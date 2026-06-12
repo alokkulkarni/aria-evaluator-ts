@@ -1,9 +1,19 @@
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 locals {
   repo_root = abspath("${path.module}/../../../..")
   # Use pre-built image URI from CI/CD if provided, otherwise build locally
   use_prebuilt = var.image_uri != ""
+
+  # Common tags applied to env-level resources (e.g. redis.tf). The
+  # tenant-module brings its own tagging.
+  common_tags = {
+    Environment = "prod"
+    Project     = "aria-evaluator"
+    ManagedBy   = "terraform"
+    Component   = "tenant"
+  }
 
   # ECR repository enforces immutable tags. If the default "latest" tag is left
   # in tfvars, derive a deterministic content tag to avoid overwrite failures.

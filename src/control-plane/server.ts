@@ -8,7 +8,14 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { CodeBuildClient, StartBuildCommand } from '@aws-sdk/client-codebuild';
+import { BatchGetBuildsCommand, CodeBuildClient, StartBuildCommand } from '@aws-sdk/client-codebuild';
+import {
+  ConditionalCheckFailedException,
+  DynamoDBClient,
+  GetItemCommand,
+  PutItemCommand,
+} from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
 type BillingPeriod = 'monthly' | 'annual';
 type PricingTier = 'free' | 'individual' | 'enterprise_starter' | 'enterprise_pro' | 'enterprise_unlimited';
@@ -65,6 +72,11 @@ interface ControlPlaneTenant {
   billingPeriod: BillingPeriod;
   status: InstanceStatus;
   instanceUrl: string;
+  // CodeBuild build id (e.g. "aria-control-plane-provisioner:abc-def…")
+  // captured when StartBuildCommand returns. Used by /tenant/provision/status
+  // to surface the live CodeBuild phase to the UI.
+  provisioningBuildId?: string;
+  provisioningStartedAt?: string;
   ssoTokenHash?: string;
   ssoTokenExpiresAt?: string;
   billingStartedAt?: string;
@@ -295,7 +307,9 @@ function loadDefaultState(): ControlPlaneState {
   return { users: [], sessions: [], tenants: [], deletedAccounts: [], pendingHistoryWrites: [] };
 }
 
-let stateCache: ControlPlaneState | null = null;
+// stateCacheVersioned (declared below near the backend impl) replaces the
+// old stateCache: it tracks the on-storage version alongside the in-memory
+// state so optimistic concurrency on DynamoDB works.
 
 function ensureLocalSeedState(state: ControlPlaneState): boolean {
   if (!LOCAL_SEED_ENABLED) return false;
@@ -421,41 +435,165 @@ async function ensureStateDir(): Promise<void> {
   await mkdir(STATE_DIR, { recursive: true });
 }
 
-async function loadState(): Promise<ControlPlaneState> {
-  if (stateCache) return stateCache;
-  await ensureStateDir();
-  if (!existsSync(STATE_FILE)) {
-    stateCache = loadDefaultState();
-    ensureLocalSeedState(stateCache);
-    await saveState(stateCache);
-    return stateCache;
-  }
-  const raw = await readFile(STATE_FILE, 'utf8');
-  stateCache = parseJson<ControlPlaneState>(raw, loadDefaultState());
-  stateCache.users ??= [];
-  stateCache.sessions ??= [];
-  stateCache.tenants ??= [];
-  stateCache.deletedAccounts ??= [];
-  stateCache.pendingHistoryWrites ??= [];
-  if (ensureLocalSeedState(stateCache)) {
-    await saveState(stateCache);
-  }
-  return stateCache;
+// ── State backends ────────────────────────────────────────────────────────────
+// Two backends:
+//   - file     : local dev fallback, JSON file at STATE_FILE
+//   - dynamodb : prod, single-item store keyed by id="state" with optimistic
+//                concurrency on a `version` attribute. Two ECS tasks writing
+//                concurrently → one succeeds, the other reloads and retries.
+//
+// Backend is chosen by env var CONTROL_PLANE_STATE_TABLE. Empty → file.
+
+const STATE_TABLE_NAME = process.env['CONTROL_PLANE_STATE_TABLE']?.trim() || '';
+const STATE_ITEM_ID = 'state';
+const STATE_MUTATE_MAX_ATTEMPTS = 5;
+
+const ddbClient = STATE_TABLE_NAME
+  ? new DynamoDBClient({ region: process.env['AWS_REGION']?.trim() || undefined })
+  : null;
+
+interface CachedState {
+  state: ControlPlaneState;
+  version: number;
 }
 
-async function saveState(nextState: ControlPlaneState): Promise<void> {
+let stateCacheVersioned: CachedState | null = null;
+
+function fillStateDefaults(state: ControlPlaneState): ControlPlaneState {
+  state.users ??= [];
+  state.sessions ??= [];
+  state.tenants ??= [];
+  state.deletedAccounts ??= [];
+  state.pendingHistoryWrites ??= [];
+  return state;
+}
+
+async function loadStateFromFile(): Promise<CachedState> {
+  await ensureStateDir();
+  if (!existsSync(STATE_FILE)) {
+    const fresh = fillStateDefaults(loadDefaultState());
+    ensureLocalSeedState(fresh);
+    await saveStateToFile(fresh);
+    return { state: fresh, version: 0 };
+  }
+  const raw = await readFile(STATE_FILE, 'utf8');
+  const parsed = fillStateDefaults(parseJson<ControlPlaneState>(raw, loadDefaultState()));
+  if (ensureLocalSeedState(parsed)) {
+    await saveStateToFile(parsed);
+  }
+  return { state: parsed, version: 0 };
+}
+
+async function saveStateToFile(nextState: ControlPlaneState): Promise<void> {
   await ensureStateDir();
   const tempFile = `${STATE_FILE}${STATE_TMP_SUFFIX}`;
   await writeFile(tempFile, JSON.stringify(nextState, null, 2), 'utf8');
   await rename(tempFile, STATE_FILE);
-  stateCache = nextState;
+}
+
+async function loadStateFromDdb(): Promise<CachedState> {
+  if (!ddbClient) throw new Error('DynamoDB client not initialised');
+  const result = await ddbClient.send(new GetItemCommand({
+    TableName: STATE_TABLE_NAME,
+    Key: marshall({ id: STATE_ITEM_ID }),
+    ConsistentRead: true,
+  }));
+
+  if (!result.Item) {
+    // Item doesn't exist yet — return empty state at version 0. The first
+    // saveStateToDdb call will use attribute_not_exists(id) to insert it.
+    return { state: fillStateDefaults(loadDefaultState()), version: 0 };
+  }
+
+  const item = unmarshall(result.Item) as { id: string; version: number; payload: string };
+  const state = fillStateDefaults(
+    parseJson<ControlPlaneState>(item.payload ?? '{}', loadDefaultState()),
+  );
+  return { state, version: typeof item.version === 'number' ? item.version : 0 };
+}
+
+async function saveStateToDdb(current: CachedState): Promise<CachedState> {
+  if (!ddbClient) throw new Error('DynamoDB client not initialised');
+  const nextVersion = current.version + 1;
+  const payload = JSON.stringify(current.state);
+
+  const item = {
+    id: STATE_ITEM_ID,
+    version: nextVersion,
+    payload,
+    updatedAt: nowIso(),
+  };
+
+  const isInitialInsert = current.version === 0;
+
+  await ddbClient.send(new PutItemCommand({
+    TableName: STATE_TABLE_NAME,
+    Item: marshall(item),
+    // First insert: succeed only if no item exists. Subsequent updates: succeed
+    // only if the version in the table matches what this task last read. If
+    // another task wrote in between, this throws ConditionalCheckFailed and
+    // mutateState reloads + reapplies the mutator.
+    ConditionExpression: isInitialInsert
+      ? 'attribute_not_exists(id)'
+      : 'version = :expectedVersion',
+    ExpressionAttributeValues: isInitialInsert
+      ? undefined
+      : marshall({ ':expectedVersion': current.version }),
+  }));
+
+  return { state: current.state, version: nextVersion };
+}
+
+async function loadState(): Promise<ControlPlaneState> {
+  if (stateCacheVersioned) return stateCacheVersioned.state;
+  stateCacheVersioned = ddbClient ? await loadStateFromDdb() : await loadStateFromFile();
+  return stateCacheVersioned.state;
+}
+
+// Retained for callsites that explicitly persist after manual mutation. Prefer
+// mutateState. With the DDB backend this still uses optimistic concurrency.
+async function saveState(nextState: ControlPlaneState): Promise<void> {
+  if (ddbClient) {
+    const current = stateCacheVersioned ?? { state: nextState, version: 0 };
+    stateCacheVersioned = await saveStateToDdb({ state: nextState, version: current.version });
+    return;
+  }
+  await saveStateToFile(nextState);
+  stateCacheVersioned = { state: nextState, version: 0 };
 }
 
 async function mutateState(mutator: (state: ControlPlaneState) => void): Promise<ControlPlaneState> {
-  const state = await loadState();
-  mutator(state);
-  await saveState(state);
-  return state;
+  if (!ddbClient) {
+    // File backend — single-process, no concurrency. Original semantics.
+    const cached = stateCacheVersioned ?? await loadStateFromFile();
+    mutator(cached.state);
+    await saveStateToFile(cached.state);
+    stateCacheVersioned = cached;
+    return cached.state;
+  }
+
+  // DynamoDB backend — fetch fresh on every mutation so we honour writes from
+  // other tasks. If our PutItem loses the CAS race, reload and reapply.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < STATE_MUTATE_MAX_ATTEMPTS; attempt++) {
+    const current = await loadStateFromDdb();
+    mutator(current.state);
+    try {
+      stateCacheVersioned = await saveStateToDdb(current);
+      return stateCacheVersioned.state;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ConditionalCheckFailedException) {
+        // Another task wrote between our read and our write. Reload + retry.
+        stateCacheVersioned = null;
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(
+    `mutateState: exhausted ${STATE_MUTATE_MAX_ATTEMPTS} CAS retries: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
 }
 
 function passwordHash(password: string, salt?: string): string {
@@ -947,7 +1085,7 @@ app.post('/tenant/provision', async (req, res) => {
   if (CODEBUILD_PROJECT_NAME) {
     try {
       const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
-      await codebuild.send(new StartBuildCommand({
+      const startResponse = await codebuild.send(new StartBuildCommand({
         projectName: CODEBUILD_PROJECT_NAME,
         environmentVariablesOverride: [
           { name: 'USER_ID',       value: tenantId,                             type: 'PLAINTEXT' },
@@ -963,7 +1101,19 @@ app.post('/tenant/provision', async (req, res) => {
           ),
         ],
       }));
-      console.info(`[provision] CodeBuild build started — tenant: ${tenantId}, plan: ${parsed.data.plan}, region: ${parsed.data.region}`);
+      const buildId = startResponse.build?.id;
+      const provisioningStartedAt = nowIso();
+      if (buildId) {
+        await mutateState((s) => {
+          const t = s.tenants.find((x) => x.id === tenantId);
+          if (t) {
+            t.provisioningBuildId = buildId;
+            t.provisioningStartedAt = provisioningStartedAt;
+            t.updatedAt = provisioningStartedAt;
+          }
+        });
+      }
+      console.info(`[provision] CodeBuild build started — tenant: ${tenantId}, plan: ${parsed.data.plan}, region: ${parsed.data.region}, build: ${buildId ?? '<unknown>'}`);
     } catch (err) {
       // Mark failed and surface error to caller
       await mutateState((s) => {
@@ -1011,13 +1161,155 @@ app.get('/tenant/provision/status', async (req, res) => {
     }
   })();
 
+  // Best-effort live CodeBuild phase. If unavailable or errors out, the UI
+  // falls back to the coarse phase above plus its own time-based step animation.
+  let buildPhase: string | null = null;
+  let buildStatus: string | null = null;
+  let buildEndTime: string | null = null;
+  if (tenant.provisioningBuildId && tenant.status === 'provisioning' && CODEBUILD_PROJECT_NAME) {
+    try {
+      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
+      const result = await codebuild.send(new BatchGetBuildsCommand({ ids: [tenant.provisioningBuildId] }));
+      const build = result.builds?.[0];
+      if (build) {
+        buildPhase  = build.currentPhase ?? null;
+        buildStatus = build.buildStatus ?? null;
+        buildEndTime = build.endTime ? build.endTime.toISOString() : null;
+
+        // If CodeBuild reports terminal success but tenant hasn't been flipped
+        // yet (rare race — buildspec mutates state at end), reflect that here.
+        if (buildStatus === 'SUCCEEDED' && tenant.status === 'provisioning') {
+          await mutateState((s) => {
+            const t = s.tenants.find((x) => x.id === tenant.id);
+            if (t && t.status === 'provisioning') { t.status = 'running'; t.updatedAt = nowIso(); }
+          });
+        } else if ((buildStatus === 'FAILED' || buildStatus === 'STOPPED' || buildStatus === 'TIMED_OUT' || buildStatus === 'FAULT') && tenant.status === 'provisioning') {
+          await mutateState((s) => {
+            const t = s.tenants.find((x) => x.id === tenant.id);
+            if (t && t.status === 'provisioning') { t.status = 'error'; t.updatedAt = nowIso(); }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[provision/status] CodeBuild lookup failed for ${tenant.provisioningBuildId}: ${(err as Error).message}`);
+    }
+  }
+
+  // Re-load tenant in case we mutated it above so the response reflects the new state.
+  const refreshedTenant = (await loadState()).tenants.find((t) => t.id === tenant.id) ?? tenant;
+  const finalStatus = refreshedTenant.status;
+  const finalPhase: string = (() => {
+    switch (finalStatus) {
+      case 'provisioning': return 'provisioning';
+      case 'running':      return 'complete';
+      case 'error':        return 'failed';
+      default:             return finalStatus;
+    }
+  })();
+
   res.json({
     tenantId: tenant.id,
-    status: tenant.status,
-    phase,
-    instanceUrl: tenant.status === 'running' ? tenant.instanceUrl : null,
-    updatedAt: tenant.updatedAt,
+    status: finalStatus,
+    phase: finalPhase,
+    instanceUrl: finalStatus === 'running' ? refreshedTenant.instanceUrl : null,
+    updatedAt: refreshedTenant.updatedAt,
+    build: tenant.provisioningBuildId
+      ? {
+          id: tenant.provisioningBuildId,
+          phase: buildPhase,
+          status: buildStatus,
+          endTime: buildEndTime,
+          startedAt: tenant.provisioningStartedAt ?? null,
+        }
+      : null,
   });
+});
+
+// POST /tenant/reprovision — restart a failed (or stuck) provisioning build.
+//
+// Allowed when:
+//   - status='error' (the normal retry-after-failure path), OR
+//   - status='provisioning' AND no live CodeBuild is actually running for this
+//     tenant (covers stuck legacy tenants whose original build predates the
+//     provisioningBuildId tracking, and tenants whose buildId already
+//     terminated but the status endpoint hasn't been polled yet).
+//
+// Rejected when status='running' (already up) or when a live CodeBuild is
+// still in-flight (prevents accidental duplicate builds from button-mashing).
+app.post('/tenant/reprovision', async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const state = await loadState();
+  const tenant = state.tenants.find((t) => t.id === user.tenantId);
+  if (!tenant) { res.status(404).json({ error: 'No tenant to reprovision' }); return; }
+  if (tenant.status === 'running') {
+    res.status(409).json({ error: 'Tenant is already running. Nothing to reprovision.' });
+    return;
+  }
+
+  if (tenant.status === 'provisioning' && tenant.provisioningBuildId && CODEBUILD_PROJECT_NAME) {
+    // A buildId was tracked — only allow retry if it has already terminated.
+    try {
+      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
+      const result = await codebuild.send(new BatchGetBuildsCommand({ ids: [tenant.provisioningBuildId] }));
+      const liveStatus = result.builds?.[0]?.buildStatus ?? null;
+      if (liveStatus === 'IN_PROGRESS') {
+        res.status(409).json({ error: 'A provisioning build is already in progress. Wait for it to finish before retrying.' });
+        return;
+      }
+    } catch (err) {
+      console.warn(`[reprovision] CodeBuild lookup failed for ${tenant.provisioningBuildId}, allowing retry: ${(err as Error).message}`);
+      // If we can't reach CodeBuild, allow the retry — the worst case is a
+      // duplicate build, which terraform's state locking will serialise.
+    }
+  }
+
+  if (!CODEBUILD_PROJECT_NAME) {
+    // Local/dev — mark running immediately, matches /tenant/provision behaviour.
+    await mutateState((s) => {
+      const t = s.tenants.find((x) => x.id === tenant.id);
+      if (t) { t.status = 'running'; t.updatedAt = nowIso(); }
+    });
+    res.json({ ok: true, tenantId: tenant.id, status: 'running' });
+    return;
+  }
+
+  try {
+    const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
+    const startResponse = await codebuild.send(new StartBuildCommand({
+      projectName: CODEBUILD_PROJECT_NAME,
+      environmentVariablesOverride: [
+        { name: 'USER_ID',       value: tenant.id,                            type: 'PLAINTEXT' },
+        { name: 'PLAN_TYPE',     value: tenant.plan,                          type: 'PLAINTEXT' },
+        { name: 'PRICING_TRACK', value: TIER_PRICING_TRACK[tenant.plan],      type: 'PLAINTEXT' },
+        { name: 'TENANT_REGION', value: tenant.region,                        type: 'PLAINTEXT' },
+        { name: 'ENVIRONMENT',   value: process.env['ARIA_DEPLOY_ENV'] ?? 'prod', type: 'PLAINTEXT' },
+        { name: 'ADMIN_EMAIL',   value: user.email,                           type: 'PLAINTEXT' },
+        ...(CONTROL_PLANE_SECRET_ARN
+          ? [{ name: 'CONTROL_PLANE_SECRET_ARN', value: CONTROL_PLANE_SECRET_ARN, type: 'PLAINTEXT' as const }]
+          : []
+        ),
+      ],
+    }));
+
+    const buildId = startResponse.build?.id;
+    const startedAt = nowIso();
+    await mutateState((s) => {
+      const t = s.tenants.find((x) => x.id === tenant.id);
+      if (!t) return;
+      t.status = 'provisioning';
+      t.provisioningBuildId = buildId;
+      t.provisioningStartedAt = startedAt;
+      t.updatedAt = startedAt;
+    });
+
+    console.info(`[reprovision] CodeBuild restarted — tenant: ${tenant.id}, build: ${buildId ?? '<unknown>'}`);
+    res.json({ ok: true, tenantId: tenant.id, status: 'provisioning', buildId: buildId ?? null });
+  } catch (err) {
+    console.error(`[reprovision] CodeBuild start failed: ${(err as Error).message}`);
+    res.status(502).json({ error: 'Failed to restart provisioning job', detail: (err as Error).message });
+  }
 });
 
 app.post('/tenant/suspend', async (req, res) => {

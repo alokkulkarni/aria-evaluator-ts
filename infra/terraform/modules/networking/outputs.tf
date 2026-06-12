@@ -23,6 +23,16 @@ output "private_route_table_ids" {
   value       = aws_route_table.private[*].id
 }
 
+output "public_route_table_id" {
+  description = "Public route table ID. Peer stacks must add a route here too when the ALB/target ENIs live in public subnets."
+  value       = aws_route_table.public.id
+}
+
+output "all_route_table_ids" {
+  description = "All route table IDs (public + private). Use this when adding cross-VPC routes — guarantees return path regardless of which subnets the target lives in."
+  value       = concat([aws_route_table.public.id], aws_route_table.private[*].id)
+}
+
 output "alb_security_group_id" {
   description = "Security group ID for the ALB"
   value       = aws_security_group.alb.id

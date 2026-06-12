@@ -6,8 +6,13 @@ locals {
   codebuild_name = "${var.app_name}-provisioner"
   codebuild_environment_variables = [
     {
-      name  = "TERRAFORM_VERSION"
-      value = "1.7.0"
+      name = "TERRAFORM_VERSION"
+      # 1.9+ is required because modules/tenant-module/variables.tf has a
+      # validation block that cross-references another variable
+      # (pricing_track validation reads var.pricing_tier) — that feature was
+      # only introduced in Terraform 1.9.0. 1.7.0 fails at parse with
+      # "Invalid reference in variable validation".
+      value = "1.9.8"
       type  = "PLAINTEXT"
     },
     {

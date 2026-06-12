@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
-import { ApiError, apiFetch, createSSOToken, createTenant, registerUser } from '@/lib/api'
+import { ApiError, apiFetch, createTenant, registerUser } from '@/lib/api'
 import { signInWithSocialProvider, type SocialProvider } from '@/lib/social-auth'
 import { hashPasswordForTransit } from '@/lib/crypto'
 import { getPlanById, PLANS } from '@/lib/plans'
@@ -264,19 +264,12 @@ export function SignUpWizard() {
         billingPeriod: state.billingPeriod,
       }, authToken)
 
-      if (authToken) {
-        const launch = await createSSOToken(authToken)
-        window.location.assign(launch.ssoUrl ?? launch.instanceUrl ?? '/api/launch-instance')
-        return
-      }
-
-      if (provision.ssoUrl || provision.instanceUrl) {
-        window.location.assign('/api/launch-instance')
-        return
-      }
-      setState((current) => ({ ...current, confirmed: true }))
-      await new Promise((resolve) => setTimeout(resolve, 1800))
-      router.push('/api/launch-instance')
+      // CodeBuild was just kicked off — the workspace itself won't exist for
+      // ~10 minutes. Redirect the user to a live status page that polls
+      // /tenant/provision/status and forwards them to the workspace (via SSO)
+      // when it's actually ready, instead of dumping them on a 404'ing URL.
+      const tenantQuery = provision.tenantId ? `?tenantId=${encodeURIComponent(provision.tenantId)}` : ''
+      router.push(`/sign-up/provisioning${tenantQuery}`)
     } catch (error) {
       setProvisioning(false)
       if (error instanceof ApiError) {

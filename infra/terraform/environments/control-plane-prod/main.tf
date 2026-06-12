@@ -78,6 +78,11 @@ module "iam" {
   tenant_id           = var.tenant_id
   pricing_tier        = var.pricing_tier
   tags                = local.common_tags
+
+  # ECS execution role needs read access to the internal-secret because the
+  # task definition's `secrets` block (extra_secrets below) makes ECS fetch
+  # the value at container startup before the task role is active.
+  execution_secret_arns = [aws_secretsmanager_secret.control_plane_internal_secret.arn]
 }
 
 module "efs" {
@@ -192,6 +197,10 @@ module "ecs" {
       { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = var.instance_base_url },
       { name = "USER_INSTANCE_TABLE", value = aws_dynamodb_table.user_instances.name },
       { name = "CODEBUILD_PROJECT_NAME", value = module.provisioning_codebuild.codebuild_project_name },
+      # When set, control-plane persists state to DynamoDB with CAS instead of
+      # local file. Required for prod (multi-task, survives restart).
+      { name = "CONTROL_PLANE_STATE_TABLE", value = aws_dynamodb_table.control_plane_state.name },
+      { name = "AWS_REGION", value = var.aws_region },
     ],
   )
   # Internal secret injected via ECS secrets (Secrets Manager valueFrom) — never plaintext
@@ -283,6 +292,39 @@ resource "aws_dynamodb_table" "user_instances" {
   tags = local.common_tags
 }
 
+# ── DynamoDB for control-plane shared state (users/sessions/tenants) ──────────
+# Single-item table with optimistic concurrency. The control-plane server
+# stores its entire ControlPlaneState as one JSON blob under id="state",
+# guarded by a `version` attribute. Writes use ConditionExpression so two
+# concurrent ECS tasks can't clobber each other.
+#
+# Single-blob is intentional — the data set is small (low thousands of users),
+# the existing code already loads the whole state into memory, and CAS gives
+# us multi-task safety without rewriting every handler. Migrate to per-entity
+# tables later if size grows past a few MB.
+
+resource "aws_dynamodb_table" "control_plane_state" {
+  name         = "${var.app_name}-control-plane-state"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
+  }
+
+  tags = local.common_tags
+}
+
 # ── KMS Key for DynamoDB Encryption ──────────────────────────────────────────
 
 resource "aws_kms_key" "dynamodb" {
@@ -291,6 +333,78 @@ resource "aws_kms_key" "dynamodb" {
   enable_key_rotation     = true
 
   tags = local.common_tags
+}
+
+# ── IAM policy: control-plane state table access for ECS task role ────────────
+
+data "aws_iam_policy_document" "control_plane_state_access" {
+  statement {
+    sid    = "StateTableReadWrite"
+    effect = "Allow"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DescribeTable",
+    ]
+    resources = [aws_dynamodb_table.control_plane_state.arn]
+  }
+
+  statement {
+    sid    = "StateTableKmsDecrypt"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:Encrypt",
+      "kms:GenerateDataKey",
+    ]
+    resources = [aws_kms_key.dynamodb.arn]
+  }
+}
+
+resource "aws_iam_policy" "control_plane_state_access" {
+  name        = "${var.app_name}-${var.environment}-control-plane-state-access"
+  description = "Allow ECS task role to read/write the control-plane state DynamoDB table"
+  policy      = data.aws_iam_policy_document.control_plane_state_access.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "control_plane_state_access" {
+  role       = module.iam.task_role_name
+  policy_arn = aws_iam_policy.control_plane_state_access.arn
+}
+
+# ── IAM policy: CodeBuild StartBuild + BatchGetBuilds for control-plane ──────
+# The control-plane needs to:
+#  - StartBuild on the provisioner project when a tenant signs up
+#  - BatchGetBuilds to surface live build phase to the provisioning UI
+#
+# Scoped to the single provisioner project ARN — no broad codebuild:* perms.
+
+data "aws_iam_policy_document" "control_plane_codebuild_access" {
+  statement {
+    sid    = "StartProvisioningBuilds"
+    effect = "Allow"
+    actions = [
+      "codebuild:StartBuild",
+      "codebuild:BatchGetBuilds",
+    ]
+    resources = [module.provisioning_codebuild.codebuild_project_arn]
+  }
+}
+
+resource "aws_iam_policy" "control_plane_codebuild_access" {
+  name        = "${var.app_name}-${var.environment}-control-plane-codebuild-access"
+  description = "Allow ECS task role to start and inspect tenant provisioning CodeBuild jobs"
+  policy      = data.aws_iam_policy_document.control_plane_codebuild_access.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "control_plane_codebuild_access" {
+  role       = module.iam.task_role_name
+  policy_arn = aws_iam_policy.control_plane_codebuild_access.arn
 }
 
 resource "aws_kms_alias" "dynamodb" {

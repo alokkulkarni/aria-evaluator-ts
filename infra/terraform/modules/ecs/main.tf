@@ -144,7 +144,11 @@ resource "aws_ecs_task_definition" "app" {
         }
       }
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -sf http://localhost:${var.container_port}/health || exit 1"]
+        # Use node instead of curl — the runtime image (node:20-bookworm-slim)
+        # doesn't include curl/wget, so the curl variant always exited non-zero
+        # and ECS killed every task with SIGKILL (exit 137) after the start
+        # period. Node is guaranteed to be present.
+        command     = ["CMD-SHELL", "node -e \"require('http').get('http://localhost:${var.container_port}/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
         interval    = 30
         timeout     = 5
         retries     = 3
@@ -179,7 +183,16 @@ resource "aws_ecs_service" "app" {
   }
 
   lifecycle {
-    ignore_changes = [task_definition, desired_count]
+    # `task_definition` was previously ignored to support an out-of-band CI/CD
+    # workflow. In this codebase Terraform IS the deploy mechanism (image is
+    # pushed by null_resource.build_and_push, then a new task-def revision is
+    # registered), so ignoring task_definition meant new revisions were never
+    # adopted by the service — it stayed pinned to the first revision and
+    # silently rotted (e.g. failed health checks looping forever on a stale
+    # curl-based check that no longer matched the image).
+    #
+    # Keep ignoring `desired_count` so autoscaling adjustments don't bounce.
+    ignore_changes = [desired_count]
   }
 
   tags = local.common_tags

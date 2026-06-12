@@ -12,12 +12,17 @@ import { hashPasswordForTransit } from '@/lib/crypto'
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  // `?return=...` lets the OAuth flow round-trip back to where the user was.
+  // Without it, default to /api/launch-instance — but that route is now smart
+  // enough to route the user based on tenant status (running → workspace,
+  // provisioning → /sign-up/provisioning, no tenant → /sign-up?step=plan).
   const returnTo = searchParams.get('return') ?? '/api/launch-instance'
   const authError = searchParams.get('error')
   const authProvider = searchParams.get('provider')
   const { data: session } = useSession()
 
-  // If already authenticated, skip the sign-in page entirely
+  // If already authenticated, don't make them re-sign-in — forward them to
+  // wherever they were heading. /api/launch-instance handles tenant routing.
   useEffect(() => {
     if (session) {
       router.replace(returnTo)
