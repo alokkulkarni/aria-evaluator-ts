@@ -411,9 +411,12 @@ resource "aws_cloudwatch_event_target" "codebuild_failure_sns" {
       time       = "$.time"
     }
 
-    # Plain-text body (SNS email protocol delivers the raw string)
-    input_template = <<-EOT
-      "ARIA Evaluator — Provisioning ${upper("failed")}
+    # Plain-text body (SNS email protocol delivers the raw string).
+    # EventBridge requires input_template to be a valid JSON-quoted string:
+    # a single line with \n / \" escapes. jsonencode() produces exactly that
+    # from a normal multiline Terraform string.
+    input_template = jsonencode(<<-EOT
+      ARIA Evaluator — Provisioning FAILED
 
       Status  : <status>
       Project : <project>
@@ -427,7 +430,7 @@ resource "aws_cloudwatch_event_target" "codebuild_failure_sns" {
       Log group : ${local.log_group_name}
       Stream    : <log_stream>
 
-      Tip: search for \"Error:\", \"Error running command\", or \"FAILED\" near
+      Tip: search for "Error:", "Error running command", or "FAILED" near
       the bottom of the log to locate the Terraform / GitHub / shell error.
 
       ── GITHUB ───────────────────────────────────────────────────────────
@@ -441,7 +444,7 @@ resource "aws_cloudwatch_event_target" "codebuild_failure_sns" {
       ── TENANT CONTEXT ───────────────────────────────────────────────────
       The tenant ID (USER_ID) and plan (PLAN_TYPE) that triggered this build
       are visible at the top of the CloudWatch log stream under the heading
-      \"Environment variables\". Search for USER_ID in the log.
+      "Environment variables". Search for USER_ID in the log.
 
       ── ACCOUNT ──────────────────────────────────────────────────────────
       AWS account : <account>
@@ -454,8 +457,9 @@ resource "aws_cloudwatch_event_target" "codebuild_failure_sns" {
       3. Fix the root cause, then ask the user to re-provision from their
          dashboard (Settings → Re-provision instance).
       4. If urgent, trigger a new CodeBuild build manually from the AWS
-         console with the same USER_ID and PLAN_TYPE env var overrides."
+         console with the same USER_ID and PLAN_TYPE env var overrides.
     EOT
+    )
   }
 }
 

@@ -4,6 +4,12 @@ variable "aws_region" {
   default     = "eu-west-2"
 }
 
+variable "terraform_state_bucket" {
+  description = "S3 bucket holding Terraform remote state — used by peering.tf to read control-plane outputs"
+  type        = string
+  default     = "aria-evaluator-tf-state-194296"
+}
+
 variable "auth_backend_image_tag" {
   description = "Docker image tag for the auth backend container"
   type        = string

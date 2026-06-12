@@ -89,6 +89,31 @@ output "cloudtrail_logs_bucket" {
 }
 
 output "provisioning_alarms_sns_topic" {
-  description = "SNS topic for provisioning alarm notifications"
-  value       = aws_sns_topic.provisioning_alarms.arn
+  description = "SNS topic for provisioning alarm notifications (empty when alert_email is not set)"
+  value       = module.provisioning_codebuild.sns_topic_arn
+}
+
+# ── Cross-VPC peering metadata ────────────────────────────────────────────────
+# Consumed by website-prod (or any peer stack) via terraform_remote_state so it
+# can build a VPC peering connection + routes + SG ingress without hand-copying
+# IDs into tfvars.
+
+output "vpc_id" {
+  description = "Control-plane VPC ID (consumed by peer stacks for VPC peering)"
+  value       = module.networking.vpc_id
+}
+
+output "vpc_cidr" {
+  description = "Control-plane VPC CIDR (used in peer route tables)"
+  value       = module.networking.vpc_cidr
+}
+
+output "private_route_table_ids" {
+  description = "Control-plane private route table IDs — peer stacks add routes to their CIDR here"
+  value       = module.networking.private_route_table_ids
+}
+
+output "alb_security_group_id" {
+  description = "Security group on the internal control-plane ALB — peer stacks add ingress rules referencing their ECS SG"
+  value       = module.networking.alb_security_group_id
 }

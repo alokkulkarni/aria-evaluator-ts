@@ -149,7 +149,8 @@ export function SignUpWizard() {
 
   useEffect(() => {
     const nextStep = parseStepParam(stepParam)
-    const nextProvider = parseAuthProvider(providerParam) ?? storedSocialProvider
+    const sessionProvider = parseAuthProvider(session?.user?.authProvider ?? null)
+    const nextProvider = parseAuthProvider(providerParam) ?? storedSocialProvider ?? sessionProvider
     setState((current) => {
       if (current.step === nextStep && current.authProvider === nextProvider) return current
       return {
@@ -158,16 +159,26 @@ export function SignUpWizard() {
         authProvider: current.authProvider ?? nextProvider,
       }
     })
-  }, [stepParam, providerParam, storedSocialProvider])
+  }, [stepParam, providerParam, storedSocialProvider, session?.user?.authProvider])
 
   useEffect(() => {
     setStoredSocialProvider(getStoredSocialProvider())
   }, [])
 
   useEffect(() => {
-    const nextProvider = parseAuthProvider(providerParam) ?? storedSocialProvider
+    // Provider: URL param → sessionStorage → session.user.authProvider (set in JWT)
+    // This triple fallback ensures we detect the OAuth provider even when:
+    //  (a) Auth.js strips callbackUrl params via pages.newUser (now removed, but defensive)
+    //  (b) sessionStorage hasn't been read yet on first render
+    //  (c) Only the JWT session itself carries the provider
+    const sessionProvider = parseAuthProvider(session?.user?.authProvider ?? null)
+    const nextProvider = parseAuthProvider(providerParam) ?? storedSocialProvider ?? sessionProvider
+
     const nextName = session?.user?.name?.trim() ?? ''
     const nextEmail = session?.user?.email?.trim() ?? ''
+
+    // Don't bail if we have no provider yet — the session might still be loading.
+    // Only skip entirely when there is literally nothing to merge.
     if (!nextProvider && !nextName && !nextEmail) return
 
     setState((current) => ({
@@ -176,7 +187,7 @@ export function SignUpWizard() {
       name: current.name || nextName,
       email: current.email || nextEmail,
     }))
-  }, [providerParam, session?.user?.email, session?.user?.name, storedSocialProvider])
+  }, [providerParam, session?.user?.email, session?.user?.name, session?.user?.authProvider, storedSocialProvider])
 
   const selectedPlan = getPlanById(state.selectedPlan ?? 'free')
   const selectedRegion = getRegionById(state.selectedRegion ?? '')

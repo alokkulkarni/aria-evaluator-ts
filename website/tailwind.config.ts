@@ -8,10 +8,10 @@ const config = {
   theme: {
     extend: {
       maxWidth: {
-        '8xl': '88rem',
+        '8xl': '96rem',
       },
       fontFamily: {
-        geist: ['var(--font-geist)', 'var(--font-inter)', ...defaultTheme.fontFamily.sans],
+        sans: ['var(--font-space-grotesk)', 'var(--font-inter)', ...defaultTheme.fontFamily.sans],
       },
       colors: {
         border: 'hsl(var(--border))',

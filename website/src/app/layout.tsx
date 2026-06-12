@@ -1,14 +1,14 @@
 import type { Metadata } from 'next'
-import { Geist, Inter } from 'next/font/google'
+import { Inter, Space_Grotesk } from 'next/font/google'
 
 import { SessionProvider } from '@/components/auth/SessionProvider'
 import { AppShell } from '@/components/shared/AppShell'
 
 import './globals.css'
 
-const geist = Geist({
+const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
-  variable: '--font-geist',
+  variable: '--font-space-grotesk',
 })
 
 const inter = Inter({
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geist.variable} ${inter.variable} font-geist text-slate-800`}>
+      <body className={`${spaceGrotesk.variable} ${inter.variable} font-sans text-slate-800`}>
         <SessionProvider>
           <AppShell>{children}</AppShell>
         </SessionProvider>

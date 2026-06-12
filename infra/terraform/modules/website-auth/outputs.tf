@@ -25,6 +25,21 @@ output "vpc_id" {
   value = aws_vpc.main.id
 }
 
+output "vpc_cidr_block" {
+  value       = aws_vpc.main.cidr_block
+  description = "Auth-backend VPC CIDR (used by peer stacks when adding cross-VPC routes)"
+}
+
+output "public_route_table_id" {
+  value       = aws_route_table.public.id
+  description = "Public route table ID — cross-VPC routes (e.g. to control-plane VPC) are added here"
+}
+
+output "ecs_security_group_id" {
+  value       = aws_security_group.ecs.id
+  description = "ECS task security group ID — peer stacks reference this in ingress rules"
+}
+
 output "log_group_name" {
   value = aws_cloudwatch_log_group.auth.name
 }

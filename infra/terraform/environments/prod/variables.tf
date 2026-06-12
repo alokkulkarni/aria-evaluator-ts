@@ -136,7 +136,7 @@ variable "god_mode_secret_arn" {
 variable "alert_email" {
   description = "Tenant alert email recipient"
   type        = string
-  default     = ""
+  default     = "kulkarni.alok@gmail.com"
 }
 
 variable "control_plane_role_arn" {

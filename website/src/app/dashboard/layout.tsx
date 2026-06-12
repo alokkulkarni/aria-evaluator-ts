@@ -23,7 +23,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-8xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="grid gap-8 lg:grid-cols-[240px_1fr]">
         <DashboardNav user={session?.user ?? undefined} />
         <main className="min-w-0">{children}</main>

@@ -4,32 +4,32 @@ const featureCards = [
   {
     icon: Shield,
     title: 'Adversarial security testing',
-    description: 'Run repeatable red-team suites against every release and catch risky model behavior before production.',
+    description: 'Probe agents with prompt-injection, jailbreak, and social-engineering scenarios — and verify guardrails hold under multi-turn pressure.',
   },
   {
     icon: Zap,
-    title: 'Multi-model evaluation',
-    description: 'Compare prompts, baselines, and providers with consistent scoring across every AI workflow you ship.',
+    title: '15-dimension LLM judge',
+    description: 'Every transcript is scored across 15 dimensions — from correctness and goal success to bias, escalation quality, and injection resistance.',
   },
   {
     icon: Globe,
-    title: 'Global deployment',
-    description: 'Launch region-specific workspaces close to your users while keeping data residency requirements intact.',
+    title: 'Connects to your agent stack',
+    description: 'Evaluate Amazon Connect (voice and chat), Amazon Lex, Azure Bot Service, Microsoft Copilot, and any OpenAPI, HTTP, or WebSocket endpoint.',
   },
   {
     icon: BarChart3,
     title: 'Real-time observability',
-    description: 'Track runs, scenarios, latency, and drift with trace-level visibility for each model invocation.',
+    description: 'Watch runs stream live, inspect full transcripts turn by turn, and track scores, latency, and cost for every judge invocation.',
   },
   {
     icon: Users,
     title: 'Team-ready governance',
-    description: 'Give security, platform, and product teams a shared workflow for reviews, sign-off, and escalation.',
+    description: 'A human review queue, scheduled regression runs, and audit-logged overrides give security and product teams shared sign-off.',
   },
   {
     icon: Lock,
-    title: 'Enterprise controls',
-    description: 'Layer in SSO, auditability, role-based access, and dedicated tenancy for the most sensitive workloads.',
+    title: 'Compliance built in',
+    description: 'Validate FCA Consumer Duty vulnerability handling, bias and fairness, and escalation policy adherence with regulator-ready reports.',
   },
 ]
 

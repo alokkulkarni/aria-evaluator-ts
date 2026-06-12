@@ -68,7 +68,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   pages: {
     signIn: '/sign-in',
-    newUser: '/sign-up',
+    // newUser is intentionally NOT set here.
+    // Auth.js v5 overrides callbackUrl with pages.newUser for new OAuth users,
+    // losing the ?step=account&provider=google params we set in callbackUrl.
+    // The sign-up wizard detects the OAuth session itself via sessionStorage +
+    // useSession(), so no server-side redirect to a newUser page is needed.
   },
   callbacks: {
     async signIn({ user, account, profile }) {
@@ -142,6 +146,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, user, trigger }) {
       if (trigger === 'signIn' && user) {
+        // Auth.js v5 does NOT auto-populate token.name / token.email / token.sub
+        // from the user object — these must be copied explicitly.
+        // Without this the session callback's `if (token.email)` guard never fires
+        // and session.user.email / session.user.name are always empty.
+        if (user.id) token.sub = user.id
+        if (user.email) token.email = user.email
+        if (user.name) token.name = user.name
+        // Custom control-plane fields
         token.authProvider = (user as ControlPlaneUser).authProvider
         token.isNewUser = (user as ControlPlaneUser).isNewUser
         token.role = (user as ControlPlaneUser).role

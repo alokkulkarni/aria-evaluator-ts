@@ -4,12 +4,59 @@ import { BarChart3, Globe, Shield, Zap } from 'lucide-react'
 import { Features } from '@/components/marketing/Features'
 import { formatPlanPrice, getPlanById } from '@/lib/plans'
 
-const heroPills = ['SOC 2 Type II', 'GDPR Compliant', 'ISO 27001', '8 Global Regions']
+const heroPills = [
+  { label: 'SOC 2 Type II', status: 'pursuing' },
+  { label: 'GDPR Aligned',  status: 'pursuing' },
+  { label: 'ISO 27001',     status: 'pursuing' },
+  { label: '8 Global Regions', status: 'live' },
+] as const
 const quickFeatures = [
-  { icon: Shield, title: 'Adversarial Security Testing', description: 'Stress-test agents with reproducible attack suites and policy checks.' },
-  { icon: Zap, title: 'Multi-Model Evaluation', description: 'Compare providers, prompts, and policies across every release.' },
-  { icon: Globe, title: 'Global Deployment', description: 'Deploy dedicated evaluation workspaces in the regions your teams require.' },
-  { icon: BarChart3, title: 'Real-time Observability', description: 'Monitor usage, traces, and scenario outcomes from a single command center.' },
+  { icon: Shield, title: 'Adversarial Security Testing', description: 'Stress-test agents with prompt-injection, jailbreak, and social-engineering suites.' },
+  { icon: Zap, title: '15-Dimension LLM Judge', description: 'Score every conversation for quality, safety, compliance, and escalation handling.' },
+  { icon: Globe, title: 'Any Agent Platform', description: 'Amazon Connect, Lex, Azure, Copilot, OpenAPI, WebSocket — plug in and evaluate.' },
+  { icon: BarChart3, title: 'Real-time Observability', description: 'Monitor live runs, transcripts, and scenario outcomes from a single command center.' },
+]
+
+const dimensionGroups = [
+  {
+    category: 'Response Quality',
+    count: 5,
+    tone: 'bg-cyan-500',
+    dimensions: ['Correctness', 'Faithfulness', 'Helpfulness', 'Relevance', 'Conciseness'],
+  },
+  {
+    category: 'Task Completion',
+    count: 2,
+    tone: 'bg-blue-500',
+    dimensions: ['Goal Success', 'Task Completion Rate'],
+  },
+  {
+    category: 'Safety & Security',
+    count: 3,
+    tone: 'bg-rose-500',
+    dimensions: ['Guardrail Compliance', 'Prompt Injection Resistance', 'Bias & Fairness'],
+  },
+  {
+    category: 'Customer Experience',
+    count: 2,
+    tone: 'bg-emerald-500',
+    dimensions: ['Tone & Empathy', 'Clarity'],
+  },
+  {
+    category: 'Escalation & Vulnerability',
+    count: 3,
+    tone: 'bg-amber-500',
+    dimensions: ['Escalation Appropriateness', 'Handover Quality', 'Vulnerability Detection'],
+  },
+]
+
+const supportedPlatforms = [
+  { name: 'Amazon Connect', detail: 'Voice & chat flows' },
+  { name: 'Amazon Lex', detail: 'V2 bots' },
+  { name: 'Azure Bot Service', detail: 'Direct Line channel' },
+  { name: 'Microsoft Copilot', detail: 'Copilot Studio agents' },
+  { name: 'OpenAPI / REST', detail: 'Any HTTP endpoint' },
+  { name: 'WebSocket', detail: 'Custom chat bots' },
 ]
 const previewPlans = ['free', 'individual', 'enterprise_starter'] as const
 const showcaseRuns = [
@@ -30,7 +77,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.2),transparent_30%)]" />
         <div className="relative max-w-8xl mx-auto grid min-h-[85vh] gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-24">
           <div className="flex flex-col justify-center space-y-8">
-            <div className="space-y-5">
+            <div className="animate-fade-up space-y-5">
               <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Enterprise AI Safety Evaluation</p>
               <div className="space-y-5">
                 <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-white sm:text-7xl">
@@ -42,26 +89,42 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <Link href="/sign-up" className="rounded-full bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300">
+            <div className="animate-fade-up animation-delay-150 flex flex-wrap gap-3">
+              <Link href="/sign-up" className="rounded-full bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_10px_30px_rgba(34,211,238,0.35)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-300 hover:shadow-[0_14px_36px_rgba(34,211,238,0.45)]">
                 Start for free
               </Link>
-              <Link href="/pricing" className="rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white">
+              <Link href="/pricing" className="rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/10 hover:text-white">
                 View pricing
               </Link>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="animate-fade-up animation-delay-300 flex flex-wrap gap-2.5">
               {heroPills.map((pill) => (
-                <span key={pill} className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10 text-xs text-slate-100/90">
-                  {pill}
+                <span
+                  key={pill.label}
+                  className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/10 text-xs text-slate-100/90"
+                >
+                  {pill.status === 'live' ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  ) : (
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
+                      <span className="relative h-1.5 w-1.5 rounded-full bg-amber-400" />
+                    </span>
+                  )}
+                  {pill.label}
+                  {pill.status === 'pursuing' && (
+                    <span className="rounded-full bg-white/10 px-1.5 py-px text-[10px] font-medium text-slate-300/80">
+                      pursuing
+                    </span>
+                  )}
                 </span>
               ))}
             </div>
           </div>
 
-          <div className="flex items-center justify-center lg:justify-end">
-            <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+          <div className="animate-fade-up animation-delay-450 flex items-center justify-center lg:justify-end">
+            <div className="animate-float-soft w-full max-w-xl rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.35)] backdrop-blur-xl">
               <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5 text-white">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -158,7 +221,7 @@ export default function HomePage() {
                   <span className="text-sm font-semibold">Command center</span>
                 </div>
                 <div className="mt-6 space-y-2">
-                  {['Overview', 'Scenarios', 'Models', 'Observability', 'Governance'].map((item, index) => (
+                  {['Dashboard', 'Scenarios', 'Runs', 'Review Queue', 'Analysis', 'Reports'].map((item, index) => (
                     <div
                       key={item}
                       className={`rounded-2xl px-3 py-2 text-sm ${index === 0 ? 'bg-white/12 text-white ring-1 ring-white/15' : 'text-slate-300'}`}
@@ -323,6 +386,72 @@ export default function HomePage() {
 
       <Features />
 
+      <section className="bg-slate-950 py-16">
+        <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl space-y-4">
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Evaluation engine</p>
+            <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+              Every conversation, scored across 15 dimensions
+            </h2>
+            <p className="text-base leading-7 text-slate-300/90">
+              ARIA&apos;s LLM judge evaluates each transcript against a structured rubric — not a single pass/fail.
+              Security scenarios are scored on guardrail compliance; quality scenarios on the full dimension set,
+              with per-dimension justifications you can audit.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {dimensionGroups.map((group) => (
+              <article key={group.category} className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${group.tone}`} />
+                  <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-slate-200">
+                    {group.count} {group.count === 1 ? 'dimension' : 'dimensions'}
+                  </span>
+                </div>
+                <h3 className="mt-4 text-sm font-semibold text-white">{group.category}</h3>
+                <ul className="mt-3 space-y-2">
+                  {group.dimensions.map((dimension) => (
+                    <li key={dimension} className="text-xs leading-5 text-slate-300/90">
+                      {dimension}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="max-w-8xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-3xl space-y-3">
+            <p className="section-label">Integrations</p>
+            <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+              Works with the agent platform you already run
+            </h2>
+            <p className="text-base leading-7 text-slate-600">
+              Pluggable adapters connect ARIA to your agent under test — no instrumentation or SDK changes required.
+              If your platform isn&apos;t listed, the OpenAPI and WebSocket adapters cover any custom endpoint.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {supportedPlatforms.map((platform) => (
+            <article key={platform.name} className="card flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">{platform.name}</h3>
+                <p className="mt-1 text-sm text-slate-500">{platform.detail}</p>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                Supported
+              </span>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="max-w-8xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
         <div className="max-w-3xl space-y-4">
           <p className="section-label">How it works</p>
@@ -332,8 +461,8 @@ export default function HomePage() {
           {[
             { step: '1', title: 'Sign up', description: 'Create your ARIA account with secure onboarding for engineering and security teams.' },
             { step: '2', title: 'Choose region', description: 'Select the deployment region that matches your compliance and latency needs.' },
-            { step: '3', title: 'Configure', description: 'Set your plan, team access, and observability preferences from one workflow.' },
-            { step: '4', title: 'Evaluate', description: 'Launch scenarios, compare models, and review results with traceable insights.' },
+            { step: '3', title: 'Connect', description: 'Point an adapter at your agent — Connect, Lex, Azure, Copilot, or any HTTP endpoint.' },
+            { step: '4', title: 'Evaluate', description: 'Launch scenario runs, watch transcripts live, and review 15-dimension judge scores.' },
           ].map((item) => (
             <article key={item.step} className="card space-y-4">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">{item.step}</span>

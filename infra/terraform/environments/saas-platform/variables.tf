@@ -19,7 +19,7 @@ variable "aws_region" {
 variable "alert_email" {
   description = "Email address to receive HIGH/CRITICAL security alerts. Leave empty to skip."
   type        = string
-  default     = ""
+  default     = "kulkarni.alok@gmail.com"
 }
 
 variable "findings_retention_days" {
