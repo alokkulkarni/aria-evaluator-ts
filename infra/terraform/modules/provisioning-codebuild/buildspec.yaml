@@ -193,6 +193,28 @@ phases:
         INSTANCE_URL=$(jq -r '.cloudfront_domain_name.value // .alb_dns_name.value // empty' /tmp/outputs.json 2>/dev/null)
         BUILD_STATUS=$CODEBUILD_BUILD_SUCCEEDING
 
+        # ── DESTROY short-circuit ─────────────────────────────────────────────
+        # When the build was kicked off with ACTION=destroy the apply branch
+        # never runs, no outputs.json is produced, and there's no instance URL
+        # to surface. Without this short-circuit the script would fall into
+        # the "Provisioning FAILED" branch below (since INSTANCE_URL is empty)
+        # and exit 1, marking an otherwise-successful destroy as FAILED.
+        if [ "${ACTION:-apply}" = "destroy" ]; then
+          export TENANT_INSTANCE_URL=""
+          if [ "$BUILD_STATUS" = "1" ]; then
+            echo "==> Destroy succeeded for tenant ${USER_ID}. Nothing further to do."
+            # Control-plane polls CodeBuild via /account/delete/status and reads
+            # buildStatus=SUCCEEDED directly — no curl notification needed.
+            exit 0
+          else
+            echo "==> Destroy FAILED for tenant ${USER_ID}. Build status: ${BUILD_STATUS}"
+            # Surface the failure as a non-zero exit so CodeBuild reports the
+            # overall build as FAILED and /account/delete/status flips the
+            # tenant to 'error'.
+            exit 1
+          fi
+        fi
+
         # Surface the full URL as a CodeBuild exported variable so the
         # control-plane can fetch it via BatchGetBuilds.exportedEnvironmentVariables
         # without depending on the curl-to-internal-ALB notification path.
