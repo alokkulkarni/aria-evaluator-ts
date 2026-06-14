@@ -237,3 +237,264 @@
   @apply text-base text-slate-700 italic leading-7 mb-0;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+   MARKETING — Elevated dark-tech theme
+   Scoped to .marketing-root so the authenticated dashboard and auth flows,
+   which share these component classes, keep their existing light styling.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.marketing-root {
+  --m-bg: #05080f;
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  background-color: var(--m-bg);
+  color: rgb(148 163 184); /* slate-400 */
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.marketing-root h1,
+.marketing-root h2,
+.marketing-root h3,
+.marketing-root h4,
+.marketing-root .font-display {
+  font-family: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+.marketing-root ::selection {
+  background: rgba(34, 211, 238, 0.3);
+  color: #04070e;
+}
+
+/* Static base canvas — radial light pools + a faint grid that fades out.
+   The animated AuroraBackground component renders on top of this. */
+.marketing-root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 60rem at 10% -12%, rgba(59, 130, 246, 0.18), transparent 60%),
+    radial-gradient(48rem 48rem at 100% -4%, rgba(34, 211, 238, 0.12), transparent 55%),
+    radial-gradient(72rem 52rem at 50% 118%, rgba(37, 99, 235, 0.16), transparent 62%),
+    linear-gradient(180deg, #05080f 0%, #04060d 100%);
+}
+
+.marketing-root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 62px 62px;
+  -webkit-mask-image: radial-gradient(circle at 50% 22%, black, transparent 78%);
+  mask-image: radial-gradient(circle at 50% 22%, black, transparent 78%);
+}
+
+/* ── Scoped overrides of shared component classes ───────────────────────────── */
+
+.marketing-root .card {
+  @apply rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.85)] backdrop-blur-xl transition-all duration-300;
+}
+
+.marketing-root .card:hover {
+  @apply -translate-y-1 border-cyan-300/30 bg-white/[0.06];
+  box-shadow: 0 34px 80px -36px rgba(34, 211, 238, 0.3);
+}
+
+.marketing-root .btn-primary {
+  @apply btn bg-gradient-to-r from-cyan-300 to-blue-400 text-slate-950 shadow-[0_12px_34px_-10px_rgba(34,211,238,0.6)] hover:brightness-110;
+}
+
+.marketing-root .btn-secondary {
+  @apply btn border border-white/15 bg-white/5 text-slate-100 shadow-none hover:border-white/30 hover:bg-white/10;
+}
+
+.marketing-root .section-label {
+  @apply text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80;
+}
+
+.marketing-root .page-hero {
+  @apply rounded-[1.75rem] border border-white/10 bg-white/[0.03] px-6 py-9 text-white shadow-[0_40px_90px_-50px_rgba(0,0,0,0.9)] backdrop-blur-xl;
+}
+
+.marketing-root .page-hero-sub {
+  @apply text-sm leading-6 text-slate-300/85;
+}
+
+.marketing-root .page-hero-pill {
+  @apply rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200;
+}
+
+.marketing-root .badge-pass,
+.marketing-root .badge-active {
+  @apply bg-emerald-400/10 text-emerald-300 ring-emerald-300/30;
+}
+
+.marketing-root .badge-fail,
+.marketing-root .badge-error {
+  @apply bg-rose-400/10 text-rose-300 ring-rose-300/30;
+}
+
+.marketing-root .badge-running,
+.marketing-root .badge-pending,
+.marketing-root .badge-suspended {
+  @apply bg-amber-400/10 text-amber-300 ring-amber-300/30;
+}
+
+.marketing-root .badge-info {
+  @apply bg-blue-400/10 text-blue-300 ring-blue-300/30;
+}
+
+.marketing-root .metric-card {
+  @apply rounded-2xl border border-white/10 bg-white/[0.04] p-3;
+}
+
+.marketing-root .metric-card-label {
+  @apply text-xs uppercase tracking-wide text-slate-400;
+}
+
+.marketing-root .metric-card-value {
+  @apply text-lg font-semibold text-white;
+}
+
+.marketing-root .article-prose {
+  @apply text-slate-300;
+}
+
+.marketing-root .article-prose h2 {
+  @apply text-white;
+}
+
+.marketing-root .article-prose h3 {
+  @apply text-slate-100;
+}
+
+.marketing-root .article-prose li {
+  @apply text-slate-400;
+}
+
+.marketing-root .article-prose code {
+  @apply bg-white/10 text-cyan-200;
+}
+
+.marketing-root .article-lead {
+  @apply text-slate-200;
+}
+
+.marketing-root .article-blockquote {
+  @apply border-cyan-400 bg-cyan-400/[0.06];
+}
+
+.marketing-root .article-blockquote p {
+  @apply text-slate-200;
+}
+
+/* ── New dark-tech utility primitives ───────────────────────────────────────── */
+
+.eyebrow {
+  @apply inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80;
+}
+
+.glass {
+  @apply rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl;
+}
+
+.glass-strong {
+  @apply rounded-2xl border border-white/[0.12] bg-white/[0.07] backdrop-blur-2xl;
+}
+
+.hairline {
+  @apply border-white/10;
+}
+
+.text-gradient {
+  @apply bg-gradient-to-br from-white via-white to-cyan-200 bg-clip-text text-transparent;
+}
+
+.text-gradient-cyan {
+  @apply bg-gradient-to-r from-cyan-300 via-cyan-200 to-blue-400 bg-clip-text text-transparent;
+}
+
+/* Animated conic border ring — wrap content, set padding to taste */
+.ring-conic {
+  position: relative;
+  border-radius: 1.5rem;
+}
+
+.ring-conic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--angle, 0deg),
+    transparent 0%,
+    rgba(34, 211, 238, 0.7) 12%,
+    rgba(59, 130, 246, 0.55) 25%,
+    transparent 40%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: ring-spin 6s linear infinite;
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ring-spin {
+  to {
+    --angle: 360deg;
+  }
+}
+
+/* Marquee track helper */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+
+/* Aurora blob base */
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+/* GSAP reveal: hidden until animated in. Falls back to visible if JS/anim off. */
+.reveal-init {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing-root .animate-aurora-1,
+  .marketing-root .animate-aurora-2,
+  .marketing-root .animate-float-y,
+  .marketing-root .animate-marquee,
+  .marketing-root .animate-marquee-rev,
+  .marketing-root .animate-shimmer,
+  .marketing-root .animate-spin-slow,
+  .marketing-root .animate-glow-pulse,
+  .ring-conic::before {
+    animation: none !important;
+  }
+
+  .reveal-init {
+    opacity: 1;
+    transform: none;
+  }
+}

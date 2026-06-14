@@ -1,28 +1,27 @@
 import { PricingTable } from '@/components/marketing/PricingTable'
+import { CtaBand, PageHeader, Section } from '@/components/marketing/ui'
 
 export default function PricingPage() {
   return (
-    <div className="max-w-8xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
-      <section className="page-hero">
-        <div className="space-y-4">
-          <p className="page-hero-label">Pricing</p>
-          <div className="max-w-3xl space-y-3">
-            <h1 className="page-hero-title">Transparent pricing for every stage of AI evaluation</h1>
-            <p className="page-hero-sub">
-              Start with a lightweight sandbox, expand into regional team workspaces, or move to dedicated enterprise infrastructure with tailored controls.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <span className="page-hero-pill">Free tier available</span>
-            <span className="page-hero-pill">Annual savings</span>
-            <span className="page-hero-pill">Dedicated enterprise options</span>
-          </div>
-        </div>
-      </section>
+    <div>
+      <PageHeader
+        eyebrow="Pricing"
+        title="Transparent pricing for every stage of AI evaluation"
+        description="Start with a lightweight sandbox, expand into regional team workspaces, or move to dedicated enterprise infrastructure with tailored controls."
+        pills={['Free tier available', 'Annual savings', 'Dedicated enterprise options']}
+      />
 
-      <div className="mt-10">
+      <Section className="pt-10">
         <PricingTable />
-      </div>
+      </Section>
+
+      <CtaBand
+        eyebrow="Still deciding?"
+        title="Talk to us about the right fit"
+        description="We'll help you map plan limits, regions, and compliance needs to your evaluation programme."
+        primary={{ href: '/sign-up', label: 'Start for free' }}
+        secondary={{ href: '/contact', label: 'Contact sales' }}
+      />
     </div>
   )
 }

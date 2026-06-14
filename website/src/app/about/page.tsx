@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2 } from 'lucide-react'
 
+import { CtaBand, PageHeader, Section, SectionHeading, StatCard } from '@/components/marketing/ui'
+import { Reveal } from '@/components/motion/Reveal'
+
 export const metadata: Metadata = {
   title: 'About — ARIA Evaluator',
   description:
     'ARIA Evaluator was built to close the gap between deploying conversational AI agents and being confident they are safe, compliant, and reliable in production.',
 }
-
-// ── Data ─────────────────────────────────────────────────────────────────────
 
 const thesis = [
   {
@@ -93,270 +94,194 @@ const principles = [
   },
 ]
 
-const stats = [
-  { value: '15',              label: 'Evaluation dimensions' },
-  { value: '8',               label: 'Global deployment regions' },
-  { value: '8+',              label: 'Agent platforms supported' },
-  { value: '2024',            label: 'Founded' },
-]
-
-// ── Page ─────────────────────────────────────────────────────────────────────
-
 export default function AboutPage() {
   return (
-    <div className="max-w-8xl mx-auto px-4 py-12 sm:px-6 lg:px-8 space-y-16">
+    <div>
+      <PageHeader
+        eyebrow="About ARIA Evaluator"
+        title="Close the gap between deploying AI and trusting it"
+        description="ARIA Evaluator gives engineering, security, and governance teams one operating layer for AI agent testing, release controls, compliance evidence, and post-deployment oversight."
+        primary={{ href: '/sign-up', label: 'Start free' }}
+        secondary={{ href: '/contact', label: 'Talk to our team' }}
+      />
 
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <section className="page-hero">
-        <div className="space-y-4">
-          <p className="page-hero-label">About ARIA Evaluator</p>
-          <div className="max-w-4xl space-y-3">
-            <h1 className="page-hero-title">
-              Built to close the gap between deploying AI and being confident it is safe
-            </h1>
-            <p className="page-hero-sub max-w-3xl">
-              ARIA Evaluator gives engineering, security, and governance teams one operating layer for AI
-              agent testing, release controls, compliance evidence, and post-deployment oversight.
+      {/* Stats */}
+      <Section className="py-12">
+        <Reveal stagger={0.1} className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard value={15} label="Evaluation dimensions" />
+          <StatCard value={8} label="Global deployment regions" />
+          <StatCard value={8} suffix="+" label="Agent platforms supported" />
+          <StatCard value={2024} label="Founded" />
+        </Reveal>
+      </Section>
+
+      {/* Our story */}
+      <Section className="py-12">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1.6fr]">
+          <div className="space-y-3">
+            <SectionHeading eyebrow="Our story" title="Built from the inside of the problem" />
+            <Reveal delay={0.1}>
+              <p className="text-sm leading-6 text-slate-400">
+                ARIA was not conceived as a product category — it was built to solve a specific operational
+                problem that existing tooling consistently failed to address.
+              </p>
+            </Reveal>
+            <Reveal delay={0.15}>
+              <Link href="/docs" className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-300 hover:text-cyan-200">
+                Read the documentation <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Reveal>
+          </div>
+
+          <Reveal delay={0.1} className="article-prose space-y-5 text-sm leading-7">
+            <p>
+              In 2024, enterprise adoption of conversational AI agents accelerated sharply across financial
+              services, healthcare, and contact-centre operations. The infrastructure for deploying these
+              systems — Amazon Connect, Lex, Azure Bot Service, and a growing set of custom LLM-backed
+              endpoints — was mature and well-supported. The infrastructure for verifying that they behaved
+              safely, fairly, and in compliance with regulatory expectations was not.
             </p>
-          </div>
-          <div className="flex flex-wrap gap-3 pt-2">
-            <Link href="/sign-up" className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300">
-              Start free
-            </Link>
-            <Link href="/contact" className="rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white">
-              Talk to our team
-            </Link>
-          </div>
+            <p>
+              The teams building and operating these agents were using a patchwork of approaches: unit tests
+              against isolated intents, manual QA sessions, occasional red-team exercises, and post-incident
+              review. Each of these has value in isolation, but none of them produces the continuous,
+              structured, auditable signal that production operations and compliance teams actually need.
+            </p>
+            <p>
+              The earliest version of ARIA was an internal evaluation framework built specifically for
+              assessing Amazon Connect agents in a financial services context. The key architectural decision
+              made early was to use an LLM as the judge, scoring multi-turn transcripts against a structured
+              rubric rather than matching against expected outputs. That decision turned out to be the right
+              one: it scaled naturally from functional testing to adversarial, bias, and compliance evaluation
+              without requiring separate testing infrastructure for each category.
+            </p>
+            <p>
+              ARIA launched as a fully managed SaaS platform in 2026. The product is opinionated: evaluation
+              should be continuous, evidence should be auditable, and safety controls should be on by default.
+              Those positions come directly from the operational experience that built it.
+            </p>
+          </Reveal>
         </div>
-      </section>
+      </Section>
 
-      {/* ── Stats strip ───────────────────────────────────────────────────── */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((s) => (
-          <div key={s.label} className="rounded-2xl border border-slate-200/80 bg-white/90 px-6 py-5 shadow-sm">
-            <p className="text-4xl font-bold tracking-tight text-slate-900">{s.value}</p>
-            <p className="mt-1 text-sm text-slate-500">{s.label}</p>
-          </div>
-        ))}
-      </section>
-
-      {/* ── Our story ─────────────────────────────────────────────────────── */}
-      <section className="grid gap-10 lg:grid-cols-[1fr_1.6fr]">
-        <div className="space-y-3">
-          <p className="section-label">Our story</p>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Built from the inside of the problem
-          </h2>
-          <p className="text-sm leading-6 text-slate-500">
-            ARIA was not conceived as a product category — it was built to solve a specific operational
-            problem that existing tooling consistently failed to address.
-          </p>
-          <Link href="/docs" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700">
-            Read the documentation <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-
-        <div className="article-prose space-y-5 text-sm leading-7 text-slate-700">
-          <p>
-            In 2024, enterprise adoption of conversational AI agents accelerated sharply across financial
-            services, healthcare, and contact-centre operations. The infrastructure for deploying these
-            systems — Amazon Connect, Lex, Azure Bot Service, and a growing set of custom LLM-backed
-            endpoints — was mature and well-supported. The infrastructure for verifying that they behaved
-            safely, fairly, and in compliance with regulatory expectations was not.
-          </p>
-          <p>
-            The teams building and operating these agents were using a patchwork of approaches: unit tests
-            against isolated intents, manual QA sessions, occasional red-team exercises, and post-incident
-            review. Each of these has value in isolation, but none of them produces the continuous,
-            structured, auditable signal that production operations and compliance teams actually need.
-          </p>
-          <p>
-            The earliest version of ARIA was an internal evaluation framework built specifically for
-            assessing Amazon Connect agents in a financial services context. The focus was narrow and
-            deliberate: adversarial scenarios, guardrail verification, and escalation compliance — the
-            failure modes that carry the most regulatory risk but are hardest to catch with standard
-            testing approaches. The key architectural decision made early was to use an LLM as the judge,
-            scoring multi-turn transcripts against a structured rubric rather than matching against
-            expected outputs. That decision turned out to be the right one: it scaled naturally from
-            functional testing to adversarial, bias, and compliance evaluation without requiring separate
-            testing infrastructure for each category.
-          </p>
-          <p>
-            The platform expanded from there. Platform-agnostic adapters, a 15-dimension evaluation model,
-            a human review queue for regulated-industry sign-off, and a tenant-isolated deployment
-            architecture. The decision to build for multi-tenancy from the ground up — dedicated
-            infrastructure per customer, regional data residency, no shared compute — reflected the
-            requirements of the customers this was always intended to serve: teams in regulated industries
-            where data handling and audit evidence are not optional.
-          </p>
-          <p>
-            ARIA launched as a fully managed SaaS platform in 2026. The product is opinionated: evaluation
-            should be continuous, evidence should be auditable, and safety controls should be on by default.
-            Those positions come directly from the operational experience that built it.
-          </p>
-        </div>
-      </section>
-
-      {/* ── Thesis ────────────────────────────────────────────────────────── */}
-      <section className="rounded-3xl border border-slate-200/80 bg-slate-950 px-8 py-10 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-        <div className="max-w-3xl space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Our thesis</p>
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Three things we believe about AI evaluation
-          </h2>
-        </div>
-
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
+      {/* Thesis */}
+      <Section className="py-12">
+        <SectionHeading eyebrow="Our thesis" title="Three things we believe about AI evaluation" />
+        <Reveal stagger={0.1} className="mt-12 grid gap-6 md:grid-cols-3">
           {thesis.map((item) => (
-            <article key={item.number} className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <span className="text-3xl font-bold tracking-tight text-white/20">{item.number}</span>
-              <h3 className="text-base font-semibold leading-6 text-white">{item.title}</h3>
-              <p className="text-sm leading-6 text-slate-300/90">{item.body}</p>
+            <article key={item.number} className="glass space-y-4 rounded-2xl p-6">
+              <span className="font-display text-3xl font-bold tracking-tight text-white/15">{item.number}</span>
+              <h3 className="font-display text-base font-semibold leading-6 text-white">{item.title}</h3>
+              <p className="text-sm leading-6 text-slate-400">{item.body}</p>
             </article>
           ))}
-        </div>
-      </section>
+        </Reveal>
+      </Section>
 
-      {/* ── Principles ────────────────────────────────────────────────────── */}
-      <section className="space-y-8">
-        <div className="max-w-3xl space-y-3">
-          <p className="section-label">How we build</p>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Six operating principles
-          </h2>
-          <p className="text-base leading-7 text-slate-600">
-            These are not values — they are design constraints. Every product decision in ARIA is
-            tested against them.
-          </p>
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      {/* Principles */}
+      <Section className="py-12">
+        <SectionHeading
+          eyebrow="How we build"
+          title="Six operating principles"
+          subtitle="These are not values — they are design constraints. Every product decision in ARIA is tested against them."
+        />
+        <Reveal stagger={0.08} className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {principles.map((item, i) => (
-            <article key={item.title} className="card space-y-3">
-              <span className="text-2xl font-bold text-slate-100">0{i + 1}</span>
-              <h3 className="text-base font-semibold text-slate-900">{item.title}</h3>
-              <p className="text-sm leading-6 text-slate-600">{item.body}</p>
+            <article key={item.title} className="glass space-y-3 rounded-2xl p-6">
+              <span className="font-display text-2xl font-bold text-cyan-300/40">0{i + 1}</span>
+              <h3 className="font-display text-base font-semibold text-white">{item.title}</h3>
+              <p className="text-sm leading-6 text-slate-400">{item.body}</p>
             </article>
           ))}
-        </div>
-      </section>
+        </Reveal>
+      </Section>
 
-      {/* ── Timeline ──────────────────────────────────────────────────────── */}
-      <section className="space-y-8">
-        <div className="max-w-3xl space-y-3">
-          <p className="section-label">Timeline</p>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            From internal tool to production platform
-          </h2>
-        </div>
-
-        <div className="relative">
-          {/* vertical rule */}
-          <div className="absolute left-[5.5rem] top-0 hidden h-full w-px bg-slate-200 lg:block" aria-hidden="true" />
-
-          <div className="space-y-6">
+      {/* Timeline */}
+      <Section className="py-12">
+        <SectionHeading eyebrow="Timeline" title="From internal tool to production platform" />
+        <div className="relative mt-12">
+          <div className="absolute left-[5.5rem] top-0 hidden h-full w-px bg-gradient-to-b from-cyan-400/40 via-white/10 to-transparent lg:block" aria-hidden="true" />
+          <Reveal stagger={0.08} className="space-y-6">
             {milestones.map((item, i) => (
               <article key={item.year + item.quarter} className="relative grid gap-4 lg:grid-cols-[9rem_1fr]">
                 <div className="flex items-start gap-3 lg:flex-col lg:gap-1">
-                  <span className="text-sm font-bold text-slate-900">{item.year}</span>
-                  <span className="text-xs font-medium text-slate-400">{item.quarter}</span>
-                  {/* timeline dot */}
-                  <div className="absolute left-[5.15rem] top-1.5 hidden h-2.5 w-2.5 rounded-full border-2 border-blue-600 bg-white lg:block" aria-hidden="true" />
+                  <span className="font-display text-sm font-bold text-white">{item.year}</span>
+                  <span className="text-xs font-medium text-slate-500">{item.quarter}</span>
+                  <div className="absolute left-[5.15rem] top-1.5 hidden h-2.5 w-2.5 rounded-full border-2 border-cyan-400 bg-[#05080f] shadow-[0_0_12px_rgba(34,211,238,0.7)] lg:block" aria-hidden="true" />
                 </div>
-                <div className={`rounded-2xl border bg-white/90 p-5 shadow-sm ${i === milestones.length - 1 ? 'border-blue-200 ring-2 ring-blue-500/10' : 'border-slate-200/80'}`}>
+                <div
+                  className={`glass rounded-2xl p-5 ${i === milestones.length - 1 ? 'ring-1 ring-cyan-300/30' : ''}`}
+                >
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-base font-semibold text-slate-900">{item.title}</h3>
+                    <h3 className="font-display text-base font-semibold text-white">{item.title}</h3>
                     {i === milestones.length - 1 && (
-                      <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+                      <span className="shrink-0 rounded-full bg-cyan-400/10 px-2.5 py-0.5 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-300/30">
                         Current
                       </span>
                     )}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">{item.detail}</p>
                 </div>
               </article>
             ))}
-          </div>
+          </Reveal>
         </div>
-      </section>
+      </Section>
 
-      {/* ── What we are not ───────────────────────────────────────────────── */}
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="card space-y-5">
-          <div className="space-y-2">
-            <p className="section-label">What ARIA is</p>
-            <h2 className="text-xl font-semibold text-slate-900">A dedicated evaluation operating layer</h2>
-          </div>
-          <ul className="space-y-3">
-            {[
-              'A continuous evaluation platform, not a one-time audit tool',
-              'An LLM-judge framework scoring 15 structured dimensions per transcript',
-              'A compliance evidence generator with auditable, exportable run history',
-              'A multi-platform adapter connecting to any conversational AI stack',
-              'A dedicated-tenant infrastructure with regional data residency',
-            ].map((item) => (
-              <li key={item} className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                <span className="text-sm leading-6 text-slate-700">{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="card space-y-5 border-slate-100 bg-slate-50/80">
-          <div className="space-y-2">
-            <p className="section-label text-rose-600">What ARIA is not</p>
-            <h2 className="text-xl font-semibold text-slate-900">Important scope boundaries</h2>
-          </div>
-          <ul className="space-y-3">
-            {[
-              'Not an agent builder or LLM fine-tuning platform',
-              'Not a monitoring tool that reads live production traffic',
-              'Not a replacement for human review and regulatory judgement',
-              'Not a generic test runner — it is purpose-built for conversational AI evaluation',
-              'Not a certification body — it produces evidence for certification, not the certification itself',
-            ].map((item) => (
-              <li key={item} className="flex items-start gap-3">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
-                <span className="text-sm leading-6 text-slate-600">{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      {/* ── CTA ───────────────────────────────────────────────────────────── */}
-      <section>
-        <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-10 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl space-y-3">
-              <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">Start evaluating</p>
-              <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                Put evaluation at the centre of your AI delivery pipeline
-              </h2>
-              <p className="text-sm leading-6 text-slate-200/80">
-                The Free plan supports 5 evaluation runs with the full 15-dimension judge.
-                No infrastructure to configure. Results in minutes.
-              </p>
+      {/* What we are / are not */}
+      <Section className="py-12">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Reveal className="glass space-y-5 rounded-2xl p-6">
+            <div className="space-y-2">
+              <p className="eyebrow">What ARIA is</p>
+              <h2 className="font-display text-xl font-semibold text-white">A dedicated evaluation operating layer</h2>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/sign-up"
-                className="rounded-full bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-all hover:-translate-y-0.5 hover:bg-cyan-300"
-              >
-                Start for free
-              </Link>
-              <Link
-                href="/contact"
-                className="rounded-full border border-white/10 px-5 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"
-              >
-                Talk to our team
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+            <ul className="space-y-3">
+              {[
+                'A continuous evaluation platform, not a one-time audit tool',
+                'An LLM-judge framework scoring 15 structured dimensions per transcript',
+                'A compliance evidence generator with auditable, exportable run history',
+                'A multi-platform adapter connecting to any conversational AI stack',
+                'A dedicated-tenant infrastructure with regional data residency',
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                  <span className="text-sm leading-6 text-slate-300">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
 
+          <Reveal delay={0.1} className="glass space-y-5 rounded-2xl p-6">
+            <div className="space-y-2">
+              <p className="eyebrow text-rose-300/80">What ARIA is not</p>
+              <h2 className="font-display text-xl font-semibold text-white">Important scope boundaries</h2>
+            </div>
+            <ul className="space-y-3">
+              {[
+                'Not an agent builder or LLM fine-tuning platform',
+                'Not a monitoring tool that reads live production traffic',
+                'Not a replacement for human review and regulatory judgement',
+                'Not a generic test runner — it is purpose-built for conversational AI evaluation',
+                'Not a certification body — it produces evidence for certification, not the certification itself',
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-500" />
+                  <span className="text-sm leading-6 text-slate-400">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+        </div>
+      </Section>
+
+      <CtaBand
+        eyebrow="Start evaluating"
+        title="Put evaluation at the centre of your AI delivery pipeline"
+        description="The Free plan supports 5 evaluation runs with the full 15-dimension judge. No infrastructure to configure. Results in minutes."
+        primary={{ href: '/sign-up', label: 'Start for free' }}
+        secondary={{ href: '/contact', label: 'Talk to our team' }}
+      />
     </div>
   )
 }
