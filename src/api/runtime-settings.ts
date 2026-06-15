@@ -52,6 +52,8 @@ export const EDITABLE_SETTING_KEYS = [
   'AZURE_OPENAI_API_VERSION',
   'ANTHROPIC_API_KEY',
   'GEMINI_API_KEY',
+  // Calibration data import (gated LMSYS Chatbot Arena dataset)
+  'HUGGINGFACE_TOKEN',
 
   'CONNECT_INSTANCE_ID',
   'CONNECT_REGION',
@@ -162,6 +164,7 @@ export const SECRET_SETTING_KEYS = new Set<EditableSettingKey>([
   'AZURE_OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
   'GEMINI_API_KEY',
+  'HUGGINGFACE_TOKEN',
 ]);
 
 function readOverrides(): SettingsMap {

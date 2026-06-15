@@ -55,6 +55,8 @@ interface PairwiseData { pairwise: PairwiseCalibration[]; datasets: PairwiseData
 function PairwiseSection() {
   const [data, setData] = useState<PairwiseData | null>(null);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [limit, setLimit] = useState('200');
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -73,6 +75,17 @@ function PairwiseSection() {
     finally { setBusy(false); }
   }
 
+  async function importLmsys() {
+    setImporting(true); setErr(null); setNote(null);
+    try {
+      const n = Number(limit) || 200;
+      const r = await apiFetch('/api/calibration/pairwise/import-lmsys', { method: 'POST', body: JSON.stringify({ limit: n }) }) as { created: number };
+      setNote(`Imported ${r.created} LMSYS pairs. Click “Run pairwise calibration” below to score them with the judges.`);
+      await load();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setImporting(false); }
+  }
+
   const datasets = data?.datasets ?? [];
   const rows = data?.pairwise ?? [];
 
@@ -83,13 +96,24 @@ function PairwiseSection() {
           <h2 className="text-sm font-semibold text-slate-700">Pairwise benchmark — LMSYS Chatbot Arena</h2>
           <p className="mt-1 text-xs text-slate-500">
             How often each judge&apos;s A-vs-B preference matches the human vote on an external pairwise dataset —
-            separate from the per-dimension κ above. Import a sample with
-            {' '}<code className="font-mono">scripts/load-lmsys-arena.ts</code>.
+            separate from the per-dimension κ above.
           </p>
         </div>
-        <button type="button" onClick={() => void load()} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-          Refresh
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <input
+            type="number" min="1" max="1000" value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+            title="Number of items to import"
+            className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+          />
+          <button type="button" disabled={importing} onClick={() => void importLmsys()}
+            className="rounded-full bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-600 disabled:opacity-50">
+            {importing ? 'Importing…' : 'Import from LMSYS'}
+          </button>
+          <button type="button" onClick={() => void load()} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            Refresh
+          </button>
+        </div>
       </div>
 
       {err && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-red-200">{err}</p>}
@@ -97,7 +121,8 @@ function PairwiseSection() {
 
       {datasets.length === 0 ? (
         <p className="text-sm text-slate-400">
-          No pairwise datasets yet. Run <code className="font-mono">npx tsx scripts/load-lmsys-arena.ts --limit 200</code> to import a sample, then click Run.
+          No pairwise datasets yet. Click <span className="font-semibold text-slate-500">Import from LMSYS</span> to fetch a sample
+          (requires a HuggingFace token in Settings), then run the calibration.
         </p>
       ) : (
         <div className="mb-4 flex flex-wrap gap-2">

@@ -23,6 +23,7 @@ import { scenariosRouter } from './routes/scenarios.js';
 import { runsRouter } from './routes/runs.js';
 import { reviewsRouter } from './routes/reviews.js';
 import { calibrationRouter } from './routes/calibration.js';
+import { seedPairwiseDatasetIfNeeded } from './lmsys-import.js';
 import { transcriptsRouter } from './routes/transcripts.js';
 import { reportsRouter } from './routes/reports.js';
 import { settingsRouter } from './routes/settings.js';
@@ -279,6 +280,9 @@ if (process.env['NODE_ENV'] !== 'test') {
       console.log(`   Health: http://localhost:${PORT}/health`);
       console.log(`   UI:     http://localhost:${PORT}`);
       console.log(`   CCP:    http://localhost:${PORT}/evaluator-ccp.html\n`);
+      // First-run: auto-import an LMSYS pairwise sample if a HF token is set and
+      // no pairwise dataset exists yet. Fire-and-forget — never blocks startup.
+      void seedPairwiseDatasetIfNeeded();
     });
 
     // ── Graceful shutdown ─────────────────────────────────────────────────────

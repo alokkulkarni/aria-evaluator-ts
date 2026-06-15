@@ -8,6 +8,7 @@ import { recordAuditEventSafe } from '../audit-log.js';
 import { getRequestAuth, requireAdminAuth } from '../auth.js';
 import { calibrateExternalGoldenSet, recomputeCalibration, type GoldenItem } from '../calibration-service.js';
 import { getPairwiseSummary, runPairwiseCalibration } from '../pairwise-calibration-service.js';
+import { importLmsysArena, MissingHuggingFaceTokenError } from '../lmsys-import.js';
 
 export const calibrationRouter = Router();
 
@@ -235,6 +236,22 @@ calibrationRouter.post('/pairwise/import', requireAdminAuth, async (req, res) =>
     await recordAuditEventSafe(req, 'calibration.pairwise.import', dataset.id, { created: valid.length, skipped: rawItems.length - valid.length });
     res.status(201).json({ datasetId: dataset.id, created: valid.length, skipped: rawItems.length - valid.length });
   } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST /api/calibration/pairwise/import-lmsys — fetch + import the gated LMSYS
+// Chatbot Arena dataset from HuggingFace (admin). Replaces any prior LMSYS import.
+// Body: { limit?: number }. Requires HUGGINGFACE_TOKEN to be configured.
+calibrationRouter.post('/pairwise/import-lmsys', requireAdminAuth, async (req, res) => {
+  try {
+    const rawLimit = Number((req.body as { limit?: unknown })?.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : undefined;
+    const result = await importLmsysArena({ limit });
+    await recordAuditEventSafe(req, 'calibration.pairwise.import-lmsys', result.datasetId, { created: result.created });
+    res.status(201).json(result);
+  } catch (err) {
+    if (err instanceof MissingHuggingFaceTokenError) return res.status(400).json({ error: err.message });
     res.status(500).json({ error: (err as Error).message });
   }
 });

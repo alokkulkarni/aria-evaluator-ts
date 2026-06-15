@@ -853,6 +853,7 @@ const JUDGE_PROVIDER_FIELDS: FieldDef[] = [
   { key: 'AZURE_OPENAI_API_VERSION', label: 'Azure API version', placeholder: '2024-10-21', hint: 'Azure OpenAI API version. Defaults to 2024-10-21.' },
   { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', placeholder: 'sk-ant-...', sensitive: true, hint: 'Run Claude as a judge via the direct Anthropic API (outside Bedrock).' },
   { key: 'GEMINI_API_KEY', label: 'Google Gemini API key', placeholder: 'xxxxxxxx', sensitive: true, hint: 'Adds a Gemini judge — a third architecture family for ensembles.' },
+  { key: 'HUGGINGFACE_TOKEN', label: 'HuggingFace token (calibration import)', placeholder: 'hf_...', sensitive: true, hint: 'Enables the "Import from LMSYS" button on the Calibration page to fetch the gated LMSYS Chatbot Arena pairwise dataset. Create a free token at huggingface.co/settings/tokens and accept the dataset terms.' },
 ];
 
 function JudgeCommitteeSection({
