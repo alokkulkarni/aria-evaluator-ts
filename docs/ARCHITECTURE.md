@@ -89,27 +89,31 @@ flowchart TB
 
   subgraph edge["Edge — CloudFront / WAF / ACM (us-east-1)"]
     r53["Route 53 — ariaeval.io"]
-    cf["CloudFront + WAFv2 (ACM TLS)"]
+    cf["CloudFront + WAFv2 — TLS termination (ACM)"]
   end
 
   subgraph region["AWS Account — region eu-west-2"]
     s3static["S3 static site (OAC, versioned)"]
     cognito["Cognito User Pool + Google/Apple IdP"]
     bedrock["Amazon Bedrock — Claude judge"]
-    ct["CloudTrail + CloudWatch (CIS alarms to SNS)"]
-    sechub["GuardDuty + Security Hub (account-wide)"]
 
-    subgraph webvpc["Website VPC 10.61.0.0/16 — 3 public subnets / 3 AZ, no NAT"]
-      walb["ALB internet-facing :80 (origin-secret guard)"]
-      wsvc["ECS Fargate auth-backend Next.js :3001 x2"]
+    subgraph webvpc["Website VPC 10.61.0.0/16 — no NAT"]
+      subgraph wpub["PUBLIC subnets (3 AZ) — no private tier"]
+        walb["ALB internet-facing — HTTP :80 (origin-secret header guard)"]
+        wsvc["ECS Fargate auth-backend Next.js :3001 x2<br/>public IP; SG allows :3001 from ALB SG only"]
+      end
       wsec["Secrets Manager (NextAuth / OAuth)"]
     end
 
-    subgraph cpvpc["Control-Plane VPC 10.62.0.0/16 — 2 public + 2 private / 2 AZ, no NAT"]
-      calb["ALB internal :80 to :3002"]
-      csvc["ECS Fargate control-plane API :3002 x2 (private)"]
-      vpce["VPC Endpoints: S3, DynamoDB, ECR, Logs, STS, SecretsMgr, CodeBuild"]
-      ddb["DynamoDB user_instances + control_plane_state"]
+    subgraph cpvpc["Control-Plane VPC 10.62.0.0/16 — no NAT"]
+      subgraph cpub["PUBLIC subnets (2 AZ)"]
+        calb["ALB internal — HTTP :80 to :3002 (no public IP)"]
+      end
+      subgraph cpriv["PRIVATE subnets (2 AZ)"]
+        csvc["ECS Fargate control-plane API :3002 x2<br/>no public IP; egress via VPC endpoints"]
+        vpce["VPC Interface Endpoints: ECR, Logs, STS, SecretsMgr, CodeBuild"]
+      end
+      ddb["DynamoDB (via S3 / DynamoDB gateway endpoints)"]
       cpsec["Secrets Manager + SSM (internal secret / url)"]
     end
 
@@ -118,23 +122,46 @@ flowchart TB
 
   extprov["Cross-vendor judges: OpenAI / Azure / Anthropic / Gemini"]
 
-  user --> r53 --> cf
-  cf -->|"static + /_next/static/*"| s3static
-  cf -->|"/api/* + origin secret"| walb
+  user -->|"HTTPS / TLS"| cf
+  user -.->|"DNS"| r53
+  cf -->|"HTTPS (OAC sigv4)"| s3static
+  cf -->|"HTTP :80 + secret header — PLAINTEXT hop"| walb
   walb --> wsvc
-  wsvc -->|"social login"| cognito
-  wsvc -->|"internal URL via peering"| peer
+  wsvc -->|"social login (HTTPS)"| cognito
+  wsvc -->|"HTTP :80 over peered private network"| peer
   peer --> calb
   calb --> csvc
   csvc --> ddb
-  csvc -->|"IAM task role"| bedrock
-  csvc -.->|"committee keys"| extprov
+  csvc -->|"IAM task role (HTTPS)"| bedrock
+  csvc -.->|"committee keys (HTTPS)"| extprov
   csvc --- vpce
   wsvc --- wsec
   csvc --- cpsec
 ```
 
 **Request path:** `Browser → Route 53 → CloudFront (+WAF)` then split by path to either the **S3 static site** (default + `/_next/static/*`) or the **auth-backend ALB** (`/api/*`, gated by a secret header CloudFront injects so the ALB rejects direct traffic). The Next.js **auth-backend** (ECS Fargate `:3001`, internet-facing ALB) brokers social login through **Cognito → Google/Apple**, and reaches the **control-plane internal ALB** over the **VPC peering** link via `CONTROL_PLANE_INTERNAL_URL`. The **control-plane API** (ECS Fargate `:3002`, private subnets, egress through **VPC interface/gateway endpoints**, no NAT) reads/writes **DynamoDB**, pulls config from **Secrets Manager/SSM**, and invokes **Bedrock** (plus optional cross-vendor judge providers) for evaluation.
+
+### Network security & TLS posture
+
+The `:80` listeners above are **intentional but not end-to-end TLS** — here is what is and isn't encrypted, per hop:
+
+| Hop | Listener | Encrypted in transit? | What protects it |
+|---|---|---|---|
+| Browser → CloudFront | **HTTPS 443** (ACM, TLS 1.2+) | ✅ Yes | WAFv2, ACM cert, HSTS |
+| CloudFront → S3 static | **HTTPS** (OAC, SigV4) | ✅ Yes | Origin Access Control |
+| CloudFront → auth ALB | **HTTP :80** | ❌ **No** | `X-CF-Origin-Secret` header (authenticity only — not confidentiality) |
+| auth-backend → control-plane ALB | **HTTP :80** | ❌ No (private/peered, not public internet) | SG rule (ALB SG ← auth ECS SG) + VPC peering |
+| ECS → Bedrock / DynamoDB / Secrets / ECR | **HTTPS** | ✅ Yes | IAM + VPC endpoints |
+| Per-tenant instance ALB (`tenant-module`) | **HTTPS :443** (ACM) | ✅ Yes | — (already end-to-end) |
+
+**So the public website edge is encrypted (browser ↔ CloudFront over TLS), but two internal hops run plaintext HTTP:**
+
+- **CloudFront → auth ALB (`:80`)** is the real gap: it crosses the public internet unencrypted, guarded only by a shared secret header. It is on `:80` today because a public ACM cert cannot be issued for an ALB's `*.elb.amazonaws.com` DNS name. **Hardening:** give the ALB a custom origin domain (e.g. `origin.ariaeval.io`), issue a **regional ACM cert**, add an ALB **`:443`** listener, and set the CloudFront origin protocol policy to **`https-only`** → full end-to-end TLS.
+- **Control-plane internal ALB (`:80`)** stays on the private, peered network (never public), so the exposure is much lower — but for zero-trust it should still terminate **TLS on the internal ALB** (regional ACM on an internal custom domain, or ACM Private CA).
+- The website auth tier also runs in **public subnets with public IPs** (SG-restricted to the ALB). Moving those tasks to **private subnets** + NAT/endpoints (as the control-plane already does) is the matching network hardening.
+- Note the **per-tenant instances already use HTTPS :443 + ACM** — the shared platform tiers are the inconsistency to close.
+
+> The diagram reflects the **current deployed state** (`:80`), not an aspirational one. I can implement the `:443` end-to-end-TLS hardening as a follow-up — it touches `modules/website-auth` (ALB listener + cert), `modules/website-frontend` (CloudFront origin protocol), and a new ACM cert + Route 53 record.
 
 ### PROD — Tenant provisioning & per-tenant instance
 
@@ -150,10 +177,15 @@ flowchart TB
   end
 
   subgraph tvpc["Per-Tenant Instance VPC — one isolated stack per user"]
-    tedge["ALB HTTPS (optional CloudFront + WAF)"]
-    tecs["ECS Fargate — Evaluator App :3001 (tier-sized)"]
+    tcf["CloudFront + WAFv2 (optional) — TLS"]
+    subgraph tpub["PUBLIC subnets"]
+      tedge["ALB HTTPS :443 (ACM) — origin-secret guard"]
+    end
+    subgraph tpriv["PRIVATE subnets (higher tiers)"]
+      tecs["ECS Fargate — Evaluator App :3001 (tier-sized)"]
+      tredis["ElastiCache Redis (optional)"]
+    end
     ts3["S3 tenant state bucket"]
-    tredis["ElastiCache Redis (optional)"]
     tsusp["suspend-lambda (idle stop via heartbeat)"]
   end
 
@@ -168,7 +200,8 @@ flowchart TB
   cb --> tredis
   cb --> tsusp
   cb -.->|"tenant URL"| uitable
-  tedge --> tecs
+  tcf -->|"HTTPS"| tedge
+  tedge -->|"app :3001"| tecs
   tecs --> bedrock2
 ```
 
