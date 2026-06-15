@@ -165,6 +165,16 @@ export function buildDefaultCommittee(params: {
   };
 }
 
+/**
+ * Cap a committee to a plan's maximum judge count (cost control). Keeps the first
+ * N judges — the default order is generalist → cross-vendor → …, so N=2 stays
+ * cross-vendor. maxJudges < 0 means uncapped; never returns an empty list.
+ */
+export function capCommittee<T>(judges: T[], maxJudges: number): T[] {
+  if (maxJudges < 0 || judges.length <= maxJudges) return judges;
+  return judges.slice(0, Math.max(1, maxJudges));
+}
+
 /** Validate + normalise a committee. Throws on structural problems. */
 export function validateCommittee(config: JudgeCommitteeConfig): JudgeCommitteeConfig {
   if (!config || !Array.isArray(config.judges) || config.judges.length === 0) {

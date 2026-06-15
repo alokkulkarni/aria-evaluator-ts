@@ -607,6 +607,7 @@ interface ReportResult {
   judges?: ReportJudgeRef[];
   judgeAgreement?: number;
   requiresHumanReview?: boolean;
+  judgeBreakdown?: { judgeId: string; provider: string; modelId: string; costUsd: number | null }[];
 }
 interface ReportData {
   generatedAt?: string;
@@ -665,6 +666,14 @@ function ReportView({ url }: { url: string }) {
                 ⚠ Judges disagreed — review
               </span>
             )}
+            {(() => {
+              const cost = (r.judgeBreakdown ?? []).reduce((s, b) => s + (b.costUsd ?? 0), 0);
+              return cost > 0 ? (
+                <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 rounded px-1.5 py-0.5" title="Estimated committee judge cost for this scenario">
+                  ${cost.toFixed(4)} committee
+                </span>
+              ) : null;
+            })()}
           </div>
           {r.summary && <p className="text-xs text-slate-600 mt-0.5">{r.summary}</p>}
         </div>

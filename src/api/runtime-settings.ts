@@ -16,10 +16,12 @@ import {
 import {
   availableProviders,
   buildDefaultCommittee,
+  capCommittee,
   DEFAULT_DISAGREEMENT_THRESHOLD,
   parseCommitteeJson,
   type JudgeCommitteeConfig,
 } from '../shared/judge-committee.js';
+import { getUsageLimits } from '../shared/usage-limits.js';
 
 const SETTINGS_FILE = appPaths.runtimeSettingsFile;
 export const REDACTED_SECRET_VALUE = '***';
@@ -305,6 +307,9 @@ export function getJudgeCommitteeConfig(): JudgeCommitteeConfig {
     temperature: j.temperature ?? base.temperature,
     maxTokens: j.maxTokens ?? base.maxTokens,
   }));
+
+  // Plan-based cost gating: cap committee size to the tenant's allowance.
+  committee.judges = capCommittee(committee.judges, getUsageLimits().maxJudges);
   return committee;
 }
 

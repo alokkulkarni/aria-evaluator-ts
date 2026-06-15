@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { prisma } from '../../db/client.js';
 import { recordAuditEventSafe } from '../audit-log.js';
 import { getRequestAuth, requireAdminAuth } from '../auth.js';
-import { recomputeCalibration } from '../calibration-service.js';
+import { calibrateExternalGoldenSet, recomputeCalibration, type GoldenItem } from '../calibration-service.js';
 
 export const calibrationRouter = Router();
 
@@ -119,6 +119,32 @@ calibrationRouter.post('/import', requireAdminAuth, async (req, res) => {
     }
     await recordAuditEventSafe(req, 'calibration.import', datasetId ?? undefined, { created, skipped: skipped.length });
     res.status(201).json({ created, skipped, datasetId });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST /api/calibration/import-goldenset — calibrate against an external golden set (admin).
+// Body: { datasetName?, description?, items: [{ scenarioName?, goal?, attack_type?, domain?, transcript:{turns}, labels:{dim:score} }] }
+// Each item runs a full committee evaluation (LLM calls), so this runs in the
+// background and returns 202; poll GET /api/calibration for results.
+calibrationRouter.post('/import-goldenset', requireAdminAuth, async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    const body = (req.body ?? {}) as { datasetName?: string; description?: string; items?: GoldenItem[] };
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (items.length === 0) return res.status(400).json({ error: 'items[] is required' });
+    if (items.length > 500) {
+      return res.status(400).json({ error: 'Max 500 items per request — split larger golden sets into batches.' });
+    }
+    const dataset = await prisma.calibrationDataset.create({
+      data: { name: String(body.datasetName ?? 'External golden set'), description: body.description ?? null, source: 'import', createdBy: auth?.userId ?? null },
+    });
+    await recordAuditEventSafe(req, 'calibration.goldenset.start', dataset.id, { items: items.length });
+    void calibrateExternalGoldenSet(items, dataset.id)
+      .then((r) => console.log(`[calibration] golden set ${dataset.id}: ${r.judges} rows / ${r.samples} samples / ${r.items} items`))
+      .catch((e) => console.error(`[calibration] golden set ${dataset.id} failed: ${(e as Error).message}`));
+    res.status(202).json({ datasetId: dataset.id, items: items.length, status: 'processing' });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

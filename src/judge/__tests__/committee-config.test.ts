@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   availableProviders,
   buildDefaultCommittee,
+  capCommittee,
   committeeLabel,
   computeJudgeConfigHash,
   parseCommitteeJson,
@@ -147,6 +148,22 @@ describe('committeeLabel + vendorForSpec', () => {
     expect(vendorForSpec({ provider: 'anthropic', modelId: 'claude-sonnet-4-5' })).toBe('anthropic');
     expect(vendorForSpec({ provider: 'gemini', modelId: 'gemini-2.0-flash' })).toBe('google');
     expect(vendorForSpec({ provider: 'bedrock', modelId: 'eu.amazon.nova-pro-v1:0' })).toBe('amazon');
+  });
+});
+
+describe('capCommittee (plan-based cost gating)', () => {
+  it('caps to the first N judges (preserving order)', () => {
+    expect(capCommittee(['a', 'b', 'c'], 1)).toEqual(['a']);
+    expect(capCommittee(['a', 'b', 'c'], 2)).toEqual(['a', 'b']);
+  });
+  it('is uncapped when maxJudges < 0', () => {
+    expect(capCommittee(['a', 'b', 'c'], -1)).toEqual(['a', 'b', 'c']);
+  });
+  it('returns all when fewer than the cap', () => {
+    expect(capCommittee(['a', 'b'], 5)).toEqual(['a', 'b']);
+  });
+  it('never returns an empty committee', () => {
+    expect(capCommittee(['a', 'b'], 0)).toEqual(['a']);
   });
 });
 
