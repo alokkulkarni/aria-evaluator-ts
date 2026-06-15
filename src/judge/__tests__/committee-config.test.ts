@@ -7,9 +7,12 @@ import {
   computeJudgeConfigHash,
   parseCommitteeJson,
   providerAvailable,
+  routeJudges,
+  scenarioCategory,
   validateCommittee,
   vendorForSpec,
   type JudgeCommitteeConfig,
+  type JudgeSpec,
 } from '../../shared/judge-committee.js';
 
 const baseParams = {
@@ -144,6 +147,36 @@ describe('committeeLabel + vendorForSpec', () => {
     expect(vendorForSpec({ provider: 'anthropic', modelId: 'claude-sonnet-4-5' })).toBe('anthropic');
     expect(vendorForSpec({ provider: 'gemini', modelId: 'gemini-2.0-flash' })).toBe('google');
     expect(vendorForSpec({ provider: 'bedrock', modelId: 'eu.amazon.nova-pro-v1:0' })).toBe('amazon');
+  });
+});
+
+describe('scenarioCategory + routeJudges (specialist routing)', () => {
+  const G: JudgeSpec = { id: 'g', provider: 'bedrock', modelId: 'claude', role: 'generalist' };
+  const S: JudgeSpec = { id: 's', provider: 'openai', modelId: 'gpt-4o', role: 'security' };
+  const D: JudgeSpec = { id: 'd', provider: 'bedrock', modelId: 'nova', role: 'domain' };
+  const U: JudgeSpec = { id: 'u', provider: 'bedrock', modelId: 'mistral' }; // no role → generalist
+
+  it('categorises scenarios (adversarial wins over domain)', () => {
+    expect(scenarioCategory({ attack_type: 'prompt_injection' })).toBe('security');
+    expect(scenarioCategory({ domain: 'financial' })).toBe('domain');
+    expect(scenarioCategory({})).toBe('generalist');
+    expect(scenarioCategory({ attack_type: 'x', domain: 'financial' })).toBe('security');
+  });
+
+  it('security scenarios route to security specialists + generalists (domain excluded)', () => {
+    expect(routeJudges([G, S, D], 'security').map((j) => j.id)).toEqual(['g', 's']);
+  });
+
+  it('domain scenarios route to domain specialists + generalists (security excluded)', () => {
+    expect(routeJudges([G, S, D], 'domain').map((j) => j.id)).toEqual(['g', 'd']);
+  });
+
+  it('generic scenarios use generalists only (all specialists excluded)', () => {
+    expect(routeJudges([G, S, D, U], 'generalist').map((j) => j.id)).toEqual(['g', 'u']);
+  });
+
+  it('falls back to all judges when nothing matches the category', () => {
+    expect(routeJudges([S], 'domain').map((j) => j.id)).toEqual(['s']);
   });
 });
 

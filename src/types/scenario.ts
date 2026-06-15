@@ -34,6 +34,12 @@ export interface Scenario {
    * (goal_success, helpfulness, etc.) are excluded because a correct refusal scores 0 there.
    */
   attack_type?: string;
+  /**
+   * Optional domain tag (e.g. "financial", "clinical", "legal"). When set (and the
+   * scenario is not adversarial), the committee routes to judges with role 'domain'
+   * in addition to generalists. See judge-committee.routeJudges.
+   */
+  domain?: string;
   default_timeout_seconds?: number;
   turn_delay_seconds?: number;
   /**
