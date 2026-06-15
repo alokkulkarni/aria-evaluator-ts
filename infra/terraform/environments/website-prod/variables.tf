@@ -16,6 +16,12 @@ variable "force_destroy" {
   default     = false
 }
 
+variable "auth_origin_domain" {
+  description = "Custom hostname for the auth-backend ALB's HTTPS origin (regional ACM cert + Route 53 A-alias). CloudFront uses this as its /api/* origin over https-only, giving end-to-end TLS. Must be in the route53_zone_id zone."
+  type        = string
+  default     = "origin.ariaeval.io"
+}
+
 variable "auth_backend_image_tag" {
   description = "Docker image tag for the auth backend container"
   type        = string

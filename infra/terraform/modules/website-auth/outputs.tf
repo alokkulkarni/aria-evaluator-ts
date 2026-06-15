@@ -3,6 +3,11 @@ output "alb_dns_name" {
   description = "DNS name of the auth backend ALB. Pass to website-frontend module."
 }
 
+output "origin_domain" {
+  value       = local.https_enabled ? var.origin_domain : aws_lb.main.dns_name
+  description = "Hostname CloudFront should use as the auth origin — the custom HTTPS domain when TLS is enabled, else the raw ALB DNS (HTTP)."
+}
+
 output "origin_secret" {
   value       = random_password.origin_secret.result
   sensitive   = true

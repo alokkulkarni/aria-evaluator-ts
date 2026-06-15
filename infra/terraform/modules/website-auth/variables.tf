@@ -37,6 +37,26 @@ variable "availability_zones" {
   default = ["eu-west-2a", "eu-west-2b"]
 }
 
+variable "private_subnet_cidrs" {
+  type        = list(string)
+  default     = []
+  description = "When set, creates a private subnet tier + NAT gateway and runs the Fargate tasks there (no public IP). Empty = tasks stay in public subnets."
+}
+
+# ── End-to-end TLS (HTTPS origin) ──────────────────────────────────────────────
+
+variable "origin_domain" {
+  type        = string
+  default     = ""
+  description = "Custom origin hostname for the ALB (e.g. origin.ariaeval.io). When set with route53_zone_id, provisions a regional ACM cert + :443 listener so CloudFront can reach the origin over HTTPS. Empty = HTTP :80 only."
+}
+
+variable "route53_zone_id" {
+  type        = string
+  default     = ""
+  description = "Route 53 hosted zone ID for the origin_domain (ACM DNS validation + A-alias record)."
+}
+
 # ── Container ─────────────────────────────────────────────────────────────────
 
 variable "container_port" {

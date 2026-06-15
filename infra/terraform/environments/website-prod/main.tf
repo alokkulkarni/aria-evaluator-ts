@@ -121,10 +121,15 @@ module "auth_backend" {
   environment = "prod"
   public_url  = local.public_url
 
-  # Separate VPC for auth backend
-  vpc_cidr            = "10.61.0.0/16"
-  public_subnet_cidrs = ["10.61.1.0/24", "10.61.2.0/24", "10.61.3.0/24"]
-  availability_zones  = local.availability_zones
+  # Separate VPC for auth backend — ALB in public subnets, Fargate tasks in private
+  vpc_cidr             = "10.61.0.0/16"
+  public_subnet_cidrs  = ["10.61.1.0/24", "10.61.2.0/24", "10.61.3.0/24"]
+  private_subnet_cidrs = ["10.61.11.0/24", "10.61.12.0/24", "10.61.13.0/24"]
+  availability_zones   = local.availability_zones
+
+  # End-to-end TLS: regional ACM cert + :443 listener on a custom origin domain
+  origin_domain   = var.auth_origin_domain
+  route53_zone_id = var.route53_zone_id
 
   # Auth backend is lightweight — 0.25 vCPU, 512 MiB, 2 replicas for HA
   cpu           = 256
@@ -187,8 +192,9 @@ module "frontend" {
   route53_zone_id                = var.route53_zone_id
   acm_certificate_arn_cloudfront = var.acm_certificate_arn_us_east_1
 
-  # Wire auth backend ALB as second CloudFront origin
-  auth_backend_alb_dns       = module.auth_backend.alb_dns_name
+  # Wire auth backend ALB as second CloudFront origin (HTTPS to origin.ariaeval.io)
+  auth_backend_alb_dns       = module.auth_backend.origin_domain
+  auth_backend_alb_https     = true
   auth_backend_origin_secret = module.auth_backend.origin_secret
 
   waf_rate_limit = 2000

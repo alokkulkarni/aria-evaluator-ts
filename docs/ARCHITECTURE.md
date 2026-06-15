@@ -97,10 +97,13 @@ flowchart TB
     cognito["Cognito User Pool + Google/Apple IdP"]
     bedrock["Amazon Bedrock — Claude judge"]
 
-    subgraph webvpc["Website VPC 10.61.0.0/16 — no NAT"]
-      subgraph wpub["PUBLIC subnets (3 AZ) — no private tier"]
-        walb["ALB internet-facing — HTTP :80 (origin-secret header guard)"]
-        wsvc["ECS Fargate auth-backend Next.js :3001 x2<br/>public IP; SG allows :3001 from ALB SG only"]
+    subgraph webvpc["Website VPC 10.61.0.0/16"]
+      subgraph wpub["PUBLIC subnets (3 AZ)"]
+        walb["ALB internet-facing — HTTPS :443 (ACM); :80 redirects to 443"]
+        wnat["NAT Gateway"]
+      end
+      subgraph wpriv["PRIVATE subnets (3 AZ)"]
+        wsvc["ECS Fargate auth-backend Next.js :3001 x2<br/>no public IP; egress via NAT"]
       end
       wsec["Secrets Manager (NextAuth / OAuth)"]
     end
@@ -125,8 +128,9 @@ flowchart TB
   user -->|"HTTPS / TLS"| cf
   user -.->|"DNS"| r53
   cf -->|"HTTPS (OAC sigv4)"| s3static
-  cf -->|"HTTP :80 + secret header — PLAINTEXT hop"| walb
+  cf -->|"HTTPS :443 + secret header (end-to-end TLS)"| walb
   walb --> wsvc
+  wsvc -.->|"OAuth / AWS egress"| wnat
   wsvc -->|"social login (HTTPS)"| cognito
   wsvc -->|"HTTP :80 over peered private network"| peer
   peer --> calb
@@ -143,25 +147,25 @@ flowchart TB
 
 ### Network security & TLS posture
 
-The `:80` listeners above are **intentional but not end-to-end TLS** — here is what is and isn't encrypted, per hop:
+What is and isn't encrypted, per hop:
 
 | Hop | Listener | Encrypted in transit? | What protects it |
 |---|---|---|---|
 | Browser → CloudFront | **HTTPS 443** (ACM, TLS 1.2+) | ✅ Yes | WAFv2, ACM cert, HSTS |
 | CloudFront → S3 static | **HTTPS** (OAC, SigV4) | ✅ Yes | Origin Access Control |
-| CloudFront → auth ALB | **HTTP :80** | ❌ **No** | `X-CF-Origin-Secret` header (authenticity only — not confidentiality) |
-| auth-backend → control-plane ALB | **HTTP :80** | ❌ No (private/peered, not public internet) | SG rule (ALB SG ← auth ECS SG) + VPC peering |
+| CloudFront → auth ALB | **HTTPS :443** (regional ACM, `origin.ariaeval.io`) | ✅ Yes | `https-only` origin policy + `X-CF-Origin-Secret` header |
+| auth-backend → control-plane ALB | **HTTP :80** | ⚠️ No — but private/peered, never public | SG rule (ALB SG ← auth ECS SG) + VPC peering |
 | ECS → Bedrock / DynamoDB / Secrets / ECR | **HTTPS** | ✅ Yes | IAM + VPC endpoints |
 | Per-tenant instance ALB (`tenant-module`) | **HTTPS :443** (ACM) | ✅ Yes | — (already end-to-end) |
 
-**So the public website edge is encrypted (browser ↔ CloudFront over TLS), but two internal hops run plaintext HTTP:**
+**The public website path is end-to-end TLS** (browser → CloudFront → auth ALB all HTTPS), and the auth-backend now runs in **private subnets**:
 
-- **CloudFront → auth ALB (`:80`)** is the real gap: it crosses the public internet unencrypted, guarded only by a shared secret header. It is on `:80` today because a public ACM cert cannot be issued for an ALB's `*.elb.amazonaws.com` DNS name. **Hardening:** give the ALB a custom origin domain (e.g. `origin.ariaeval.io`), issue a **regional ACM cert**, add an ALB **`:443`** listener, and set the CloudFront origin protocol policy to **`https-only`** → full end-to-end TLS.
-- **Control-plane internal ALB (`:80`)** stays on the private, peered network (never public), so the exposure is much lower — but for zero-trust it should still terminate **TLS on the internal ALB** (regional ACM on an internal custom domain, or ACM Private CA).
-- The website auth tier also runs in **public subnets with public IPs** (SG-restricted to the ALB). Moving those tasks to **private subnets** + NAT/endpoints (as the control-plane already does) is the matching network hardening.
-- Note the **per-tenant instances already use HTTPS :443 + ACM** — the shared platform tiers are the inconsistency to close.
+- **CloudFront → auth ALB** uses **HTTPS :443** to a custom origin domain (`origin.ariaeval.io`) backed by a **regional ACM cert**; CloudFront's origin protocol policy is **`https-only`** and the `X-CF-Origin-Secret` header still blocks direct access. The ALB's `:80` listener now **redirects to 443**.
+- The auth-backend **ECS tasks run in private subnets** with **no public IP**; outbound traffic (Google/Apple OAuth, AWS APIs) egresses through a **NAT gateway**. The ALB stays in the public subnets.
+- **Control-plane internal ALB (`:80`)** is the one remaining plaintext hop, but it stays on the **private peered network** (never public) so exposure is low. It can be moved to `:443` later by passing `acm_certificate_arn` to `modules/alb` (already supported) with an internal domain.
+- **Per-tenant instances** already use HTTPS :443 + ACM.
 
-> The diagram reflects the **current deployed state** (`:80`), not an aspirational one. I can implement the `:443` end-to-end-TLS hardening as a follow-up — it touches `modules/website-auth` (ALB listener + cert), `modules/website-frontend` (CloudFront origin protocol), and a new ACM cert + Route 53 record.
+> This reflects the IaC after the website-prod hardening (`modules/website-auth`: ALB `:443` + regional ACM + private subnets/NAT, gated on a custom domain; `modules/website-frontend`: CloudFront origin `https-only`). It takes effect on the next `terraform apply` of website-prod; `website-dev` (no custom domain) stays on `:80`/public.
 
 ### PROD — Tenant provisioning & per-tenant instance
 

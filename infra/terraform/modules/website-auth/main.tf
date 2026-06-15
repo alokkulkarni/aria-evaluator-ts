@@ -15,6 +15,13 @@ data "aws_region" "current" {}
 locals {
   name_prefix = "${var.app_name}-auth-${var.environment}"
 
+  # End-to-end TLS on the ALB is enabled when a custom origin domain + hosted
+  # zone are supplied (prod). Without them (dev) the ALB stays HTTP :80.
+  https_enabled = var.origin_domain != "" && var.route53_zone_id != ""
+
+  # Move the Fargate tasks off the public subnets when a private tier is supplied.
+  private_enabled = length(var.private_subnet_cidrs) > 0
+
   common_tags = merge(var.tags, {
     ManagedBy            = "terraform"
     Project              = "aria-evaluator"
@@ -69,6 +76,52 @@ resource "aws_route_table_association" "public" {
   count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
+}
+
+# ── Private subnet tier + NAT (egress for Fargate tasks: OAuth providers, AWS) ──
+# Created only when private_subnet_cidrs is supplied. The ALB stays in the public
+# subnets; only the ECS tasks move to private. NAT is required because the
+# auth-backend makes outbound calls to Google/Apple OAuth endpoints.
+
+resource "aws_subnet" "private" {
+  count             = length(var.private_subnet_cidrs)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_cidrs[count.index]
+  availability_zone = var.availability_zones[count.index]
+  tags              = merge(local.common_tags, { Name = "${local.name_prefix}-private-${count.index}" })
+}
+
+resource "aws_eip" "nat" {
+  count  = local.private_enabled ? 1 : 0
+  domain = "vpc"
+  tags   = merge(local.common_tags, { Name = "${local.name_prefix}-nat-eip" })
+}
+
+resource "aws_nat_gateway" "main" {
+  count         = local.private_enabled ? 1 : 0
+  allocation_id = aws_eip.nat[0].id
+  subnet_id     = aws_subnet.public[0].id
+  tags          = merge(local.common_tags, { Name = "${local.name_prefix}-nat" })
+  depends_on    = [aws_internet_gateway.main]
+}
+
+resource "aws_route_table" "private" {
+  count  = local.private_enabled ? 1 : 0
+  vpc_id = aws_vpc.main.id
+  tags   = merge(local.common_tags, { Name = "${local.name_prefix}-private-rt" })
+}
+
+resource "aws_route" "private_nat" {
+  count                  = local.private_enabled ? 1 : 0
+  route_table_id         = aws_route_table.private[0].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.main[0].id
+}
+
+resource "aws_route_table_association" "private" {
+  count          = length(aws_subnet.private)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[0].id
 }
 
 # ── Security Groups ───────────────────────────────────────────────────────────
@@ -162,8 +215,64 @@ resource "aws_lb_target_group" "auth" {
   tags = local.common_tags
 }
 
-# Default listener — returns 403 unless X-CF-Origin-Secret matches
+# ── ACM certificate for the custom origin domain (regional, DNS-validated) ─────
+
+resource "aws_acm_certificate" "origin" {
+  count             = local.https_enabled ? 1 : 0
+  domain_name       = var.origin_domain
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = merge(local.common_tags, { Name = var.origin_domain })
+}
+
+resource "aws_route53_record" "origin_cert_validation" {
+  for_each = local.https_enabled ? {
+    for dvo in aws_acm_certificate.origin[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      type   = dvo.resource_record_type
+      record = dvo.resource_record_value
+    }
+  } : {}
+
+  zone_id         = var.route53_zone_id
+  name            = each.value.name
+  type            = each.value.type
+  records         = [each.value.record]
+  ttl             = 60
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "origin" {
+  count                   = local.https_enabled ? 1 : 0
+  certificate_arn         = aws_acm_certificate.origin[0].arn
+  validation_record_fqdns = [for r in aws_route53_record.origin_cert_validation : r.fqdn]
+}
+
+# A-alias: origin.<domain> → the auth ALB (so CloudFront has an HTTPS origin host)
+resource "aws_route53_record" "origin_alias" {
+  count   = local.https_enabled ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.origin_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
+# ── Listeners ──────────────────────────────────────────────────────────────────
+# HTTP-only mode (dev): :80 returns 403 unless the origin-secret header matches.
+# HTTPS mode (prod): :80 redirects to :443; :443 terminates TLS and applies the
+# same origin-secret guard. The forward rule attaches to whichever listener serves.
+
 resource "aws_lb_listener" "http" {
+  count             = local.https_enabled ? 0 : 1
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
@@ -180,9 +289,47 @@ resource "aws_lb_listener" "http" {
   tags = local.common_tags
 }
 
-# Forward rule only when origin secret header matches
+resource "aws_lb_listener" "http_redirect" {
+  count             = local.https_enabled ? 1 : 0
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_lb_listener" "https" {
+  count             = local.https_enabled ? 1 : 0
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.origin[0].certificate_arn
+
+  default_action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Forbidden"
+      status_code  = "403"
+    }
+  }
+
+  tags = local.common_tags
+}
+
+# Forward to the app only when the CloudFront origin-secret header matches.
 resource "aws_lb_listener_rule" "origin_verified" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = local.https_enabled ? aws_lb_listener.https[0].arn : aws_lb_listener.http[0].arn
   priority     = 1
 
   action {
@@ -525,9 +672,9 @@ resource "aws_ecs_service" "auth" {
   health_check_grace_period_seconds = 60
 
   network_configuration {
-    subnets          = aws_subnet.public[*].id
+    subnets          = local.private_enabled ? aws_subnet.private[*].id : aws_subnet.public[*].id
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = true
+    assign_public_ip = local.private_enabled ? false : true
   }
 
   load_balancer {
@@ -543,5 +690,5 @@ resource "aws_ecs_service" "auth" {
 
   tags = local.common_tags
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [aws_lb_listener_rule.origin_verified]
 }
