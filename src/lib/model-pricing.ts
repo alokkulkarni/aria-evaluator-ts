@@ -104,6 +104,29 @@ const MODEL_PRICING: Record<string, ModelPrice> = {
     inputPer1k: 0.00135,
     outputPer1k: 0.00540,
   },
+
+  // ── External judge providers (cross-vendor committee) ─────────────────────
+  // Keyed by the provider-native model id. Prices are approximate list prices
+  // (June 2026) used only for cost estimates; unknown ids price to null.
+  // OpenAI / Azure OpenAI (Azure uses the same model families; custom Azure
+  // deployment names that don't match these ids price to null).
+  'gpt-4o':       { label: 'OpenAI GPT-4o',       inputPer1k: 0.0025,  outputPer1k: 0.01 },
+  'gpt-4o-mini':  { label: 'OpenAI GPT-4o mini',  inputPer1k: 0.00015, outputPer1k: 0.0006 },
+  'gpt-4.1':      { label: 'OpenAI GPT-4.1',      inputPer1k: 0.002,   outputPer1k: 0.008 },
+  'gpt-4.1-mini': { label: 'OpenAI GPT-4.1 mini', inputPer1k: 0.0004,  outputPer1k: 0.0016 },
+  'o4-mini':      { label: 'OpenAI o4-mini',      inputPer1k: 0.0011,  outputPer1k: 0.0044 },
+
+  // Google Gemini
+  'gemini-1.5-pro':   { label: 'Gemini 1.5 Pro',   inputPer1k: 0.00125,  outputPer1k: 0.005 },
+  'gemini-1.5-flash': { label: 'Gemini 1.5 Flash', inputPer1k: 0.000075, outputPer1k: 0.0003 },
+  'gemini-2.0-flash': { label: 'Gemini 2.0 Flash', inputPer1k: 0.0001,   outputPer1k: 0.0004 },
+  'gemini-2.5-pro':   { label: 'Gemini 2.5 Pro',   inputPer1k: 0.00125,  outputPer1k: 0.01 },
+
+  // Anthropic direct API (non-Bedrock model ids)
+  'claude-3-5-sonnet-20241022': { label: 'Claude 3.5 Sonnet (direct)', inputPer1k: 0.003,  outputPer1k: 0.015 },
+  'claude-sonnet-4-5':          { label: 'Claude Sonnet 4.5 (direct)', inputPer1k: 0.003,  outputPer1k: 0.015 },
+  'claude-opus-4-5':            { label: 'Claude Opus 4.5 (direct)',   inputPer1k: 0.015,  outputPer1k: 0.075 },
+  'claude-haiku-4-5':           { label: 'Claude Haiku 4.5 (direct)',  inputPer1k: 0.0008, outputPer1k: 0.004 },
 };
 
 /**

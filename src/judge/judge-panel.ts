@@ -1,0 +1,180 @@
+// src/judge/judge-panel.ts
+// Orchestrates a committee of JudgeMembers: runs them in parallel, tolerates
+// per-member failure, and merges their votes into one ensemble EvalResult.
+
+import type { EvalResult, JudgeCostBreakdown, JudgeRef } from '../types/evaluation.js';
+import type { Transcript } from '../types/transcript.js';
+import type { Scenario } from '../types/scenario.js';
+import {
+  DEFAULT_JUDGE_MAX_TOKENS,
+  DEFAULT_JUDGE_TEMPERATURE,
+} from '../shared/judge-config.js';
+import {
+  committeeLabel,
+  computeJudgeConfigHash,
+  type JudgeCommitteeConfig,
+  type JudgeProviderId,
+  type JudgeSpec,
+} from '../shared/judge-committee.js';
+import { estimateCost } from '../lib/model-pricing.js';
+import { JudgeMember } from './llm-judge.js';
+import { aggregateMemberScores, computeOverallAndPass, type MemberOutcome } from './aggregate.js';
+import { availableProviders, createJudgeProvider } from './providers/factory.js';
+import type { JudgeProvider } from './providers/types.js';
+
+type ScenarioInput = Pick<Scenario, 'expected_escalation' | 'escalation_reason' | 'escalation_policy' | 'attack_type'>;
+
+export interface JudgePanelOptions {
+  /** Override provider construction (used by tests). */
+  createProvider?: (provider: JudgeProviderId) => JudgeProvider;
+  /** Override which providers are considered credentialed (used by tests). */
+  availableProviders?: Set<JudgeProviderId>;
+}
+
+export class JudgePanel {
+  private readonly committee: JudgeCommitteeConfig;
+  private readonly createProvider: (provider: JudgeProviderId) => JudgeProvider;
+  private readonly available: Set<JudgeProviderId>;
+
+  constructor(committee: JudgeCommitteeConfig, opts: JudgePanelOptions = {}) {
+    this.committee = committee;
+    this.createProvider = opts.createProvider ?? createJudgeProvider;
+    this.available = opts.availableProviders ?? availableProviders();
+  }
+
+  /** The judges that will actually run (credentialed providers only). */
+  activeJudges(): JudgeSpec[] {
+    const active = this.committee.judges.filter((j) => this.available.has(j.provider));
+    if (active.length === 0) {
+      // Defensive fallback: never run with zero judges — use any Bedrock member.
+      const bedrock = this.committee.judges.find((j) => j.provider === 'bedrock');
+      return bedrock ? [bedrock] : this.committee.judges.slice(0, 1);
+    }
+    return active;
+  }
+
+  async evaluate(
+    transcript: Transcript,
+    goal: string,
+    scenario?: ScenarioInput,
+  ): Promise<EvalResult> {
+    const isSecurity = scenario?.attack_type != null;
+    const specs = this.activeJudges();
+    const skipped = this.committee.judges.filter((j) => !specs.includes(j));
+    if (skipped.length > 0) {
+      console.warn(`  ⚠  Skipping judges without credentials: ${skipped.map((j) => `${j.id}(${j.provider})`).join(', ')}`);
+    }
+    console.log(`  🧑‍⚖️  Judge committee: ${specs.map((s) => `${s.id}/${s.provider}:${s.modelId}`).join(', ')}`);
+
+    const shared = {
+      systemPrompt: this.committee.systemPrompt,
+      temperature: Number(DEFAULT_JUDGE_TEMPERATURE),
+      maxTokens: Number(DEFAULT_JUDGE_MAX_TOKENS),
+    };
+
+    const settled = await Promise.allSettled(
+      specs.map(async (spec) => {
+        const member = new JudgeMember(spec, this.createProvider(spec.provider), shared);
+        const result = await member.evaluate(transcript, goal, scenario);
+        return { spec, result };
+      }),
+    );
+
+    const outcomes: MemberOutcome[] = [];
+    const breakdown: JudgeCostBreakdown[] = [];
+    const judges: JudgeRef[] = [];
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    for (let i = 0; i < settled.length; i++) {
+      const s = settled[i]!;
+      const spec = specs[i]!;
+      if (s.status === 'rejected') {
+        const reason = s.reason instanceof Error ? s.reason.message : String(s.reason);
+        console.warn(`  ⚠  Judge ${spec.id}/${spec.provider} failed: ${reason}`);
+        continue;
+      }
+      const { result } = s.value;
+      const inTok = result.judgeTokenInputEstimate ?? 0;
+      const outTok = result.judgeTokenOutputEstimate ?? 0;
+      inputTokens += inTok;
+      outputTokens += outTok;
+      const cost = estimateCost(spec.modelId, inTok, outTok);
+      const judgeRef: JudgeRef = { id: spec.id, provider: spec.provider, modelId: spec.modelId, role: spec.role };
+      judges.push(judgeRef);
+      breakdown.push({
+        judgeId: spec.id,
+        provider: spec.provider,
+        modelId: spec.modelId,
+        inputTokens: inTok,
+        outputTokens: outTok,
+        costUsd: cost?.costUsd ?? null,
+      });
+      outcomes.push({ judge: judgeRef, dimensionScores: result.dimensionScores });
+    }
+
+    const judgeConfigHash = computeJudgeConfigHash(this.committee);
+
+    // All judges failed → honest fallback result, never crash the run.
+    if (outcomes.length === 0) {
+      return {
+        runId: transcript.id,
+        scenarioName: transcript.scenarioName,
+        overallScore: 0,
+        passed: false,
+        dimensionScores: {},
+        summary: 'Evaluation failed: every judge in the committee errored. See logs for details.',
+        judgeModel: committeeLabel(this.committee),
+        evaluatedAt: new Date().toISOString(),
+        judgeModels: specs.map((s) => s.modelId),
+        judges: [],
+        judgeBreakdown: [],
+        judgeTokenInputEstimate: 0,
+        judgeTokenOutputEstimate: 0,
+        judgeTokenTotalEstimate: 0,
+        judgeAgreement: 0,
+        requiresHumanReview: true,
+        judgeConfigHash,
+        scenarioType: isSecurity ? 'security' : 'quality',
+      };
+    }
+
+    const { dimensionScores, judgeAgreement, requiresHumanReview } = aggregateMemberScores(
+      outcomes,
+      this.committee.disagreementThreshold,
+    );
+    const { overallScore, passed } = computeOverallAndPass(dimensionScores, isSecurity);
+
+    const failingDims = Object.entries(dimensionScores)
+      .filter(([, ds]) => ds.score < 6)
+      .sort(([, a], [, b]) => a.score - b.score)
+      .slice(0, 3)
+      .map(([id, ds]) => `${id.replace(/_/g, ' ')} (${ds.score}/10)`)
+      .join(', ');
+    const disagreeNote = requiresHumanReview ? ' Judges disagreed — flagged for review.' : '';
+    const summary = passed
+      ? `Overall score: ${overallScore.toFixed(1)}/10. PASS (${outcomes.length}-judge committee).${disagreeNote}`
+      : `Overall score: ${overallScore.toFixed(1)}/10. FAIL. Low scores: ${failingDims || 'see dimension breakdown'}.${disagreeNote}`;
+
+    return {
+      runId: transcript.id,
+      scenarioName: transcript.scenarioName,
+      overallScore: Math.round(overallScore * 10) / 10,
+      passed,
+      dimensionScores,
+      summary,
+      judgeModel: committeeLabel(this.committee),
+      evaluatedAt: new Date().toISOString(),
+      judgeModels: judges.map((j) => j.modelId),
+      judges,
+      judgeBreakdown: breakdown,
+      judgeTokenInputEstimate: inputTokens,
+      judgeTokenOutputEstimate: outputTokens,
+      judgeTokenTotalEstimate: inputTokens + outputTokens,
+      judgeAgreement,
+      requiresHumanReview,
+      judgeConfigHash,
+      scenarioType: isSecurity ? 'security' : 'quality',
+    };
+  }
+}
