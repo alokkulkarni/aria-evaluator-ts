@@ -43,6 +43,9 @@ export interface JudgeCommitteeConfig {
 export const DEFAULT_DISAGREEMENT_THRESHOLD = 2.0;
 export const DEFAULT_OPENAI_JUDGE_MODEL = 'gpt-4o';
 export const DEFAULT_NOVA_JUDGE_MODEL = 'amazon.nova-pro-v1:0';
+export const DEFAULT_ANTHROPIC_JUDGE_MODEL = 'claude-sonnet-4-5';
+// Gemini judge default — overridable via GEMINI_JUDGE_MODEL (use the latest 3.x).
+export const DEFAULT_GEMINI_JUDGE_MODEL = 'gemini-3.0-pro';
 
 type Env = Record<string, string | undefined>;
 
@@ -133,11 +136,16 @@ export function assessVendorDiversity(judges: Array<Pick<JudgeSpec, 'provider' |
 }
 
 /**
- * Build the default 3-judge cross-vendor committee:
- *   [ Bedrock generalist (Claude) , OpenAI GPT (if available) , Bedrock Nova ].
- * The GPT slot is included only when OpenAI credentials are present, so the
- * committee degrades gracefully (Claude + Nova → still cross-family; a single
- * surviving judge behaves exactly like the legacy single-judge pipeline).
+ * Build the default committee automatically from whatever providers have
+ * credentials — one generalist judge per available API provider, so the panel
+ * spans as many distinct vendors as possible (the cross-vendor design that
+ * mitigates self-enhancement bias). No manual model selection required.
+ *
+ * Bedrock is always available (AWS creds) and contributes Amazon Nova, so the
+ * Anthropic slot can come from the direct Anthropic API when that key is present
+ * (falling back to Claude-via-Bedrock otherwise). `capCommittee` later trims to
+ * the plan's max-judge count. Composition is deterministic for a given set of
+ * credentials so repeated runs stay comparable (baseline drift).
  */
 export function buildDefaultCommittee(params: {
   bedrockModelId: string;
@@ -147,15 +155,30 @@ export function buildDefaultCommittee(params: {
   disagreementThreshold: number;
   availableProviders: Set<JudgeProviderId>;
 }): JudgeCommitteeConfig {
-  const judges: JudgeSpec[] = [
-    { id: 'bedrock-generalist', provider: 'bedrock', modelId: params.bedrockModelId, role: 'generalist' },
-  ];
+  const ap = params.availableProviders;
+  const judges: JudgeSpec[] = [];
 
-  if (params.availableProviders.has('openai')) {
-    judges.push({ id: 'openai-gpt', provider: 'openai', modelId: DEFAULT_OPENAI_JUDGE_MODEL, role: 'generalist' });
+  // Amazon (via Bedrock — always available).
+  judges.push({ id: 'bedrock-nova', provider: 'bedrock', modelId: DEFAULT_NOVA_JUDGE_MODEL, role: 'generalist' });
+
+  // Anthropic — prefer the direct API key; otherwise Claude via Bedrock.
+  if (ap.has('anthropic')) {
+    judges.push({ id: 'anthropic-claude', provider: 'anthropic', modelId: DEFAULT_ANTHROPIC_JUDGE_MODEL, role: 'generalist' });
+  } else {
+    judges.push({ id: 'bedrock-claude', provider: 'bedrock', modelId: params.bedrockModelId, role: 'generalist' });
   }
 
-  judges.push({ id: 'bedrock-nova', provider: 'bedrock', modelId: DEFAULT_NOVA_JUDGE_MODEL, role: 'generalist' });
+  // OpenAI (direct, or Azure OpenAI deployment if that's what's configured).
+  if (ap.has('openai')) {
+    judges.push({ id: 'openai-gpt', provider: 'openai', modelId: DEFAULT_OPENAI_JUDGE_MODEL, role: 'generalist' });
+  } else if (ap.has('azure-openai')) {
+    judges.push({ id: 'azure-openai', provider: 'azure-openai', modelId: process.env['AZURE_OPENAI_JUDGE_DEPLOYMENT']?.trim() || DEFAULT_OPENAI_JUDGE_MODEL, role: 'generalist' });
+  }
+
+  // Google.
+  if (ap.has('gemini')) {
+    judges.push({ id: 'gemini', provider: 'gemini', modelId: process.env['GEMINI_JUDGE_MODEL']?.trim() || DEFAULT_GEMINI_JUDGE_MODEL, role: 'generalist' });
+  }
 
   return {
     judges,

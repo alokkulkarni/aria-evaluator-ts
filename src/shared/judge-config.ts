@@ -95,17 +95,17 @@ const MODEL_REGISTRY: Record<string, {
     regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
   },
 
-  // ── Amazon Nova (require cross-region inference profiles) ─────────────────
+  // ── Amazon Nova (on-demand, bare ID — invocable directly, no geo profile) ──
   'amazon.nova-pro-v1:0': {
-    label: 'Nova Pro', vendor: 'amazon', inferenceProfile: true,
+    label: 'Nova Pro', vendor: 'amazon', inferenceProfile: false,
     regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
   },
   'amazon.nova-lite-v1:0': {
-    label: 'Nova Lite', vendor: 'amazon', inferenceProfile: true,
+    label: 'Nova Lite', vendor: 'amazon', inferenceProfile: false,
     regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
   },
   'amazon.nova-micro-v1:0': {
-    label: 'Nova Micro', vendor: 'amazon', inferenceProfile: true,
+    label: 'Nova Micro', vendor: 'amazon', inferenceProfile: false,
     regions: ['eu-west-2', 'us-east-1', 'us-west-2', 'ap-northeast-1'],
   },
 

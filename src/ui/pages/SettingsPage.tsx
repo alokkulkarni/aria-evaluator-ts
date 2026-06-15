@@ -3,14 +3,9 @@ import { apiFetch } from '../lib/api.js';
 import {
   DEFAULT_JUDGE_MAX_TOKENS,
   DEFAULT_JUDGE_MODEL_ID,
-  DEFAULT_JUDGE_REGION,
   DEFAULT_JUDGE_SYSTEM_PROMPT,
   DEFAULT_JUDGE_TEMPERATURE,
-  JUDGE_GUARDRAILS,
-  JUDGE_MODEL_GROUPS,
-  JUDGE_SUPPORTED_REGIONS,
   LEGACY_JUDGE_SYSTEM_PROMPTS,
-  isKnownJudgeModel,
 } from '../../shared/judge-config.js';
 import {
   BrandAwsIcon,
@@ -848,210 +843,6 @@ function ProviderSubSection({
   );
 }
 
-function JudgeLlmSection({
-  settings,
-  onUpdate,
-  judgeModelGroups,
-  onRegionChange,
-}: {
-  settings: SettingsMap;
-  onUpdate: (key: string, value: string) => void;
-  judgeModelGroups: typeof JUDGE_MODEL_GROUPS;
-  onRegionChange: (region: string) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const modelId = settings[JUDGE_MODEL_FIELD_KEY] ?? DEFAULT_JUDGE_MODEL_ID;
-  const useCustomModel = (settings[JUDGE_USE_CUSTOM_MODEL_FIELD_KEY] ?? 'false') === 'true';
-  const customModelId = settings[JUDGE_CUSTOM_MODEL_FIELD_KEY] ?? '';
-  const temperature = settings[JUDGE_TEMPERATURE_FIELD_KEY] ?? DEFAULT_JUDGE_TEMPERATURE;
-  const maxTokens = settings[JUDGE_MAX_TOKENS_FIELD_KEY] ?? DEFAULT_JUDGE_MAX_TOKENS;
-  const systemPrompt = settings[JUDGE_SYSTEM_PROMPT_FIELD_KEY] ?? DEFAULT_JUDGE_SYSTEM_PROMPT;
-  const region = settings[JUDGE_REGION_FIELD_KEY] ?? DEFAULT_JUDGE_REGION;
-  const activeModel = useCustomModel && customModelId ? customModelId : modelId;
-
-  return (
-    <section className="card space-y-5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-4 text-left"
-      >
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Judge LLM</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Model, temperature, and prompt</h3>
-          <p className="mt-1 text-sm text-slate-500">
-            Changes apply to the next run immediately. A custom model ID overrides the preset when filled.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white">
-            Bedrock
-          </span>
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-            {open ? 'Collapse' : 'Expand'}
-          </span>
-        </div>
-      </button>
-
-      {open ? (
-        <>
-          {/* AWS Region — shown first so model list updates to match */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label className="flex flex-col gap-1">
-              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-                AWS Region
-                <HintTooltip hint="The AWS region where Bedrock is called for Judge. Changing this updates the available model list and applies the correct inference profile prefix at runtime." />
-              </span>
-              <select
-                value={region}
-                onChange={(e) => {
-                  onUpdate(JUDGE_REGION_FIELD_KEY, e.target.value);
-                  onRegionChange(e.target.value);
-                }}
-              >
-                {JUDGE_SUPPORTED_REGIONS.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label className="flex flex-col gap-1">
-              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-                Preset model
-                <HintTooltip hint="Choose a common Amazon Bedrock text model. You can override it with a custom model ID below." />
-              </span>
-              <select
-                value={isKnownJudgeModel(modelId) ? modelId : DEFAULT_JUDGE_MODEL_ID}
-                onChange={(e) => {
-                  onUpdate(JUDGE_MODEL_FIELD_KEY, e.target.value);
-                  onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, '');
-                }}
-              >
-                {judgeModelGroups.map((group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.options.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-                Custom model ID
-                <HintTooltip hint="Optional. Enable the checkbox to use an imported or custom Bedrock model ID instead of the preset." />
-              </span>
-              <label className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                <input
-                  type="checkbox"
-                  checked={useCustomModel}
-                  onChange={(e) => onUpdate(JUDGE_USE_CUSTOM_MODEL_FIELD_KEY, e.target.checked ? 'true' : 'false')}
-                />
-                Use custom model ID
-              </label>
-              <input
-                type="text"
-                value={customModelId}
-                onChange={(e) => onUpdate(JUDGE_CUSTOM_MODEL_FIELD_KEY, e.target.value)}
-                placeholder="Enter a Bedrock model ID"
-                readOnly={!useCustomModel}
-                title={useCustomModel ? 'Custom model ID' : 'Enable the checkbox to edit'}
-              />
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-                Temperature
-                <HintTooltip hint="Lower values make the judge stricter and more deterministic. Defaults to 0." />
-              </span>
-              <input
-                type="number"
-                min="0"
-                max="2"
-                step="0.1"
-                value={temperature}
-                onChange={(e) => onUpdate(JUDGE_TEMPERATURE_FIELD_KEY, e.target.value)}
-              />
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-                Max tokens
-                <HintTooltip hint="Maximum output tokens for each judge call. Defaults to 2000." />
-              </span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={maxTokens}
-                onChange={(e) => onUpdate(JUDGE_MAX_TOKENS_FIELD_KEY, e.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 space-y-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Configured guardrails</p>
-              <p className="mt-1 text-xs text-slate-500">
-                These are part of the default system prompt and are sent to Bedrock on every judge call.
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                The app also adds run-specific dimension instructions for each evaluation.
-              </p>
-            </div>
-            <ul className="space-y-1.5 text-sm text-slate-700">
-              {JUDGE_GUARDRAILS.map((rule) => (
-                <li key={rule} className="flex gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-cyan-500" />
-                  <span>{rule}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <label className="flex flex-col gap-1">
-            <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-              System prompt
-              <HintTooltip hint="This exact text is sent as the judge system prompt. It is editable and takes effect on the next run." />
-            </span>
-            <textarea
-              rows={14}
-              value={systemPrompt}
-              onChange={(e) => onUpdate(JUDGE_SYSTEM_PROMPT_FIELD_KEY, e.target.value)}
-              className="min-h-[280px] font-mono text-xs leading-6"
-            />
-          </label>
-        </>
-      ) : (
-        <div className="grid gap-3 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Model</p>
-            <p className="mt-1 text-sm font-medium text-slate-900 truncate">{activeModel}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Temperature</p>
-            <p className="mt-1 text-sm font-medium text-slate-900">{temperature}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Max tokens</p>
-            <p className="mt-1 text-sm font-medium text-slate-900">{maxTokens}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Prompt</p>
-            <p className="mt-1 text-sm font-medium text-slate-900">Configured</p>
-            <p className="mt-1 text-[11px] text-slate-500">
-              {useCustomModel ? 'Custom override enabled' : 'Preset model in use'}
-            </p>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
 // ── Judge committee (cross-vendor) ─────────────────────────────────────────────
 
 const JUDGE_PROVIDER_FIELDS: FieldDef[] = [
@@ -1204,7 +995,6 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [judgeModelGroups, setJudgeModelGroups] = useState(JUDGE_MODEL_GROUPS);
   const savedJudgeSettingsSignatureRef = useRef<string>('');
   const loadedJudgeSettingsSignatureRef = useRef<string>('');
 
@@ -1215,25 +1005,7 @@ export function SettingsPage() {
       })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false));
-
-    // Fetch judge models separately with fallback
-    apiFetch('/api/settings/judge-models')
-      .then((d: { region: string; models: any[] }) => {
-        setJudgeModelGroups(d.models ?? JUDGE_MODEL_GROUPS);
-      })
-      .catch(() => {
-        // Silently fall back to default models if endpoint fails
-        setJudgeModelGroups(JUDGE_MODEL_GROUPS);
-      });
   }, []);
-
-  function fetchJudgeModelsForRegion(region: string): void {
-    apiFetch(`/api/settings/judge-models?region=${encodeURIComponent(region)}`)
-      .then((d: { region: string; models: any[] }) => {
-        setJudgeModelGroups(d.models ?? JUDGE_MODEL_GROUPS);
-      })
-      .catch(() => setJudgeModelGroups(JUDGE_MODEL_GROUPS));
-  }
 
   useEffect(() => {
     if (loading) return;
@@ -1302,8 +1074,6 @@ export function SettingsPage() {
           </p>
         </div>
       </section>
-
-      <JudgeLlmSection settings={settings} onUpdate={updateValue} judgeModelGroups={judgeModelGroups} onRegionChange={fetchJudgeModelsForRegion} />
 
       <JudgeCommitteeSection settings={settings} onUpdate={updateValue} />
 

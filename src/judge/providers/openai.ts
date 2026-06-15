@@ -24,7 +24,14 @@ function client(): OpenAI {
   const apiKey = process.env['OPENAI_API_KEY']?.trim();
   if (!apiKey) throw new MissingCredentialsError('openai', 'OPENAI_API_KEY is not set');
   if (!cached) {
-    cached = new OpenAI({ apiKey, baseURL: process.env['OPENAI_BASE_URL']?.trim() || undefined });
+    // dangerouslyAllowBrowser: this runs server-side (key from env / Secrets
+    // Manager, never sent to a browser); the OpenAI SDK's browser-environment
+    // guard misfires in the bundled runtime, so we opt in explicitly.
+    cached = new OpenAI({
+      apiKey,
+      baseURL: process.env['OPENAI_BASE_URL']?.trim() || undefined,
+      dangerouslyAllowBrowser: true,
+    });
   }
   return cached;
 }
