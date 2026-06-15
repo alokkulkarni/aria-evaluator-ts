@@ -13,9 +13,12 @@ import {
   assessVendorDiversity,
   committeeLabel,
   computeJudgeConfigHash,
+  routeJudges,
+  scenarioCategory,
   type JudgeCommitteeConfig,
   type JudgeProviderId,
   type JudgeSpec,
+  type ScenarioCategory,
 } from '../shared/judge-committee.js';
 import { estimateCost } from '../lib/model-pricing.js';
 import { JudgeMember } from './llm-judge.js';
@@ -23,7 +26,7 @@ import { aggregateMemberScores, computeOverallAndPass, type MemberOutcome } from
 import { availableProviders, createJudgeProvider } from './providers/factory.js';
 import type { JudgeProvider } from './providers/types.js';
 
-type ScenarioInput = Pick<Scenario, 'expected_escalation' | 'escalation_reason' | 'escalation_policy' | 'attack_type'>;
+type ScenarioInput = Pick<Scenario, 'expected_escalation' | 'escalation_reason' | 'escalation_policy' | 'attack_type' | 'domain'>;
 
 export interface JudgePanelOptions {
   /** Override provider construction (used by tests). */
@@ -63,8 +66,12 @@ export class JudgePanel {
     this.weights = opts.weights ?? parseWeightsEnv();
   }
 
-  /** The judges that will actually run (credentialed providers; calibration-blocked judges dropped). */
-  activeJudges(): JudgeSpec[] {
+  /**
+   * The judges that will actually run: credentialed providers, calibration-blocked
+   * judges dropped, then specialist routing for the scenario category (additive —
+   * matching specialists + generalists). Never empty.
+   */
+  activeJudges(category: ScenarioCategory = 'generalist'): JudgeSpec[] {
     let active = this.committee.judges.filter((j) => this.available.has(j.provider));
     // Opt-in calibration: drop judges explicitly weighted 0 (blocked) — but never
     // drop the whole committee.
@@ -77,7 +84,8 @@ export class JudgePanel {
       const bedrock = this.committee.judges.find((j) => j.provider === 'bedrock');
       return bedrock ? [bedrock] : this.committee.judges.slice(0, 1);
     }
-    return active;
+    // Specialist routing (additive; routeJudges falls back to `active` if nothing matches).
+    return routeJudges(active, category);
   }
 
   async evaluate(
@@ -86,7 +94,12 @@ export class JudgePanel {
     scenario?: ScenarioInput,
   ): Promise<EvalResult> {
     const isSecurity = scenario?.attack_type != null;
-    const specs = this.activeJudges();
+    const category = scenarioCategory({ attack_type: scenario?.attack_type, domain: scenario?.domain });
+    const specs = this.activeJudges(category);
+    if (category !== 'generalist') {
+      const specialists = specs.filter((s) => (s.role ?? 'generalist') === category).length;
+      console.log(`  🎯  Routing: ${category} scenario → ${specialists} specialist(s) + ${specs.length - specialists} generalist(s)`);
+    }
     const skipped = this.committee.judges.filter((j) => !specs.includes(j));
     if (skipped.length > 0) {
       console.warn(`  ⚠  Skipping judges without credentials: ${skipped.map((j) => `${j.id}(${j.provider})`).join(', ')}`);

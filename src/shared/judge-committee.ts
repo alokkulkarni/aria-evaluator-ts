@@ -91,6 +91,30 @@ export function vendorForSpec(spec: Pick<JudgeSpec, 'provider' | 'modelId'>): st
   }
 }
 
+export type ScenarioCategory = 'security' | 'domain' | 'generalist';
+
+/** Scenario → routing category. Adversarial wins over domain. */
+export function scenarioCategory(input: { attack_type?: string | null; domain?: string | null }): ScenarioCategory {
+  if (input.attack_type) return 'security';
+  if (input.domain) return 'domain';
+  return 'generalist';
+}
+
+/**
+ * Select which committee judges run for a scenario category (specialist routing).
+ * Additive: matching specialists PLUS generalists; specialists for a *different*
+ * category are excluded. Never returns an empty set — if nothing matches (e.g. a
+ * security scenario but only domain judges configured), falls back to all judges.
+ */
+export function routeJudges<T extends Pick<JudgeSpec, 'role'>>(judges: T[], category: ScenarioCategory): T[] {
+  const matches = (j: T) => {
+    const role = j.role ?? 'generalist';
+    return role === 'generalist' || role === category;
+  };
+  const routed = judges.filter(matches);
+  return routed.length > 0 ? routed : judges;
+}
+
 export interface VendorDiversity {
   vendors: string[];
   vendorCount: number;
