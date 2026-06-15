@@ -76,7 +76,23 @@ if [[ -n "${STATE_BUCKET}" ]]; then
 fi
 
 echo "🗄️  Applying database schema…"
-npx prisma db push --skip-generate --accept-data-loss 2>&1 | sed 's/^/  /'
+if [[ -n "${STATE_BUCKET}" ]]; then
+  # Persistent environment (dev/prod, S3-backed state): apply ADDITIVE changes
+  # only. Without --accept-data-loss, `db push` refuses any change that would
+  # drop a column/table or otherwise lose data, so a deploy can NEVER silently
+  # delete existing data. A genuinely destructive change must be applied
+  # deliberately (after a backup) via a reviewed migration — `migrate deploy`.
+  if ! npx prisma db push --skip-generate 2>&1 | sed 's/^/  /'; then
+    echo "❌ Schema change would cause data loss (column/table drop or type" >&2
+    echo "   change) and was refused. Existing data is untouched and the deploy" >&2
+    echo "   is failing so the platform rolls back. Apply the change deliberately" >&2
+    echo "   via a reviewed migration after taking a backup." >&2
+    exit 1
+  fi
+else
+  # Local/ephemeral: no persisted data to protect, so reset freely to match.
+  npx prisma db push --skip-generate --accept-data-loss 2>&1 | sed 's/^/  /'
+fi
 
 echo "🚀 Starting API server on port ${API_PORT}"
 node dist/api/server.js &
