@@ -22,6 +22,25 @@ locals {
     var.max_models != "" ? [{ name = "MAX_MODELS", value = var.max_models }] : [],
     var.max_users != "" ? [{ name = "MAX_USERS", value = var.max_users }] : [],
   )
+
+  # Multi-judge committee / calibration (Phase 1–5). Local has no Secrets Manager,
+  # so provider API keys are passed as plaintext env (dev/prod use Secrets Manager).
+  judge_environment_vars = concat(
+    var.judge_committee != "" ? [{ name = "JUDGE_COMMITTEE", value = var.judge_committee }] : [],
+    var.judge_disagreement_threshold != "" ? [{ name = "JUDGE_DISAGREEMENT_THRESHOLD", value = var.judge_disagreement_threshold }] : [],
+    var.judge_weighting_enabled != "" ? [{ name = "JUDGE_WEIGHTING_ENABLED", value = var.judge_weighting_enabled }] : [],
+    var.judge_kappa_trusted != "" ? [{ name = "JUDGE_KAPPA_TRUSTED", value = var.judge_kappa_trusted }] : [],
+    var.judge_kappa_min != "" ? [{ name = "JUDGE_KAPPA_MIN", value = var.judge_kappa_min }] : [],
+    var.judge_calibration_min_samples != "" ? [{ name = "JUDGE_CALIBRATION_MIN_SAMPLES", value = var.judge_calibration_min_samples }] : [],
+    var.max_judges != "" ? [{ name = "MAX_JUDGES", value = var.max_judges }] : [],
+    var.openai_base_url != "" ? [{ name = "OPENAI_BASE_URL", value = var.openai_base_url }] : [],
+    var.azure_openai_endpoint != "" ? [{ name = "AZURE_OPENAI_ENDPOINT", value = var.azure_openai_endpoint }] : [],
+    var.azure_openai_api_version != "" ? [{ name = "AZURE_OPENAI_API_VERSION", value = var.azure_openai_api_version }] : [],
+    var.openai_api_key != "" ? [{ name = "OPENAI_API_KEY", value = var.openai_api_key }] : [],
+    var.azure_openai_api_key != "" ? [{ name = "AZURE_OPENAI_API_KEY", value = var.azure_openai_api_key }] : [],
+    var.anthropic_api_key != "" ? [{ name = "ANTHROPIC_API_KEY", value = var.anthropic_api_key }] : [],
+    var.gemini_api_key != "" ? [{ name = "GEMINI_API_KEY", value = var.gemini_api_key }] : [],
+  )
 }
 
 module "docker_local" {
@@ -38,7 +57,7 @@ module "docker_local" {
   container_port = 3001
   host_port      = var.host_port
 
-  extra_environment_vars = concat(var.extra_environment_vars, local.phase1_environment_vars, local.limit_environment_vars)
+  extra_environment_vars = concat(var.extra_environment_vars, local.phase1_environment_vars, local.limit_environment_vars, local.judge_environment_vars)
 
   # ── External Bedrock proxy ───────────────────────────────────────────────────
   # The Bedrock proxy now runs as a completely standalone service deployed with:

@@ -17,13 +17,13 @@ locals {
     enterprise_pro       = { cpu = 2048, memory = 4096, log_retention = 180, private_subnets = true, efs = true, xray = true, xray_rate = 0.1, suspend_h = 3 }
     enterprise_unlimited = { cpu = 4096, memory = 8192, log_retention = 365, private_subnets = true, efs = true, xray = true, xray_rate = 0.1, suspend_h = 3 }
   }
-  config                  = local.tier_config[var.pricing_tier]
-  suspend_threshold       = var.suspend_threshold_hours_override > 0 ? var.suspend_threshold_hours_override : local.config.suspend_h
-  log_retention_days      = var.log_retention_days_override > 0 ? var.log_retention_days_override : local.config.log_retention
-  name_prefix             = "${var.app_name}-${var.environment}-${var.tenant_id}"
-  availability_zones      = slice(data.aws_availability_zones.available.names, 0, length(var.public_subnet_cidrs))
-  ecs_cluster_name        = "${local.name_prefix}-cluster"
-  ecs_service_name        = "${local.name_prefix}-svc"
+  config             = local.tier_config[var.pricing_tier]
+  suspend_threshold  = var.suspend_threshold_hours_override > 0 ? var.suspend_threshold_hours_override : local.config.suspend_h
+  log_retention_days = var.log_retention_days_override > 0 ? var.log_retention_days_override : local.config.log_retention
+  name_prefix        = "${var.app_name}-${var.environment}-${var.tenant_id}"
+  availability_zones = slice(data.aws_availability_zones.available.names, 0, length(var.public_subnet_cidrs))
+  ecs_cluster_name   = "${local.name_prefix}-cluster"
+  ecs_service_name   = "${local.name_prefix}-svc"
   # Truncate tenant_id to 8 chars in the bucket suffix — the full ID is
   # already encoded in short_name via md5(), so tenant uniqueness across
   # buckets is preserved. Without truncation, 24-char tenant_id + 6-char
@@ -109,10 +109,14 @@ module "iam" {
   aws_account_id      = data.aws_caller_identity.current.account_id
   connect_instance_id = var.connect_instance_id
   heartbeat_table_arn = var.heartbeat_table_arn
-  secrets_arns        = compact(var.god_mode_secret_arn != "" ? [var.god_mode_secret_arn] : [])
-  god_mode_secret_arn = var.god_mode_secret_arn
-  tenant_id           = var.tenant_id
-  pricing_tier        = var.pricing_tier
+  secrets_arns = compact(concat(
+    var.god_mode_secret_arn != "" ? [var.god_mode_secret_arn] : [],
+    [for s in var.extra_secrets : s.valueFrom],
+  ))
+  execution_secret_arns = [for s in var.extra_secrets : s.valueFrom]
+  god_mode_secret_arn   = var.god_mode_secret_arn
+  tenant_id             = var.tenant_id
+  pricing_tier          = var.pricing_tier
   tags = merge(local.common_tags, {
     "aria:resource_type" = "security"
   })
@@ -218,6 +222,7 @@ module "ecs" {
   control_plane_internal_secret      = var.control_plane_internal_secret
   website_url                        = var.website_url
   extra_environment_vars             = var.extra_environment_vars
+  extra_secrets                      = var.extra_secrets
   tags = merge(local.common_tags, {
     "aria:resource_type" = "compute"
   })

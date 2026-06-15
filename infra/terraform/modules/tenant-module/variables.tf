@@ -226,6 +226,15 @@ variable "extra_environment_vars" {
   default = []
 }
 
+variable "extra_secrets" {
+  description = "Extra container secrets pulled from Secrets Manager at task start (e.g. cross-vendor judge API keys). Each entry is { name, valueFrom = <secret ARN> }. ARNs are also granted to the ECS execution + task roles."
+  type = list(object({
+    name      = string
+    valueFrom = string
+  }))
+  default = []
+}
+
 variable "enable_autoscaling" {
   description = "Enable ECS service auto-scaling for this tenant"
   type        = bool

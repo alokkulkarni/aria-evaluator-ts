@@ -32,6 +32,31 @@ locals {
   effective_image_tag = var.image_tag == "latest" ? local.default_local_image_tag : var.image_tag
 
   resolved_image_uri = local.use_prebuilt ? var.image_uri : module.docker_build[0].image_uri
+
+  # ── Multi-judge committee / calibration config (Phase 1–5) ──────────────────
+  # Optional — empty values are omitted so the app's committee/calibration
+  # defaults apply unless overridden here.
+  judge_environment_vars = concat(
+    var.judge_committee != "" ? [{ name = "JUDGE_COMMITTEE", value = var.judge_committee }] : [],
+    var.judge_disagreement_threshold != "" ? [{ name = "JUDGE_DISAGREEMENT_THRESHOLD", value = var.judge_disagreement_threshold }] : [],
+    var.judge_weighting_enabled != "" ? [{ name = "JUDGE_WEIGHTING_ENABLED", value = var.judge_weighting_enabled }] : [],
+    var.judge_kappa_trusted != "" ? [{ name = "JUDGE_KAPPA_TRUSTED", value = var.judge_kappa_trusted }] : [],
+    var.judge_kappa_min != "" ? [{ name = "JUDGE_KAPPA_MIN", value = var.judge_kappa_min }] : [],
+    var.judge_calibration_min_samples != "" ? [{ name = "JUDGE_CALIBRATION_MIN_SAMPLES", value = var.judge_calibration_min_samples }] : [],
+    var.max_judges != "" ? [{ name = "MAX_JUDGES", value = var.max_judges }] : [],
+    var.openai_base_url != "" ? [{ name = "OPENAI_BASE_URL", value = var.openai_base_url }] : [],
+    var.azure_openai_endpoint != "" ? [{ name = "AZURE_OPENAI_ENDPOINT", value = var.azure_openai_endpoint }] : [],
+    var.azure_openai_api_version != "" ? [{ name = "AZURE_OPENAI_API_VERSION", value = var.azure_openai_api_version }] : [],
+  )
+
+  # Cross-vendor judge provider API keys from Secrets Manager (values never enter
+  # TF state). The tenant module grants the ECS roles read access to these ARNs.
+  judge_secrets = concat(
+    var.openai_api_key_secret_arn != "" ? [{ name = "OPENAI_API_KEY", valueFrom = var.openai_api_key_secret_arn }] : [],
+    var.azure_openai_api_key_secret_arn != "" ? [{ name = "AZURE_OPENAI_API_KEY", valueFrom = var.azure_openai_api_key_secret_arn }] : [],
+    var.anthropic_api_key_secret_arn != "" ? [{ name = "ANTHROPIC_API_KEY", valueFrom = var.anthropic_api_key_secret_arn }] : [],
+    var.gemini_api_key_secret_arn != "" ? [{ name = "GEMINI_API_KEY", valueFrom = var.gemini_api_key_secret_arn }] : [],
+  )
 }
 
 # ── Build & push evaluator Docker image to ECR ────────────────────────────────
@@ -109,7 +134,10 @@ module "tenant" {
     var.max_scenarios_per_run != "" ? [{ name = "MAX_SCENARIOS_PER_RUN", value = var.max_scenarios_per_run }] : [],
     var.max_models != "" ? [{ name = "MAX_MODELS", value = var.max_models }] : [],
     var.max_users != "" ? [{ name = "MAX_USERS", value = var.max_users }] : [],
+    local.judge_environment_vars,
   )
+
+  extra_secrets = local.judge_secrets
 
   tags = var.tags
 }
@@ -140,6 +168,10 @@ module "cloudtrail" {
   s3_log_retention_days         = 365
   alert_sns_topic_arn           = module.tenant.sns_topic_arn
   enable_cis_alarms             = var.alert_email != ""
+
+  # Reuse the env's existing teardown switch so the CloudTrail log bucket is
+  # emptied on destroy alongside the tenant S3 buckets.
+  force_destroy = var.s3_force_destroy
 
   tags = var.tags
 }

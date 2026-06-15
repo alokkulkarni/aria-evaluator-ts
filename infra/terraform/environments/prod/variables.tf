@@ -306,3 +306,77 @@ variable "max_users" {
   type        = string
   default     = ""
 }
+
+# ── Multi-judge committee / calibration (Phase 1–5) ──────────────────────────
+variable "judge_committee" {
+  description = "JUDGE_COMMITTEE: JSON committee spec. Empty = default 3-judge cross-vendor committee."
+  type        = string
+  default     = ""
+}
+variable "judge_disagreement_threshold" {
+  description = "JUDGE_DISAGREEMENT_THRESHOLD (0–10). Empty = app default (2)."
+  type        = string
+  default     = ""
+}
+variable "judge_weighting_enabled" {
+  description = "JUDGE_WEIGHTING_ENABLED: 'true' to enable calibration-weighted committee scoring."
+  type        = string
+  default     = ""
+}
+variable "judge_kappa_trusted" {
+  description = "JUDGE_KAPPA_TRUSTED threshold. Empty = app default (0.8)."
+  type        = string
+  default     = ""
+}
+variable "judge_kappa_min" {
+  description = "JUDGE_KAPPA_MIN threshold. Empty = app default (0.6)."
+  type        = string
+  default     = ""
+}
+variable "judge_calibration_min_samples" {
+  description = "JUDGE_CALIBRATION_MIN_SAMPLES before a judge is gated. Empty = app default (20)."
+  type        = string
+  default     = ""
+}
+variable "max_judges" {
+  description = "Override MAX_JUDGES committee-size cap (empty = pricing-tier default)."
+  type        = string
+  default     = ""
+}
+variable "openai_base_url" {
+  description = "OPENAI_BASE_URL override for OpenAI-compatible gateways (optional)."
+  type        = string
+  default     = ""
+}
+variable "azure_openai_endpoint" {
+  description = "AZURE_OPENAI_ENDPOINT for the Azure OpenAI judge provider (optional)."
+  type        = string
+  default     = ""
+}
+variable "azure_openai_api_version" {
+  description = "AZURE_OPENAI_API_VERSION (optional; app default 2024-10-21)."
+  type        = string
+  default     = ""
+}
+
+# Cross-vendor judge provider API keys — Secrets Manager ARNs (values never in TF state).
+variable "openai_api_key_secret_arn" {
+  description = "Secrets Manager ARN holding the OpenAI API key (injected as OPENAI_API_KEY)."
+  type        = string
+  default     = ""
+}
+variable "azure_openai_api_key_secret_arn" {
+  description = "Secrets Manager ARN holding the Azure OpenAI API key (injected as AZURE_OPENAI_API_KEY)."
+  type        = string
+  default     = ""
+}
+variable "anthropic_api_key_secret_arn" {
+  description = "Secrets Manager ARN holding the Anthropic API key (injected as ANTHROPIC_API_KEY)."
+  type        = string
+  default     = ""
+}
+variable "gemini_api_key_secret_arn" {
+  description = "Secrets Manager ARN holding the Google Gemini API key (injected as GEMINI_API_KEY)."
+  type        = string
+  default     = ""
+}
