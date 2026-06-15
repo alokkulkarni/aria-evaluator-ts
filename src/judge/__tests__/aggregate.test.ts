@@ -47,6 +47,18 @@ describe('aggregateMemberScores', () => {
     expect(judgeAgreement).toBeLessThan(1); // spread 5 → 0.5
   });
 
+  it('applies per-judge calibration weights to the mean', () => {
+    const members: MemberOutcome[] = [
+      { judge: judgeA, dimensionScores: { correctness: ds(10) } },
+      { judge: judgeB, dimensionScores: { correctness: ds(2) } },
+    ];
+    // judgeA (id 'a') weighted 3×, judgeB (id 'b') 1× → (10*3 + 2*1)/4 = 8
+    const { dimensionScores } = aggregateMemberScores(members, 5, { a: 3, b: 1 });
+    expect(dimensionScores.correctness!.score).toBe(8);
+    // spread is still raw (unweighted): 10 − 2 = 8
+    expect(dimensionScores.correctness!.spread).toBe(8);
+  });
+
   it('unions dimensions across members that scored different sets', () => {
     const members: MemberOutcome[] = [
       { judge: judgeA, dimensionScores: { correctness: ds(8) } },

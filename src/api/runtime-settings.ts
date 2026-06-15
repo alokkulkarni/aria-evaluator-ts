@@ -37,6 +37,11 @@ export const EDITABLE_SETTING_KEYS = [
   // Multi-judge committee (Phase 1)
   'JUDGE_COMMITTEE',
   'JUDGE_DISAGREEMENT_THRESHOLD',
+  // Calibration (Phase 3)
+  'JUDGE_WEIGHTING_ENABLED',
+  'JUDGE_KAPPA_TRUSTED',
+  'JUDGE_KAPPA_MIN',
+  'JUDGE_CALIBRATION_MIN_SAMPLES',
   // Cross-vendor judge provider credentials
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
@@ -301,6 +306,25 @@ export function getJudgeCommitteeConfig(): JudgeCommitteeConfig {
     maxTokens: j.maxTokens ?? base.maxTokens,
   }));
   return committee;
+}
+
+export function isJudgeWeightingEnabled(): boolean {
+  return (getEffectiveSettings()['JUDGE_WEIGHTING_ENABLED']?.trim().toLowerCase() ?? '') === 'true';
+}
+
+export interface CalibrationThresholds {
+  trusted: number;
+  min: number;
+  minSamples: number;
+}
+
+export function getCalibrationThresholds(): CalibrationThresholds {
+  const effective = getEffectiveSettings();
+  return {
+    trusted: parseNumberSetting(effective['JUDGE_KAPPA_TRUSTED'], 0.8),
+    min: parseNumberSetting(effective['JUDGE_KAPPA_MIN'], 0.6),
+    minSamples: Math.max(1, Math.round(parseNumberSetting(effective['JUDGE_CALIBRATION_MIN_SAMPLES'], 20))),
+  };
 }
 
 export function saveSettings(partial: Record<string, unknown>): Record<EditableSettingKey, string> {

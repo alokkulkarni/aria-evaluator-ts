@@ -10,6 +10,7 @@ import {
   DEFAULT_JUDGE_TEMPERATURE,
 } from '../shared/judge-config.js';
 import {
+  assessVendorDiversity,
   committeeLabel,
   computeJudgeConfigHash,
   type JudgeCommitteeConfig,
@@ -29,22 +30,48 @@ export interface JudgePanelOptions {
   createProvider?: (provider: JudgeProviderId) => JudgeProvider;
   /** Override which providers are considered credentialed (used by tests). */
   availableProviders?: Set<JudgeProviderId>;
+  /** Calibrated weights keyed by judge modelId (opt-in). Overrides JUDGE_WEIGHTS env. */
+  weights?: Record<string, number>;
+}
+
+function parseWeightsEnv(): Record<string, number> {
+  const raw = process.env['JUDGE_WEIGHTS'];
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, number | { weight?: number }>;
+    const out: Record<string, number> = {};
+    for (const [modelId, value] of Object.entries(parsed)) {
+      out[modelId] = typeof value === 'number' ? value : value?.weight ?? 1;
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 export class JudgePanel {
   private readonly committee: JudgeCommitteeConfig;
   private readonly createProvider: (provider: JudgeProviderId) => JudgeProvider;
   private readonly available: Set<JudgeProviderId>;
+  /** modelId → calibrated weight. Empty = equal-weight (Phase 1 default). */
+  private readonly weights: Record<string, number>;
 
   constructor(committee: JudgeCommitteeConfig, opts: JudgePanelOptions = {}) {
     this.committee = committee;
     this.createProvider = opts.createProvider ?? createJudgeProvider;
     this.available = opts.availableProviders ?? availableProviders();
+    this.weights = opts.weights ?? parseWeightsEnv();
   }
 
-  /** The judges that will actually run (credentialed providers only). */
+  /** The judges that will actually run (credentialed providers; calibration-blocked judges dropped). */
   activeJudges(): JudgeSpec[] {
-    const active = this.committee.judges.filter((j) => this.available.has(j.provider));
+    let active = this.committee.judges.filter((j) => this.available.has(j.provider));
+    // Opt-in calibration: drop judges explicitly weighted 0 (blocked) — but never
+    // drop the whole committee.
+    if (Object.keys(this.weights).length > 0) {
+      const nonBlocked = active.filter((j) => (this.weights[j.modelId] ?? 1) > 0);
+      if (nonBlocked.length > 0) active = nonBlocked;
+    }
     if (active.length === 0) {
       // Defensive fallback: never run with zero judges — use any Bedrock member.
       const bedrock = this.committee.judges.find((j) => j.provider === 'bedrock');
@@ -65,6 +92,16 @@ export class JudgePanel {
       console.warn(`  ⚠  Skipping judges without credentials: ${skipped.map((j) => `${j.id}(${j.provider})`).join(', ')}`);
     }
     console.log(`  🧑‍⚖️  Judge committee: ${specs.map((s) => `${s.id}/${s.provider}:${s.modelId}`).join(', ')}`);
+
+    // Cross-family guard: warn when the active committee is single-vendor, which
+    // re-introduces the self-enhancement bias the committee exists to avoid.
+    const diversity = assessVendorDiversity(specs);
+    if (!diversity.crossVendor && specs.length > 0) {
+      console.warn(
+        `  ⚠  Single-vendor judge committee (${diversity.vendors.join(', ')}). ` +
+          `Add a cross-vendor judge (e.g. set OPENAI_API_KEY) to mitigate self-enhancement bias.`,
+      );
+    }
 
     const shared = {
       systemPrompt: this.committee.systemPrompt,
@@ -139,9 +176,24 @@ export class JudgePanel {
       };
     }
 
+    // Map calibrated modelId-weights onto the surviving members (by judgeId).
+    const idWeights: Record<string, number> = {};
+    let weightingActive = false;
+    for (const judge of judges) {
+      const w = this.weights[judge.modelId];
+      if (w != null) {
+        idWeights[judge.id] = w;
+        weightingActive = true;
+      }
+    }
+    if (weightingActive) {
+      console.log(`  ⚖️  Calibrated weighting active: ${judges.map((j) => `${j.modelId}=${idWeights[j.id] ?? 1}`).join(', ')}`);
+    }
+
     const { dimensionScores, judgeAgreement, requiresHumanReview } = aggregateMemberScores(
       outcomes,
       this.committee.disagreementThreshold,
+      weightingActive ? idWeights : undefined,
     );
     const { overallScore, passed } = computeOverallAndPass(dimensionScores, isSecurity);
 

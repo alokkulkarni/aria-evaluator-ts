@@ -91,6 +91,23 @@ export function vendorForSpec(spec: Pick<JudgeSpec, 'provider' | 'modelId'>): st
   }
 }
 
+export interface VendorDiversity {
+  vendors: string[];
+  vendorCount: number;
+  /** True when the judges span ≥2 vendor families (mitigates self-enhancement bias). */
+  crossVendor: boolean;
+}
+
+/**
+ * Assess how many distinct vendor families a set of judges spans. A single-vendor
+ * committee risks intra-family (self-enhancement) bias — the core failure mode the
+ * multi-judge design exists to avoid.
+ */
+export function assessVendorDiversity(judges: Array<Pick<JudgeSpec, 'provider' | 'modelId'>>): VendorDiversity {
+  const vendors = [...new Set(judges.map((j) => vendorForSpec(j)))];
+  return { vendors, vendorCount: vendors.length, crossVendor: vendors.length >= 2 };
+}
+
 /**
  * Build the default 3-judge cross-vendor committee:
  *   [ Bedrock generalist (Claude) , OpenAI GPT (if available) , Bedrock Nova ].

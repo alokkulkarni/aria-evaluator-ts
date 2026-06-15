@@ -4,6 +4,7 @@ import { WorkspacePage } from './pages/WorkspacePage.js';
 import { ScenariosPage } from './pages/ScenariosPage.js';
 import { RunsPage } from './pages/RunsPage.js';
 import { ReviewQueuePage } from './pages/ReviewQueuePage.js';
+import { CalibrationPage } from './pages/CalibrationPage.js';
 import { TranscriptsPage } from './pages/TranscriptsPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
@@ -28,7 +29,7 @@ import {
 } from './components/icons.js';
 import { apiFetch } from './lib/api.js';
 
-type Page = 'workspace' | 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings' | 'users';
+type Page = 'workspace' | 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'calibration' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings' | 'users';
 
 interface AuthenticatedUser {
   id: string;
@@ -332,6 +333,7 @@ const NAV: { id: Page; label: string; icon: React.ComponentType<{ className?: st
   { id: 'scenarios', label: 'Scenarios', icon: NavScenariosIcon },
   { id: 'runs', label: 'Runs', icon: NavRunsIcon },
   { id: 'review-queue', label: 'Review Queue', icon: NavReviewQueueIcon },
+  { id: 'calibration', label: 'Calibration', icon: NavAnalysisIcon },
   { id: 'analysis', label: 'Analysis', icon: NavAnalysisIcon },
   { id: 'schedules', label: 'Schedules', icon: NavSchedulesIcon },
   { id: 'transcripts', label: 'Transcripts', icon: NavTranscriptsIcon },
@@ -494,6 +496,7 @@ export default function App() {
         {page === 'scenarios' && <ScenariosPage />}
         {page === 'runs' && <RunsPage autoOpenModal={openRunModal} onModalAutoOpened={() => setOpenRunModal(false)} />}
         {page === 'review-queue' && <ReviewQueuePage />}
+        {page === 'calibration' && <CalibrationPage />}
         {page === 'analysis' && <AnalysisPage />}
         {page === 'schedules' && <SchedulesPage />}
         {page === 'transcripts' && <TranscriptsPage initialFilename={initialTranscriptFile} />}

@@ -815,6 +815,11 @@ export function ReviewQueuePage() {
                     {r.evalResult.scenarioType && (
                       <span className="ml-1.5 text-xs text-slate-400 capitalize">({r.evalResult.scenarioType})</span>
                     )}
+                    {r.notes?.startsWith('Auto-queued') && (
+                      <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title={r.notes}>
+                        ⚠ judges disagreed
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`font-mono font-semibold tracking-tight ${scoreColor(r.evalResult.overallScore)}`}>
