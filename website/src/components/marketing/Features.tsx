@@ -1,4 +1,4 @@
-import { BarChart3, Globe, Lock, Shield, Users, Zap } from 'lucide-react'
+import { Activity, BarChart3, Globe, Lock, Scale, Shield, ShieldCheck, Users, Zap } from 'lucide-react'
 
 import { FeatureCard } from '@/components/marketing/FeatureCard'
 import { Section, SectionHeading } from '@/components/marketing/ui'
@@ -18,6 +18,12 @@ const featureCards = [
       'Every transcript is scored across 15 dimensions — from correctness and goal success to bias, escalation quality, and injection resistance.',
   },
   {
+    icon: Scale,
+    title: 'Consensus you can trust',
+    description:
+      'Instead of relying on a single opinion, every transcript is reviewed by a panel of independent AI judges. When they disagree, it is sent straight to a human to decide — so you get scores you can stand behind.',
+  },
+  {
     icon: Globe,
     title: 'Connects to your agent stack',
     description:
@@ -30,6 +36,12 @@ const featureCards = [
       'Watch runs stream live, inspect full transcripts turn by turn, and track scores, latency, and cost for every judge invocation.',
   },
   {
+    icon: Activity,
+    title: 'Catch quality drift early',
+    description:
+      'Set a baseline for how your agent should perform, and ARIA flags the moment its quality starts to slip — so regressions show up in testing, not in front of your customers.',
+  },
+  {
     icon: Users,
     title: 'Team-ready governance',
     description:
@@ -40,6 +52,12 @@ const featureCards = [
     title: 'Compliance built in',
     description:
       'Validate FCA Consumer Duty vulnerability handling, bias and fairness, and escalation policy adherence with regulator-ready reports.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Secure by design',
+    description:
+      'Your conversations and results are encrypted every step of the way and kept in isolated, private infrastructure — enterprise-grade protection, with nothing extra for you to set up.',
   },
 ]
 
