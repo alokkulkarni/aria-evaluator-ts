@@ -690,5 +690,11 @@ resource "aws_ecs_service" "auth" {
 
   tags = local.common_tags
 
-  depends_on = [aws_lb_listener_rule.origin_verified]
+  # Wait for NAT egress before placing tasks in private subnets, otherwise the
+  # first deployment can't pull its image from ECR and trips the circuit breaker.
+  depends_on = [
+    aws_lb_listener_rule.origin_verified,
+    aws_route.private_nat,
+    aws_route_table_association.private,
+  ]
 }
