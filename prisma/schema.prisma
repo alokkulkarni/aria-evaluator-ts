@@ -16,6 +16,20 @@ model BootstrapState {
   createdAt DateTime @default(now())
 }
 
+// ─── Tenancy (Phase 0 — dormant scaffolding) ────────────────────────────────────
+// One row per customer/tenant. Populated from the control-plane tenant id at SSO
+// login (Phase 3). The `tenantId` columns below are nullable and UNENFORCED in
+// Phase 0 (the Prisma guard runs in log-only mode); they become required and
+// auto-scoped in Phase 3. See docs/MULTI_TENANT_SPEC.md.
+model Tenant {
+  id         String   @id @default(cuid())
+  externalId String?  @unique   // control-plane tenant id (cpUser.tenantId)
+  name       String?
+  status     String   @default("active") // active|suspended
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+}
+
 model User {
   id           String        @id @default(cuid())
   username     String        @unique
@@ -36,8 +50,11 @@ model User {
   baselines    Baseline[]
   experiments  Experiment[]
   schedules    Schedule[]
+  tenantId     String?       // Phase 0: dormant; required + scoped in Phase 3
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @default(now()) @updatedAt
+
+  @@index([tenantId])
 }
 
 model AuthSession {
@@ -51,9 +68,11 @@ model AuthSession {
   lastSeenAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+  tenantId  String?
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([tenantId])
 }
 
 model AuditLog {
@@ -66,9 +85,11 @@ model AuditLog {
   ipAddress   String?
   userAgent   String?
   createdAt   DateTime @default(now())
+  tenantId    String?
 
   @@index([createdAt])
   @@index([action, createdAt])
+  @@index([tenantId])
 }
 
 // ─── Scenario ─────────────────────────────────────────────────────────────────
@@ -91,9 +112,11 @@ model Scenario {
   baselines   Baseline[]
   experiments Experiment[]
   schedules   Schedule[]
+  tenantId    String?
 
   @@index([sourceRef])
   @@index([lifecycleStatus])
+  @@index([tenantId])
 }
 
 model ScenarioRevision {
@@ -132,11 +155,13 @@ model Run {
   scheduleRuns ScheduleRun[] @relation("scheduleRuns")
   telemetry    RunTelemetry?
   securityAttack SecurityAttack?
+  tenantId     String?
   createdAt    DateTime  @default(now())
 
   @@index([status, createdAt])
   @@index([scenarioId])
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model Job {
@@ -265,11 +290,13 @@ model Baseline {
   createdBy              String?
   user                   User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   notes                  String?
-  
+  tenantId               String?
+
   @@index([scenarioId])
   @@index([createdAt])
   @@index([judgeModel])
   @@index([createdBy])
+  @@index([tenantId])
 }
 
 // ─── Experiments ──────────────────────────────────────────────────────────────
@@ -286,10 +313,12 @@ model Experiment {
   updatedAt   DateTime @default(now()) @updatedAt
   legs        ExperimentLeg[]
   experimentRuns ExperimentRun[]
+  tenantId    String?
 
   @@index([scenarioId])
   @@index([status])
   @@index([createdBy])
+  @@index([tenantId])
 }
 
 model ExperimentLeg {
@@ -417,10 +446,12 @@ model Schedule {
   maxFailures       Int      @default(5)
 
   scheduleRuns      ScheduleRun[]
+  tenantId          String?
 
   @@index([createdBy, status])
   @@index([nextRunAt, status])
   @@index([status])
+  @@index([tenantId])
 }
 
 model ScheduleRun {
@@ -452,8 +483,10 @@ model CalibrationDataset {
 
   labels        CalibrationLabel[]
   calibrations  JudgeCalibration[]
+  tenantId      String?
 
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model CalibrationLabel {
