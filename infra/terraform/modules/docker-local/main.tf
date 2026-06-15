@@ -130,6 +130,17 @@ resource "null_resource" "build_app_image" {
   triggers = {
     dockerfile_sha   = filesha1("${local.effective_build_context}/${var.app_dockerfile}")
     package_lock_sha = filesha1("${local.effective_build_context}/package-lock.json")
+    entrypoint_sha   = filesha1("${local.effective_build_context}/infra/docker/ecs-entrypoint.sh")
+    # Rebuild when app source, the Prisma schema, or migrations change. These are
+    # baked into the image via `COPY . .`, but only Dockerfile/package-lock were
+    # tracked before — so code-only edits were invisible to `terraform apply`.
+    # prisma/data is intentionally excluded: it holds the local dev SQLite file,
+    # which the running container writes to and would cause spurious rebuilds.
+    source_sha = sha1(join("", concat(
+      [for f in fileset(local.effective_build_context, "src/**") : filesha1("${local.effective_build_context}/${f}")],
+      [filesha1("${local.effective_build_context}/prisma/schema.prisma")],
+      [for f in fileset(local.effective_build_context, "prisma/migrations/**") : filesha1("${local.effective_build_context}/${f}")],
+    )))
   }
 
   provisioner "local-exec" {

@@ -77,20 +77,28 @@ fi
 
 echo "🗄️  Applying database schema…"
 if [[ -n "${STATE_BUCKET}" ]]; then
-  # Persistent environment (dev/prod, S3-backed state): apply ADDITIVE changes
-  # only. Without --accept-data-loss, `db push` refuses any change that would
-  # drop a column/table or otherwise lose data, so a deploy can NEVER silently
-  # delete existing data. A genuinely destructive change must be applied
-  # deliberately (after a backup) via a reviewed migration — `migrate deploy`.
-  if ! npx prisma db push --skip-generate 2>&1 | sed 's/^/  /'; then
-    echo "❌ Schema change would cause data loss (column/table drop or type" >&2
-    echo "   change) and was refused. Existing data is untouched and the deploy" >&2
-    echo "   is failing so the platform rolls back. Apply the change deliberately" >&2
-    echo "   via a reviewed migration after taking a backup." >&2
+  # Persistent environment (dev/prod, S3-backed state): apply reviewed migrations
+  # with `migrate deploy`. Migrations are authored SQL, so data-preserving
+  # changes (renames, type changes, backfills) apply automatically and nothing is
+  # ever silently dropped — unlike `db push`, which can only drop to match the
+  # schema. A database first created with `db push` (tables present, no migration
+  # history) is adopted into the baseline so deploy doesn't try to recreate it.
+  db_has_table() {
+    printf 'SELECT 1 FROM "%s" LIMIT 1;' "$1" \
+      | npx prisma db execute --schema prisma/schema.prisma --stdin >/dev/null 2>&1
+  }
+  if ! db_has_table "_prisma_migrations" && db_has_table "User"; then
+    echo "  Adopting existing database into the migration baseline (0_init)…"
+    npx prisma migrate resolve --applied 0_init 2>&1 | sed 's/^/  /'
+  fi
+  if ! npx prisma migrate deploy 2>&1 | sed 's/^/  /'; then
+    echo "❌ Database migration failed (see above). The deploy is failing so the" >&2
+    echo "   platform rolls back; existing data is left untouched. Fix the" >&2
+    echo "   migration and redeploy." >&2
     exit 1
   fi
 else
-  # Local/ephemeral: no persisted data to protect, so reset freely to match.
+  # Local/ephemeral: fast iteration — reset freely to match the schema directly.
   npx prisma db push --skip-generate --accept-data-loss 2>&1 | sed 's/^/  /'
 fi
 
