@@ -64,6 +64,157 @@ User Request (React UI / CLI / API)
 
 ---
 
+## Infrastructure Architecture (AWS + Local)
+
+ARIA is a **multi-tenant SaaS**: a public marketing/auth website, a **control-plane** that provisions an isolated per-tenant copy of the evaluator app, and the **evaluator app** itself (Express + React + LLM judge). All infrastructure is Terraform IaC under `infra/terraform/` (reusable `modules/` + per-environment roots under `environments/`). Primary region is **eu-west-2**; CloudFront / WAF / ACM live in **us-east-1**. The diagrams follow the AWS layered convention (Edge → VPC & subnet tiers → Compute → Data → Security/Observability).
+
+### Environments
+
+| Environment (dir) | Purpose | Key resources |
+|---|---|---|
+| `environments/local`, `*-local` | Local dev — **pure Docker, no AWS** | Evaluator / control-plane / website / bedrock-proxy containers |
+| `bootstrap/` | Account foundation (run once) | TF-state S3, lock + `aria-heartbeats` DynamoDB, KMS, ECR repos |
+| `environments/control-plane-prod` | Control plane | VPC `10.62.0.0/16`, internal ALB, ECS, DynamoDB, provisioning (CodeBuild + Lambda + API GW) |
+| `environments/website-prod` | Public website + auth | VPC `10.61.0.0/16`, CloudFront+S3, ALB+ECS auth-backend, Cognito |
+| `environments/connectivity-prod` | Cross-app link | VPC peering + routes + SG rule (website ↔ control-plane) |
+| `environments/prod` (+ `tenant-module`) | One provisioned tenant instance | Per-tenant VPC, ALB, ECS evaluator app, S3, Redis |
+| `environments/saas-platform` | Account security | GuardDuty + Security Hub + findings bucket |
+| `environments/{dev,control-plane-dev,website-dev}` | Non-prod mirrors | Same shapes, smaller, `force_destroy=true` |
+
+### PROD — Platform (website + control-plane)
+
+```mermaid
+flowchart TB
+  user["End user / Browser"]
+
+  subgraph edge["Edge — CloudFront / WAF / ACM (us-east-1)"]
+    r53["Route 53 — ariaeval.io"]
+    cf["CloudFront + WAFv2 (ACM TLS)"]
+  end
+
+  subgraph region["AWS Account — region eu-west-2"]
+    s3static["S3 static site (OAC, versioned)"]
+    cognito["Cognito User Pool + Google/Apple IdP"]
+    bedrock["Amazon Bedrock — Claude judge"]
+    ct["CloudTrail + CloudWatch (CIS alarms to SNS)"]
+    sechub["GuardDuty + Security Hub (account-wide)"]
+
+    subgraph webvpc["Website VPC 10.61.0.0/16 — 3 public subnets / 3 AZ, no NAT"]
+      walb["ALB internet-facing :80 (origin-secret guard)"]
+      wsvc["ECS Fargate auth-backend Next.js :3001 x2"]
+      wsec["Secrets Manager (NextAuth / OAuth)"]
+    end
+
+    subgraph cpvpc["Control-Plane VPC 10.62.0.0/16 — 2 public + 2 private / 2 AZ, no NAT"]
+      calb["ALB internal :80 to :3002"]
+      csvc["ECS Fargate control-plane API :3002 x2 (private)"]
+      vpce["VPC Endpoints: S3, DynamoDB, ECR, Logs, STS, SecretsMgr, CodeBuild"]
+      ddb["DynamoDB user_instances + control_plane_state"]
+      cpsec["Secrets Manager + SSM (internal secret / url)"]
+    end
+
+    peer["VPC Peering 10.61 / 10.62"]
+  end
+
+  extprov["Cross-vendor judges: OpenAI / Azure / Anthropic / Gemini"]
+
+  user --> r53 --> cf
+  cf -->|"static + /_next/static/*"| s3static
+  cf -->|"/api/* + origin secret"| walb
+  walb --> wsvc
+  wsvc -->|"social login"| cognito
+  wsvc -->|"internal URL via peering"| peer
+  peer --> calb
+  calb --> csvc
+  csvc --> ddb
+  csvc -->|"IAM task role"| bedrock
+  csvc -.->|"committee keys"| extprov
+  csvc --- vpce
+  wsvc --- wsec
+  csvc --- cpsec
+```
+
+**Request path:** `Browser → Route 53 → CloudFront (+WAF)` then split by path to either the **S3 static site** (default + `/_next/static/*`) or the **auth-backend ALB** (`/api/*`, gated by a secret header CloudFront injects so the ALB rejects direct traffic). The Next.js **auth-backend** (ECS Fargate `:3001`, internet-facing ALB) brokers social login through **Cognito → Google/Apple**, and reaches the **control-plane internal ALB** over the **VPC peering** link via `CONTROL_PLANE_INTERNAL_URL`. The **control-plane API** (ECS Fargate `:3002`, private subnets, egress through **VPC interface/gateway endpoints**, no NAT) reads/writes **DynamoDB**, pulls config from **Secrets Manager/SSM**, and invokes **Bedrock** (plus optional cross-vendor judge providers) for evaluation.
+
+### PROD — Tenant provisioning & per-tenant instance
+
+```mermaid
+flowchart TB
+  user["User (authenticated, JWT)"]
+
+  subgraph cp["Control-Plane — provisioning"]
+    apigw["API Gateway HTTP API + JWT authorizer (Cognito)"]
+    plambda["Lambda provisioner (nodejs18)"]
+    cb["CodeBuild — terraform apply per user_id"]
+    uitable["DynamoDB user_instances"]
+  end
+
+  subgraph tvpc["Per-Tenant Instance VPC — one isolated stack per user"]
+    tedge["ALB HTTPS (optional CloudFront + WAF)"]
+    tecs["ECS Fargate — Evaluator App :3001 (tier-sized)"]
+    ts3["S3 tenant state bucket"]
+    tredis["ElastiCache Redis (optional)"]
+    tsusp["suspend-lambda (idle stop via heartbeat)"]
+  end
+
+  bedrock2["Amazon Bedrock (judge)"]
+
+  user --> apigw --> plambda
+  plambda -->|"StartBuild"| cb
+  plambda --> uitable
+  cb -->|"tenant-module"| tedge
+  cb --> tecs
+  cb --> ts3
+  cb --> tredis
+  cb --> tsusp
+  cb -.->|"tenant URL"| uitable
+  tedge --> tecs
+  tecs --> bedrock2
+```
+
+The control-plane exposes provisioning through an **API Gateway HTTP API** (JWT/Cognito authorizer) → **Lambda** → **CodeBuild**, which runs `terraform apply` on `environments/prod` (state key `tenants/<user_id>/terraform.tfstate`) to stand up a fully isolated **tenant stack** (`tenant-module`): its own VPC, ALB (HTTPS, optional CloudFront+WAF), **ECS Fargate running the evaluator app** (`:3001`, CPU/memory by pricing tier), S3 state, optional Redis, and a **suspend-lambda** that idles the service via the shared `aria-heartbeats` table. The resulting tenant URL is written back to the **`user_instances`** DynamoDB table. Each tenant runs the full evaluator pipeline (see *Architecture at a Glance*) in isolation.
+
+### Foundation & security (account-wide)
+
+- **`bootstrap/`** — KMS CMK, versioned **S3 Terraform-state** bucket, **DynamoDB** lock + `aria-heartbeats` tables, and two **ECR** repos (`aria-evaluator` = per-tenant image, `aria-control-plane` = control-plane image). All carry `prevent_destroy`.
+- **CloudTrail** (multi-region, log-file validation, CIS metric-filter alarms → SNS) in both the website and control-plane stacks; **GuardDuty + Security Hub** at the account level (`saas-platform`).
+- **Encryption/identity** — KMS throughout, **Secrets Manager** for app/OAuth secrets (never in TF state), least-privilege IAM task/exec roles, **WAFv2** on CloudFront, and a single `force_destroy` teardown switch per environment.
+
+### Local (Docker)
+
+```mermaid
+flowchart TB
+  dev["Developer / Browser"]
+  awscreds["~/.aws credentials (mounted read-only)"]
+  bedrockc["Amazon Bedrock (cloud) — Claude judge"]
+
+  subgraph host["Local Docker host — pure Docker, NO AWS resources"]
+    app["aria-evaluator-local :3001 (Express + React + Judge) + SQLite state volume"]
+    cpl["aria-control-plane-local :4000"]
+    webl["website-local Next.js :3000 (+ auth-backend :3001)"]
+    proxy["bedrock-proxy :8765 (stand-in agent-under-test)"]
+    redis["Redis :6379"]
+  end
+
+  dev --> app
+  dev --> webl
+  app --> redis
+  app -->|"IAM via ~/.aws"| bedrockc
+  awscreds -.-> app
+  webl -.-> cpl
+  app -.->|"optional conversation target"| proxy
+  proxy -->|"boto3 converse"| bedrockc
+```
+
+`npm run dev` runs the API (`tsx watch`, `:3001`) and Vite UI **without Docker**, against **SQLite** and a local **Redis** (`:6379`). The `*-local` Terraform environments instead bring up containers (pure Docker, **no AWS resources** — only the `kreuzwerker/docker` provider): evaluator app (`:3001`), control-plane (`:4000`), website (`:3000`), and the **bedrock-proxy** (`:8765`) which acts as a stand-in *agent-under-test*. Containers mount `~/.aws` read-only so the judge can still call **Bedrock** in the cloud.
+
+### Notes (current state)
+
+- The control-plane ECS task persists via **S3 sync + DynamoDB**; the EFS file system is provisioned but not currently mounted into the task.
+- The cross-VPC peering lives in its own **`connectivity-prod`** stack (not inside either app), so the website and control-plane each `terraform destroy` independently — destroy `connectivity-prod` first, then either app in any order.
+
+---
+
 ## Directory Structure & Responsibilities
 
 ### `/src/adapters/` — Agent Integration Layer
