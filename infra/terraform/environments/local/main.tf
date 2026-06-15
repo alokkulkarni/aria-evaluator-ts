@@ -2,7 +2,10 @@
 # Phase 1 adds JWT tokens, OAuth, and Redis-backed sessions
 locals {
   phase1_environment_vars = [
-    { name = "REDIS_HOST", value = "localhost" },
+    # Reach the host-published Redis (redis.tf publishes 6379 to the host) via
+    # host.docker.internal — NOT localhost, which inside the app container is its
+    # own loopback. Same host-gateway pattern as the local bedrock proxy.
+    { name = "REDIS_HOST", value = "host.docker.internal" },
     { name = "REDIS_PORT", value = "6379" },
     { name = "ACCESS_TOKEN_SECRET", value = var.access_token_secret },
     { name = "REFRESH_TOKEN_SECRET", value = var.refresh_token_secret },
