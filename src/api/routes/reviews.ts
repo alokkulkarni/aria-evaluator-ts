@@ -16,6 +16,7 @@ import { Router } from 'express';
 import { prisma } from '../../db/client.js';
 import { recordAuditEventSafe } from '../audit-log.js';
 import { getRequestAuth, requireAdminAuth } from '../auth.js';
+import { deriveLabelsFromReview } from '../calibration-service.js';
 
 export const reviewsRouter = Router();
 
@@ -277,6 +278,19 @@ reviewsRouter.patch('/:id', async (req, res) => {
       newStatus: updated.status,
       scoreOverride: updated.scoreOverride,
     });
+
+    // Phase 3: a completed review's per-dimension overrides become calibration
+    // ground truth. Best-effort — never block the review response.
+    try {
+      await deriveLabelsFromReview({
+        runId: updated.runId,
+        status: updated.status,
+        reviewedBy: updated.reviewedBy,
+        dimensionOverridesJson: updated.dimensionOverridesJson,
+      });
+    } catch (calErr) {
+      console.warn(`[calibration] deriveLabelsFromReview failed for ${reviewId}: ${(calErr as Error).message}`);
+    }
 
     res.json({ review: updated });
   } catch (err) {

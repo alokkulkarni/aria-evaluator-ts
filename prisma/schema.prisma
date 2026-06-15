@@ -438,3 +438,59 @@ model ScheduleRun {
   @@index([scheduleId, triggeredAt])
   @@index([runId])
 }
+
+// ─── Calibration (Phase 3) ──────────────────────────────────────────────────────
+// Human ground-truth labels + per-judge agreement (Cohen's κ) against them.
+
+model CalibrationDataset {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  source      String   @default("manual") // manual|import|review
+  createdAt   DateTime @default(now())
+  createdBy   String?
+
+  labels        CalibrationLabel[]
+  calibrations  JudgeCalibration[]
+
+  @@index([createdAt])
+}
+
+model CalibrationLabel {
+  id          String              @id @default(cuid())
+  datasetId   String?
+  dataset     CalibrationDataset? @relation(fields: [datasetId], references: [id], onDelete: SetNull)
+  source      String              // review|import|manual
+  runId       String              // run whose EvalResult.dimensionScores carries the judge votes
+  dimensionId String
+  humanScore  Float               // 0–10 ground-truth score
+  labeledBy   String?
+  notes       String?
+  createdAt   DateTime            @default(now())
+
+  @@unique([runId, dimensionId, source])
+  @@index([datasetId])
+  @@index([runId])
+  @@index([dimensionId])
+}
+
+model JudgeCalibration {
+  id            String   @id @default(cuid())
+  judgeProvider String
+  judgeModelId  String
+  dimensionId   String?  // null = overall across dimensions
+  datasetId     String?
+  dataset       CalibrationDataset? @relation(fields: [datasetId], references: [id], onDelete: SetNull)
+  sampleCount   Int
+  weightedKappa Float
+  binaryKappa   Float?
+  withinOneRate Float
+  exactAgreement Float
+  meanAbsError  Float
+  trust         String   // trusted|supplementary|blocked|insufficient
+  computedAt    DateTime @default(now())
+
+  @@unique([judgeModelId, dimensionId, datasetId])
+  @@index([judgeModelId])
+  @@index([trust])
+}

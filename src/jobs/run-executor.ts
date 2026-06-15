@@ -11,7 +11,8 @@ import {
 } from 'node:fs';
 
 import { prisma } from '../db/client.js';
-import { getRuntimeSettingsEnv } from '../api/runtime-settings.js';
+import { getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
+import { getJudgeWeights } from '../api/calibration-service.js';
 import {
   appPaths,
   normalizeArtifactRef,
@@ -108,6 +109,20 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
   });
 
   try {
+    // Opt-in calibration: inject per-judge weights (by modelId) so the spawned
+    // CLI's committee can weight/exclude judges. Keeps the judge layer DB-free.
+    const judgeWeightsEnv: Record<string, string> = {};
+    if (isJudgeWeightingEnabled()) {
+      try {
+        const weights = await getJudgeWeights();
+        const map: Record<string, number> = {};
+        for (const [modelId, w] of Object.entries(weights)) map[modelId] = w.weight;
+        if (Object.keys(map).length > 0) judgeWeightsEnv['JUDGE_WEIGHTS'] = JSON.stringify(map);
+      } catch (err) {
+        appendRunLogLine(runId, `⚠ Could not load calibration weights: ${(err as Error).message}`);
+      }
+    }
+
     const args = [
       'run',
       `cli:${payload.provider}`,
@@ -124,7 +139,7 @@ export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
     // kill the entire group (npm + spawned children) in one shot.
     const child = spawn('npm', args, {
       cwd: PROJECT_ROOT,
-      env: { ...process.env, ...getRuntimeSettingsEnv() },
+      env: { ...process.env, ...getRuntimeSettingsEnv(), ...judgeWeightsEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     });

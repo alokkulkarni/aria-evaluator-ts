@@ -49,6 +49,8 @@ function closestScore(scores: number[], mean: number): number {
 export function aggregateMemberScores(
   members: MemberOutcome[],
   disagreementThreshold: number,
+  /** Optional per-judge weights keyed by judgeId. Missing/undefined → weight 1. */
+  weights?: Record<string, number>,
 ): AggregateResult {
   // Union of dimension ids, preserving first-seen order.
   const dimIds: string[] = [];
@@ -85,7 +87,15 @@ export function aggregateMemberScores(
     if (votes.length === 0) continue;
 
     const scores = votes.map((v) => v.score);
-    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    // Weighted mean (calibration weights, opt-in). Default weight 1 → plain mean.
+    let weightSum = 0;
+    let weightedTotal = 0;
+    for (const v of votes) {
+      const w = weights?.[v.judgeId] ?? 1;
+      weightedTotal += v.score * w;
+      weightSum += w;
+    }
+    const mean = weightSum > 0 ? weightedTotal / weightSum : scores.reduce((a, b) => a + b, 0) / scores.length;
     const spread = Math.max(...scores) - Math.min(...scores);
     const disagreement = votes.length > 1 && spread > disagreementThreshold;
     if (disagreement) requiresHumanReview = true;
