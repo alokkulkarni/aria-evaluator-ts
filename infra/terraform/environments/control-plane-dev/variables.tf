@@ -14,6 +14,12 @@ variable "environment" {
   default = "dev"
 }
 
+variable "force_destroy" {
+  description = "Teardown switch. When true, S3 buckets are emptied on destroy and ALB deletion protection is disabled so `terraform destroy` removes everything cleanly. Defaults true in dev so the stack is always trivially destroyable."
+  type        = bool
+  default     = true
+}
+
 variable "tenant_id" {
   type    = string
   default = "control-plane"

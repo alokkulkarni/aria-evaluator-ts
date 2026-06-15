@@ -28,6 +28,12 @@ variable "bucket_suffix" {
   type = string
 }
 
+variable "force_destroy" {
+  description = "Teardown switch. When true, S3 buckets are emptied on destroy and ALB deletion protection is disabled so `terraform destroy` can remove everything cleanly. Keep false for normal prod operation."
+  type        = bool
+  default     = false
+}
+
 variable "vpc_cidr" {
   type    = string
   default = "10.62.0.0/16"

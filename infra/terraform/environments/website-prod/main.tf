@@ -146,6 +146,7 @@ module "auth_backend" {
   control_plane_url_ssm_param_name = var.control_plane_url_ssm_param_name
   log_retention_days               = 90
   enable_container_insights        = true
+  force_destroy                    = var.force_destroy
 
   tags = local.common_tags
 }
@@ -191,6 +192,7 @@ module "frontend" {
   auth_backend_origin_secret = module.auth_backend.origin_secret
 
   waf_rate_limit = 2000
+  force_destroy  = var.force_destroy
 
   tags = local.common_tags
 }
@@ -221,6 +223,8 @@ module "cloudtrail" {
 
   # Re-use the existing alarm SNS topic already declared in this environment
   alert_sns_topic_arn = var.alarm_sns_topic_arn
+
+  force_destroy = var.force_destroy
 
   tags = local.common_tags
 }

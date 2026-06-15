@@ -48,6 +48,11 @@ resource "aws_elasticache_replication_group" "main" {
   snapshot_window          = var.snapshot_window
   maintenance_window       = var.maintenance_window
 
+  # Final snapshot on destroy. skip_final_snapshot=true (default) leaves this
+  # null → no snapshot → cheap, fast teardown. skip_final_snapshot=false names
+  # a final snapshot so a DR copy is taken before deletion.
+  final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.environment}-aria-redis-final"
+
   # Tags
   tags = merge(
     var.tags,
@@ -56,11 +61,6 @@ resource "aws_elasticache_replication_group" "main" {
       Environment = var.environment
     }
   )
-
-  # Don't take a final snapshot on destroy (cheap, fast teardown for tenants).
-  # The caller can override via the existing skip_final_snapshot var — the
-  # replication_group attribute name is final_snapshot_identifier (omit for
-  # no snapshot) so we simply leave it unset when skip_final_snapshot is true.
 }
 
 # CloudWatch alarms

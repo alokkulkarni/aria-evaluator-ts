@@ -19,7 +19,7 @@ locals {
 
 resource "aws_s3_bucket" "trail" {
   bucket        = local.bucket_name
-  force_destroy = var.environment != "prod"
+  force_destroy = var.force_destroy || var.environment != "prod"
 
   tags = merge(local.common_tags, {
     Name                 = local.bucket_name

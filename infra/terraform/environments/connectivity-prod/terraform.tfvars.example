@@ -1,0 +1,13 @@
+# connectivity-prod — owns the VPC peering + cross-VPC routes + ALB SG ingress
+# between website-prod (auth VPC) and control-plane-prod.
+#
+# Apply AFTER both app stacks exist. Destroy BEFORE tearing either app down.
+
+aws_region             = "eu-west-2"
+terraform_state_bucket = "REPLACE_WITH_STATE_BUCKET"
+
+website_state_key       = "website/prod/terraform.tfstate"
+control_plane_state_key = "control-plane/prod/terraform.tfstate"
+
+terraform_state_kms_key_arn = "REPLACE_WITH_STATE_KMS_KEY_ARN"
+terraform_state_lock_table  = "aria-evaluator-tf-locks"

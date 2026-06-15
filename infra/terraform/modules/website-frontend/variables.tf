@@ -9,6 +9,12 @@ variable "environment" {
   type = string
 }
 
+variable "force_destroy" {
+  type        = bool
+  default     = false
+  description = "Allow Terraform to empty and destroy the versioned static-site bucket. Keep false in prod; set true for teardown."
+}
+
 # ── Domain & TLS ──────────────────────────────────────────────────────────────
 
 variable "domain_name" {

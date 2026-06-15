@@ -43,6 +43,31 @@ output "auth_log_group_name" {
   value = module.auth_backend.log_group_name
 }
 
+# ── Network IDs consumed by the connectivity-prod stack via remote state ──────
+# The connectivity stack owns the VPC peering + cross-VPC routes + ALB SG ingress
+# between this auth VPC and control-plane-prod. It reads these from website-prod's
+# remote state instead of hand-copied tfvars.
+
+output "auth_vpc_id" {
+  description = "Auth-backend VPC ID (consumed by connectivity-prod for VPC peering)"
+  value       = module.auth_backend.vpc_id
+}
+
+output "auth_vpc_cidr" {
+  description = "Auth-backend VPC CIDR (used in control-plane reverse routes)"
+  value       = module.auth_backend.vpc_cidr_block
+}
+
+output "auth_public_route_table_id" {
+  description = "Auth-backend public route table ID (route to control-plane CIDR is added here)"
+  value       = module.auth_backend.public_route_table_id
+}
+
+output "auth_ecs_security_group_id" {
+  description = "Auth-backend ECS SG (source of the ingress rule on the control-plane ALB SG)"
+  value       = module.auth_backend.ecs_security_group_id
+}
+
 # ── Cognito outputs ───────────────────────────────────────────────────────────
 
 output "cognito_enabled" {

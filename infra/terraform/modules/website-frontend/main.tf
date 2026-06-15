@@ -29,8 +29,9 @@ locals {
 # ── S3 Bucket (private, OAC-only access) ──────────────────────────────────────
 
 resource "aws_s3_bucket" "static" {
-  bucket = "${local.name_prefix}-static"
-  tags   = merge(local.common_tags, { Name = "${local.name_prefix}-static" })
+  bucket        = "${local.name_prefix}-static"
+  force_destroy = var.force_destroy
+  tags          = merge(local.common_tags, { Name = "${local.name_prefix}-static" })
 }
 
 resource "aws_s3_bucket_versioning" "static" {

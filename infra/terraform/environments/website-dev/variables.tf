@@ -4,6 +4,12 @@ variable "aws_region" {
   default     = "eu-west-2"
 }
 
+variable "force_destroy" {
+  description = "Teardown switch. When true, S3 buckets (static site, ALB logs, CloudTrail) are emptied on destroy and the ECR repo force-deletes. Defaults true in dev so the stack is always trivially destroyable."
+  type        = bool
+  default     = true
+}
+
 variable "auth_backend_image_tag" {
   description = "Docker image tag for the auth backend container"
   type        = string

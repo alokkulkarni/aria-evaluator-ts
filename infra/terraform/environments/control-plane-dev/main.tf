@@ -87,6 +87,7 @@ module "alb" {
   container_port           = var.container_port
   internal                 = true
   log_bucket_suffix        = var.bucket_suffix
+  log_bucket_force_destroy = var.force_destroy
   acm_certificate_arn      = ""
   cloudfront_origin_secret = ""
   tenant_id                = var.tenant_id
@@ -264,6 +265,8 @@ module "cloudtrail" {
 
   # No alarm SNS topic in dev — set var.cloudtrail_alert_sns_topic_arn to enable
   alert_sns_topic_arn = var.cloudtrail_alert_sns_topic_arn
+
+  force_destroy = var.force_destroy
 
   tags = local.common_tags
 }

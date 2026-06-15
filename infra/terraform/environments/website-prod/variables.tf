@@ -5,9 +5,15 @@ variable "aws_region" {
 }
 
 variable "terraform_state_bucket" {
-  description = "S3 bucket holding Terraform remote state — used by peering.tf to read control-plane outputs"
+  description = "S3 bucket holding Terraform remote state. This stack's outputs are consumed by the connectivity-prod stack (VPC peering) via remote state."
   type        = string
   default     = "aria-evaluator-tf-state-194296"
+}
+
+variable "force_destroy" {
+  description = "Teardown switch. When true, S3 buckets (static site, ALB logs, CloudTrail) are emptied on destroy and the ECR repo force-deletes, so `terraform destroy` removes everything cleanly. Keep false for normal prod operation."
+  type        = bool
+  default     = false
 }
 
 variable "auth_backend_image_tag" {

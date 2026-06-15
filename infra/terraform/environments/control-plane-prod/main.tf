@@ -89,7 +89,7 @@ module "s3" {
   app_name      = var.app_name
   environment   = var.environment
   bucket_suffix = var.bucket_suffix
-  force_destroy = false
+  force_destroy = var.force_destroy
   tenant_id     = var.tenant_id
   pricing_tier  = var.pricing_tier
   tags          = local.common_tags
@@ -131,19 +131,21 @@ module "efs" {
 module "alb" {
   source = "../../modules/alb"
 
-  app_name                 = var.app_name
-  environment              = var.environment
-  vpc_id                   = module.networking.vpc_id
-  public_subnet_ids        = module.networking.public_subnet_ids
-  alb_security_group_id    = module.networking.alb_security_group_id
-  container_port           = var.container_port
-  internal                 = true
-  log_bucket_suffix        = var.bucket_suffix
-  acm_certificate_arn      = ""
-  cloudfront_origin_secret = ""
-  tenant_id                = var.tenant_id
-  pricing_tier             = var.pricing_tier
-  tags                     = local.common_tags
+  app_name                   = var.app_name
+  environment                = var.environment
+  vpc_id                     = module.networking.vpc_id
+  public_subnet_ids          = module.networking.public_subnet_ids
+  alb_security_group_id      = module.networking.alb_security_group_id
+  container_port             = var.container_port
+  internal                   = true
+  log_bucket_suffix          = var.bucket_suffix
+  acm_certificate_arn        = ""
+  cloudfront_origin_secret   = ""
+  enable_deletion_protection = !var.force_destroy
+  log_bucket_force_destroy   = var.force_destroy
+  tenant_id                  = var.tenant_id
+  pricing_tier               = var.pricing_tier
+  tags                       = local.common_tags
 }
 
 # ── SSM: publish internal URL so CodeBuild and other services can discover it ──
@@ -261,6 +263,7 @@ module "cloudtrail" {
   aws_account_id = data.aws_caller_identity.current.account_id
   bucket_suffix  = var.bucket_suffix
   kms_key_arn    = var.cloudtrail_kms_key_arn
+  force_destroy  = var.force_destroy
 
   is_multi_region               = true # prod: capture all regions
   include_global_service_events = true
@@ -480,7 +483,7 @@ resource "aws_kms_alias" "dynamodb" {
 
 resource "aws_s3_bucket" "cloudtrail_logs" {
   bucket        = "${var.app_name}-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
-  force_destroy = false
+  force_destroy = var.force_destroy
 
   tags = local.common_tags
 }

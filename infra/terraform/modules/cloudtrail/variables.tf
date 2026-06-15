@@ -23,6 +23,12 @@ variable "bucket_suffix" {
   type        = string
 }
 
+variable "force_destroy" {
+  description = "Allow Terraform to empty and destroy the CloudTrail log bucket even when it contains object versions. Keep false for normal prod operation; set true only for teardown."
+  type        = bool
+  default     = false
+}
+
 # ── Trail scope ───────────────────────────────────────────────────────────────
 
 variable "is_multi_region" {

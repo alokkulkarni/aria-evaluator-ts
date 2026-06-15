@@ -25,6 +25,12 @@ variable "scan_on_push" {
   default     = true
 }
 
+variable "force_delete" {
+  description = "Allow Terraform to delete the repository even when it still contains images. Keep false in prod; set true for teardown."
+  type        = bool
+  default     = false
+}
+
 variable "lifecycle_untagged_days" {
   description = "Days after which untagged images are expired"
   type        = number

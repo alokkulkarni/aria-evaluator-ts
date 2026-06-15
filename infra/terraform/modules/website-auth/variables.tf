@@ -9,6 +9,12 @@ variable "environment" {
   type = string
 }
 
+variable "force_destroy" {
+  type        = bool
+  default     = false
+  description = "Allow Terraform to empty/destroy the ALB-logs bucket and force-delete the ECR repo even when non-empty. Keep false in prod; set true for teardown. (Non-prod already force-destroys regardless.)"
+}
+
 variable "public_url" {
   type        = string
   description = "Public URL of the website (e.g. https://ariaeval.io). Used as NEXTAUTH_URL."

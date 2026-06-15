@@ -41,6 +41,7 @@ module "auth_backend" {
 
   control_plane_url  = var.control_plane_url
   log_retention_days = 14
+  force_destroy      = var.force_destroy
 
   tags = local.common_tags
 }
@@ -64,6 +65,7 @@ module "frontend" {
   # Wire auth backend ALB as second CloudFront origin
   auth_backend_alb_dns       = module.auth_backend.alb_dns_name
   auth_backend_origin_secret = module.auth_backend.origin_secret
+  force_destroy              = var.force_destroy
 
   tags = local.common_tags
 }
@@ -92,6 +94,7 @@ module "cloudtrail" {
   s3_log_retention_days         = 90
   kms_key_arn                   = ""
   alert_sns_topic_arn           = ""
+  force_destroy                 = var.force_destroy
 
   tags = local.common_tags
 }

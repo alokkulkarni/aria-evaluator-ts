@@ -203,7 +203,7 @@ resource "aws_lb_listener_rule" "origin_verified" {
 resource "aws_ecr_repository" "auth" {
   name                 = local.name_prefix
   image_tag_mutability = "MUTABLE"
-  force_delete         = var.environment != "prod"
+  force_delete         = var.force_destroy || var.environment != "prod"
 
   image_scanning_configuration {
     scan_on_push = true
@@ -253,9 +253,10 @@ resource "aws_cloudwatch_log_group" "auth" {
 # ── ALB access logging ────────────────────────────────────────────────────────
 
 resource "aws_s3_bucket" "alb_logs" {
-  count  = var.environment == "prod" ? 1 : 0
-  bucket = "${local.name_prefix}-alb-logs"
-  tags   = local.common_tags
+  count         = var.environment == "prod" ? 1 : 0
+  bucket        = "${local.name_prefix}-alb-logs"
+  force_destroy = var.force_destroy
+  tags          = local.common_tags
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "alb_logs" {
