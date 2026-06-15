@@ -13,6 +13,13 @@ import {
   extractBareModelId,
   getModelsForRegion,
 } from '../shared/judge-config.js';
+import {
+  availableProviders,
+  buildDefaultCommittee,
+  DEFAULT_DISAGREEMENT_THRESHOLD,
+  parseCommitteeJson,
+  type JudgeCommitteeConfig,
+} from '../shared/judge-committee.js';
 
 const SETTINGS_FILE = appPaths.runtimeSettingsFile;
 export const REDACTED_SECRET_VALUE = '***';
@@ -26,6 +33,18 @@ export const EDITABLE_SETTING_KEYS = [
   'JUDGE_MAX_TOKENS',
   'JUDGE_SYSTEM_PROMPT',
   'JUDGE_BEDROCK_REGION',
+
+  // Multi-judge committee (Phase 1)
+  'JUDGE_COMMITTEE',
+  'JUDGE_DISAGREEMENT_THRESHOLD',
+  // Cross-vendor judge provider credentials
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'AZURE_OPENAI_API_KEY',
+  'AZURE_OPENAI_ENDPOINT',
+  'AZURE_OPENAI_API_VERSION',
+  'ANTHROPIC_API_KEY',
+  'GEMINI_API_KEY',
 
   'CONNECT_INSTANCE_ID',
   'CONNECT_REGION',
@@ -124,6 +143,11 @@ export const SECRET_SETTING_KEYS = new Set<EditableSettingKey>([
   'CUSTOM_VOICE_WS_AUTH_HEADER_VALUE',
   'OPENAPI_AUTH_VALUE',
   'WS_CHAT_AUTH_HEADER_VALUE',
+  // Cross-vendor judge provider API keys
+  'OPENAI_API_KEY',
+  'AZURE_OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'GEMINI_API_KEY',
 ]);
 
 function readOverrides(): SettingsMap {
@@ -221,6 +245,64 @@ export function getJudgeRuntimeConfig(): JudgeRuntimeConfig {
   };
 }
 
+/**
+ * Resolve the active judge committee.
+ *
+ * Resolution order:
+ *   1. JUDGE_COMMITTEE JSON (explicit committee) — validated; on parse error,
+ *      log and fall back to the default committee.
+ *   2. Default 3-judge cross-vendor committee seeded from the legacy single-judge
+ *      settings (JUDGE_MODEL_ID / temperature / maxTokens / systemPrompt),
+ *      filtered to providers that actually have credentials.
+ * Every judge spec is normalised so temperature/maxTokens are populated.
+ */
+export function getJudgeCommitteeConfig(): JudgeCommitteeConfig {
+  const base = getJudgeRuntimeConfig();
+  const effective = getEffectiveSettings();
+  const systemPrompt = base.systemPrompt;
+  const threshold = parseNumberSetting(
+    effective['JUDGE_DISAGREEMENT_THRESHOLD'],
+    DEFAULT_DISAGREEMENT_THRESHOLD,
+  );
+  const bareGeneralist = extractBareModelId(base.modelId);
+
+  let committee: JudgeCommitteeConfig;
+  const raw = effective['JUDGE_COMMITTEE']?.trim();
+  if (raw) {
+    try {
+      committee = parseCommitteeJson(raw, systemPrompt);
+    } catch (err) {
+      console.warn(
+        `[Settings] Invalid JUDGE_COMMITTEE — using default committee. ${(err as Error).message}`,
+      );
+      committee = buildDefaultCommittee({
+        bedrockModelId: bareGeneralist,
+        systemPrompt,
+        temperature: base.temperature,
+        maxTokens: base.maxTokens,
+        disagreementThreshold: threshold,
+        availableProviders: availableProviders(),
+      });
+    }
+  } else {
+    committee = buildDefaultCommittee({
+      bedrockModelId: bareGeneralist,
+      systemPrompt,
+      temperature: base.temperature,
+      maxTokens: base.maxTokens,
+      disagreementThreshold: threshold,
+      availableProviders: availableProviders(),
+    });
+  }
+
+  committee.judges = committee.judges.map((j) => ({
+    ...j,
+    temperature: j.temperature ?? base.temperature,
+    maxTokens: j.maxTokens ?? base.maxTokens,
+  }));
+  return committee;
+}
+
 export function saveSettings(partial: Record<string, unknown>): Record<EditableSettingKey, string> {
   const current = readOverrides();
   const next = { ...current };
@@ -231,6 +313,19 @@ export function saveSettings(partial: Record<string, unknown>): Record<EditableS
     const modelId = typeof raw === 'string' ? raw.trim() : '';
     if (modelId && !isKnownJudgeModel(modelId)) {
       throw new Error(`Invalid judge model ID: ${modelId}. Model must be from the available list.`);
+    }
+  }
+
+  // Validate JUDGE_COMMITTEE JSON if being changed (empty clears it).
+  if ('JUDGE_COMMITTEE' in partial) {
+    const raw = partial['JUDGE_COMMITTEE'];
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (value) {
+      try {
+        parseCommitteeJson(value, DEFAULT_JUDGE_SYSTEM_PROMPT);
+      } catch (err) {
+        throw new Error(`Invalid JUDGE_COMMITTEE config: ${(err as Error).message}`);
+      }
     }
   }
   

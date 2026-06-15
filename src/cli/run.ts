@@ -18,7 +18,8 @@ import { CustomWebSocketVoiceAdapter } from '../adapters/custom-websocket-voice.
 import { StrandsChatAdapter } from '../adapters/strands-chat.js';
 import { WebSocketChatAdapter } from '../adapters/websocket-chat.js';
 import type { BaseAdapter } from '../adapters/base.js';
-import { LLMJudge } from '../judge/llm-judge.js';
+import { JudgePanel } from '../judge/judge-panel.js';
+import { getJudgeCommitteeConfig } from '../api/runtime-settings.js';
 import { ReportGenerator } from '../report/generator.js';
 import {
   loadScenariosFromFile,
@@ -88,7 +89,7 @@ if (args['transcript']) {
   const transcript: Transcript = JSON.parse(readFileSync(transcriptPath, 'utf-8'));
   console.log(`  ℹ  Re-evaluating: ${transcript.scenarioName}`);
 
-  const judge = new LLMJudge();
+  const judge = new JudgePanel(getJudgeCommitteeConfig());
   const result = await judge.evaluate(transcript, 'Evaluate transcript quality');
   const reporter = new ReportGenerator();
   reporter.generate({
@@ -111,7 +112,7 @@ console.log(`📂 Running ${scenarioFiles.length} scenario file(s) on channel: $
 const runner = new ScenarioRunner();
 const allTranscripts: Transcript[] = [];
 const allResults: EvalResult[] = [];
-const judge = conversationOnly || noEval ? null : new LLMJudge();
+const judge = conversationOnly || noEval ? null : new JudgePanel(getJudgeCommitteeConfig());
 const runId = randomUUID();
 
 for (const file of scenarioFiles) {
@@ -199,7 +200,7 @@ if (allResults.length > 0) {
 async function runParallelChatBatch(
   scenarios: Scenario[],
   provider: EvaluatorProvider,
-  judge: LLMJudge | null,
+  judge: JudgePanel | null,
   transcripts: Transcript[],
   results: EvalResult[],
 ): Promise<void> {
@@ -261,7 +262,7 @@ async function runVoiceBatch(
   scenarios: Scenario[],
   sharedAdapter: BaseAdapter,
   runner: ScenarioRunner,
-  judge: LLMJudge | null,
+  judge: JudgePanel | null,
   transcripts: Transcript[],
   results: EvalResult[],
 ): Promise<void> {

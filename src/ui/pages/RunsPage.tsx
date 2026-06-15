@@ -587,7 +587,16 @@ function TranscriptChatView({ url }: { url: string }) {
   );
 }
 
-interface ReportDimScore { score: number; justification: string; evidence?: string }
+interface ReportJudgeVote { judgeId: string; provider: string; modelId: string; score: number; justification?: string }
+interface ReportDimScore {
+  score: number;
+  justification: string;
+  evidence?: string;
+  judgeVotes?: ReportJudgeVote[];
+  spread?: number;
+  disagreement?: boolean;
+}
+interface ReportJudgeRef { id: string; provider: string; modelId: string; role?: string }
 interface ReportResult {
   scenarioName: string;
   overallScore: number;
@@ -595,6 +604,9 @@ interface ReportResult {
   summary?: string;
   scenarioType?: 'security' | 'quality';
   dimensionScores?: Record<string, ReportDimScore>;
+  judges?: ReportJudgeRef[];
+  judgeAgreement?: number;
+  requiresHumanReview?: boolean;
 }
 interface ReportData {
   generatedAt?: string;
@@ -639,6 +651,20 @@ function ReportView({ url }: { url: string }) {
                 Security Test
               </span>
             )}
+            {r.judges && r.judges.length > 1 && (
+              <span
+                className="inline-flex items-center gap-1 text-xs bg-cyan-100 text-cyan-700 rounded px-1.5 py-0.5 font-semibold"
+                title={r.judges.map((j) => `${j.modelId} (${j.provider})`).join(', ')}
+              >
+                {r.judges.length}-judge committee
+                {typeof r.judgeAgreement === 'number' && ` · ${Math.round(r.judgeAgreement * 100)}% agree`}
+              </span>
+            )}
+            {r.requiresHumanReview && (
+              <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 rounded px-1.5 py-0.5 font-semibold">
+                ⚠ Judges disagreed — review
+              </span>
+            )}
           </div>
           {r.summary && <p className="text-xs text-slate-600 mt-0.5">{r.summary}</p>}
         </div>
@@ -652,7 +678,14 @@ function ReportView({ url }: { url: string }) {
           {Object.entries(r.dimensionScores).map(([dim, ds]) => (
             <div key={dim} className="px-4 py-2.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-slate-600 capitalize">{dim.replace(/_/g, ' ')}</p>
+                <p className="text-xs font-semibold text-slate-600 capitalize flex items-center gap-1.5">
+                  {dim.replace(/_/g, ' ')}
+                  {ds.disagreement && (
+                    <span className="inline-flex items-center text-[10px] bg-amber-100 text-amber-800 rounded px-1 py-0.5 font-semibold" title={`Judges disagreed (spread ${ds.spread}/10)`}>
+                      ⚠ disagreement
+                    </span>
+                  )}
+                </p>
                 <span className={`text-xs font-bold ${ds.score >= 7 ? 'text-green-600' : ds.score >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
                   {ds.score}/10
                 </span>
@@ -660,6 +693,20 @@ function ReportView({ url }: { url: string }) {
               <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{ds.justification}</p>
               {ds.evidence && (
                 <p className="text-[11px] text-slate-400 mt-1 italic border-l-2 border-slate-200 pl-2">{ds.evidence}</p>
+              )}
+              {ds.judgeVotes && ds.judgeVotes.length > 1 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {ds.judgeVotes.map((v) => (
+                    <span
+                      key={v.judgeId}
+                      className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-600 rounded px-1.5 py-0.5"
+                      title={v.justification ?? ''}
+                    >
+                      <span className="font-semibold">{v.modelId}</span>
+                      <span className={`font-bold ${v.score >= 7 ? 'text-green-600' : v.score >= 5 ? 'text-amber-600' : 'text-red-600'}`}>{v.score}/10</span>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
           ))}

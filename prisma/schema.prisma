@@ -201,6 +201,11 @@ model EvalResult {
   judgeEstimatedCostUsd    Float?   // Estimated judge LLM cost (USD), null if model unknown
   costPricingVersion       Int?     // Pricing registry version used for cost estimate
   securityScore   Float?   // 0–1, separate axis for security runs
+  // ── Multi-judge committee (Phase 1) ──────────────────────────────────────
+  judgeModels         String?  // JSON array of judge model ids that voted
+  judgeAgreement      Float?   // 1 − (mean per-dimension spread / 10); 1 = perfect agreement
+  requiresHumanReview Boolean? // true when judges disagreed beyond threshold
+  judgeConfigHash     String?  // deterministic hash of the committee config (drift detection)
   createdAt       DateTime @default(now())
   review          Review?
 

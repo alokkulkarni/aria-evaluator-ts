@@ -1009,6 +1009,97 @@ function JudgeLlmSection({
   );
 }
 
+// ── Judge committee (cross-vendor) ─────────────────────────────────────────────
+
+const JUDGE_PROVIDER_FIELDS: FieldDef[] = [
+  { key: 'OPENAI_API_KEY', label: 'OpenAI API key', placeholder: 'sk-...', sensitive: true, hint: 'Activates a GPT-class judge (the default committee\'s cross-vendor slot). Stored in Secrets Manager in production.' },
+  { key: 'OPENAI_BASE_URL', label: 'OpenAI base URL (optional)', placeholder: 'https://api.openai.com/v1', hint: 'Override for OpenAI-compatible gateways. Leave blank for the default.' },
+  { key: 'AZURE_OPENAI_API_KEY', label: 'Azure OpenAI key', placeholder: 'xxxxxxxx', sensitive: true, hint: 'Use GPT models via an Azure OpenAI deployment.' },
+  { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure OpenAI endpoint', placeholder: 'https://<resource>.openai.azure.com', hint: 'Required to enable the Azure OpenAI judge provider.' },
+  { key: 'AZURE_OPENAI_API_VERSION', label: 'Azure API version', placeholder: '2024-10-21', hint: 'Azure OpenAI API version. Defaults to 2024-10-21.' },
+  { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', placeholder: 'sk-ant-...', sensitive: true, hint: 'Run Claude as a judge via the direct Anthropic API (outside Bedrock).' },
+  { key: 'GEMINI_API_KEY', label: 'Google Gemini API key', placeholder: 'xxxxxxxx', sensitive: true, hint: 'Adds a Gemini judge — a third architecture family for ensembles.' },
+];
+
+function JudgeCommitteeSection({
+  settings,
+  onUpdate,
+}: {
+  settings: SettingsMap;
+  onUpdate: (key: string, value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const threshold = settings['JUDGE_DISAGREEMENT_THRESHOLD'] ?? '2';
+  const committee = settings['JUDGE_COMMITTEE'] ?? '';
+
+  return (
+    <section className="card space-y-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-start justify-between gap-4 text-left"
+      >
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Judge Committee</p>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Cross-vendor judges &amp; disagreement</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            By default ARIA runs a 3-judge cross-vendor committee (Claude + GPT + Nova). Judges whose provider
+            has no credentials are skipped automatically — add a key below to activate them. Scores are the
+            committee mean; large disagreements are flagged on results.
+          </p>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+          {open ? 'Collapse' : 'Expand'}
+        </span>
+      </button>
+
+      {open ? (
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            {JUDGE_PROVIDER_FIELDS.map((field) => (
+              <SettingsField
+                key={field.key}
+                field={field}
+                value={settings[field.key] ?? ''}
+                onChange={(val) => onUpdate(field.key, val)}
+              />
+            ))}
+          </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+              Disagreement threshold (0–10)
+              <HintTooltip hint="Judges are flagged as disagreeing on a dimension when their score range (max − min) exceeds this value. Default 2." />
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.5"
+              value={threshold}
+              onChange={(e) => onUpdate('JUDGE_DISAGREEMENT_THRESHOLD', e.target.value)}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+              Advanced: committee JSON
+              <HintTooltip hint='Optional. Define an explicit committee, e.g. {"judges":[{"id":"a","provider":"bedrock","modelId":"anthropic.claude-sonnet-4-5-20250929-v1:0"},{"id":"b","provider":"openai","modelId":"gpt-4o"}],"disagreementThreshold":2}. Leave blank to use the default committee.' />
+            </span>
+            <textarea
+              rows={8}
+              value={committee}
+              onChange={(e) => onUpdate('JUDGE_COMMITTEE', e.target.value)}
+              placeholder='Leave blank for the default committee, or paste {"judges":[…],"disagreementThreshold":2}'
+              className="min-h-[140px] font-mono text-xs leading-6"
+            />
+          </label>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 // ── General section ───────────────────────────────────────────────────────────
 
 function GeneralSection({
@@ -1170,6 +1261,8 @@ export function SettingsPage() {
       </section>
 
       <JudgeLlmSection settings={settings} onUpdate={updateValue} judgeModelGroups={judgeModelGroups} onRegionChange={fetchJudgeModelsForRegion} />
+
+      <JudgeCommitteeSection settings={settings} onUpdate={updateValue} />
 
       {/* Providers group */}
       <div className="card p-0 overflow-hidden">

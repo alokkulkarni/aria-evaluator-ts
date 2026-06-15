@@ -19,7 +19,7 @@ import {
   sanitizeArtifactPathInLogLine,
 } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
-import type { EvalResult, DimensionScore } from '../types/evaluation.js';
+import type { EvalResult, DimensionScore, JudgeVote } from '../types/evaluation.js';
 import { parseRunJobPayload } from './run-job-payload.js';
 import {
   clearRunEventQueue,
@@ -405,7 +405,37 @@ async function ingestRunArtifacts(
           : 'No evaluation results generated.';
 
       const judgeModelId = report.results[0]?.judgeModel ?? 'unknown';
-      const judgeCost = estimateCost(judgeModelId, judgeTokenInputEstimate, judgeTokenOutputEstimate);
+
+      // Cost: for committee runs, sum each judge's own cost (mixed models have
+      // different prices). Fall back to a single-model estimate for legacy results.
+      const hasBreakdown = report.results.some(
+        (result) => Array.isArray(result.judgeBreakdown) && result.judgeBreakdown.length > 0,
+      );
+      let judgeCostUsd: number | null;
+      if (hasBreakdown) {
+        judgeCostUsd = 0;
+        for (const result of report.results) {
+          for (const member of result.judgeBreakdown ?? []) {
+            judgeCostUsd += member.costUsd ?? 0;
+          }
+        }
+      } else {
+        judgeCostUsd = estimateCost(judgeModelId, judgeTokenInputEstimate, judgeTokenOutputEstimate)?.costUsd ?? null;
+      }
+
+      // Committee metadata aggregated across all scenarios in the run.
+      const judgeModelsSet = new Set<string>();
+      for (const result of report.results) {
+        const models = result.judgeModels ?? (result.judgeModel ? [result.judgeModel] : []);
+        for (const model of models) judgeModelsSet.add(model);
+      }
+      const requiresHumanReview = report.results.some((result) => result.requiresHumanReview === true);
+      const agreements = report.results
+        .map((result) => result.judgeAgreement)
+        .filter((value): value is number => typeof value === 'number');
+      const judgeAgreement =
+        agreements.length > 0 ? agreements.reduce((a, b) => a + b, 0) / agreements.length : null;
+      const judgeConfigHash = report.results.find((result) => result.judgeConfigHash)?.judgeConfigHash ?? null;
 
       const evalData = {
         overallScore: Math.round(averageScore * 10) / 10,
@@ -417,8 +447,12 @@ async function ingestRunArtifacts(
         judgeTokenInputEstimate: judgeTokenInputEstimate ?? null,
         judgeTokenOutputEstimate: judgeTokenOutputEstimate ?? null,
         judgeTokenTotalEstimate: judgeTokenTotalEstimate ?? null,
-        judgeEstimatedCostUsd: judgeCost?.costUsd ?? null,
-        costPricingVersion: judgeCost ? PRICING_VERSION : null,
+        judgeEstimatedCostUsd: judgeCostUsd,
+        costPricingVersion: judgeCostUsd != null ? PRICING_VERSION : null,
+        judgeModels: judgeModelsSet.size > 0 ? JSON.stringify([...judgeModelsSet]) : null,
+        requiresHumanReview,
+        judgeAgreement,
+        judgeConfigHash,
       };
 
       await prisma.evalResult.upsert({
@@ -677,14 +711,36 @@ function parsePathFromLog(line: string, kind: 'transcript' | 'reportJson' | 'rep
 }
 
 function aggregateDimensionScores(results: EvalResult[]): Record<string, DimensionScore> {
-  const buckets = new Map<string, { total: number; count: number; reasons: string[]; evidence: string[] }>();
+  interface Bucket {
+    total: number;
+    count: number;
+    reasons: string[];
+    evidence: string[];
+    disagreement: boolean;
+    maxSpread: number;
+    votes?: JudgeVote[];
+  }
+  const buckets = new Map<string, Bucket>();
   for (const result of results) {
     for (const [dimensionId, dimension] of Object.entries(result.dimensionScores)) {
-      const bucket = buckets.get(dimensionId) ?? { total: 0, count: 0, reasons: [], evidence: [] };
+      const bucket = buckets.get(dimensionId) ?? {
+        total: 0,
+        count: 0,
+        reasons: [],
+        evidence: [],
+        disagreement: false,
+        maxSpread: 0,
+      };
       bucket.total += dimension.score;
       bucket.count += 1;
       if (dimension.justification) bucket.reasons.push(dimension.justification);
       if (dimension.evidence) bucket.evidence.push(dimension.evidence);
+      if (dimension.disagreement) bucket.disagreement = true;
+      // Carry the votes from the most-contested scenario so the UI can show them.
+      if (typeof dimension.spread === 'number' && dimension.spread >= bucket.maxSpread) {
+        bucket.maxSpread = dimension.spread;
+        if (dimension.judgeVotes) bucket.votes = dimension.judgeVotes;
+      }
       buckets.set(dimensionId, bucket);
     }
   }
@@ -695,6 +751,9 @@ function aggregateDimensionScores(results: EvalResult[]): Record<string, Dimensi
       score: Math.round((bucket.total / Math.max(1, bucket.count)) * 10) / 10,
       justification: bucket.reasons.slice(0, 3).join(' | '),
       evidence: bucket.evidence.slice(0, 3).join('\n'),
+      ...(bucket.votes ? { judgeVotes: bucket.votes } : {}),
+      ...(bucket.maxSpread > 0 ? { spread: bucket.maxSpread } : {}),
+      ...(bucket.disagreement ? { disagreement: true } : {}),
     };
   }
   return aggregated;
