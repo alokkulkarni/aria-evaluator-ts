@@ -271,36 +271,35 @@ resource "aws_route53_record" "origin_alias" {
 # HTTPS mode (prod): :80 redirects to :443; :443 terminates TLS and applies the
 # same origin-secret guard. The forward rule attaches to whichever listener serves.
 
+# Single :80 listener (modified in place — never destroyed+recreated, which would
+# clash on the port). HTTPS mode (prod): redirect :80 → 443. HTTP-only mode (dev):
+# return 403 unless the origin-secret header matches (the forward rule below).
 resource "aws_lb_listener" "http" {
-  count             = local.https_enabled ? 0 : 1
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
 
-  default_action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Forbidden"
-      status_code  = "403"
+  dynamic "default_action" {
+    for_each = local.https_enabled ? [] : [1]
+    content {
+      type = "fixed-response"
+      fixed_response {
+        content_type = "text/plain"
+        message_body = "Forbidden"
+        status_code  = "403"
+      }
     }
   }
 
-  tags = local.common_tags
-}
-
-resource "aws_lb_listener" "http_redirect" {
-  count             = local.https_enabled ? 1 : 0
-  load_balancer_arn = aws_lb.main.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
+  dynamic "default_action" {
+    for_each = local.https_enabled ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
     }
   }
 
@@ -329,7 +328,7 @@ resource "aws_lb_listener" "https" {
 
 # Forward to the app only when the CloudFront origin-secret header matches.
 resource "aws_lb_listener_rule" "origin_verified" {
-  listener_arn = local.https_enabled ? aws_lb_listener.https[0].arn : aws_lb_listener.http[0].arn
+  listener_arn = local.https_enabled ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
   priority     = 1
 
   action {
