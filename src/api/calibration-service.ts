@@ -5,6 +5,7 @@
 
 import { prisma } from '../db/client.js';
 import type { DimensionScore } from '../types/evaluation.js';
+import type { Transcript } from '../types/transcript.js';
 import {
   classifyTrust,
   computeCalibrationStats,
@@ -12,7 +13,8 @@ import {
   type ScorePair,
   type TrustLevel,
 } from '../lib/calibration.js';
-import { getCalibrationThresholds } from './runtime-settings.js';
+import { getCalibrationThresholds, getJudgeCommitteeConfig } from './runtime-settings.js';
+import { JudgePanel } from '../judge/judge-panel.js';
 
 interface ReviewLike {
   runId: string;
@@ -154,6 +156,117 @@ export async function recomputeCalibration(datasetId?: string): Promise<{ judges
   ]);
 
   return { judges: rows.length, samples };
+}
+
+export interface GoldenItem {
+  scenarioName?: string;
+  goal?: string;
+  attack_type?: string;
+  domain?: string;
+  transcript: { turns: Array<{ role: string; content: string }> };
+  /** dimensionId → human ground-truth score (0–10). */
+  labels: Record<string, number>;
+}
+
+/**
+ * External golden-set calibration anchor: evaluate each imported transcript with
+ * the live committee, pair each judge's vote against the human label, and write
+ * κ rows for the dataset. Lets you calibrate against a curated external set
+ * before internal review labels accumulate.
+ *
+ * NOTE: this uses our ABSOLUTE per-dimension κ framework. LMSYS Arena data is
+ * *pairwise preference* data and must first be converted to per-dimension
+ * absolute scores to be used here.
+ *
+ * Makes real judge LLM calls (one committee evaluation per item) — callers run it
+ * in the background, not inline with an HTTP response.
+ */
+export async function calibrateExternalGoldenSet(
+  items: GoldenItem[],
+  datasetId: string | null,
+): Promise<{ judges: number; samples: number; items: number }> {
+  const thresholds = getCalibrationThresholds();
+  const panel = new JudgePanel(getJudgeCommitteeConfig());
+
+  const buckets = new Map<string, PairBucket>();
+  const add = (provider: string, modelId: string, dimensionId: string | null, judgeScore: number, humanScore: number) => {
+    const k = bucketKey(provider, modelId, dimensionId);
+    let bucket = buckets.get(k);
+    if (!bucket) {
+      bucket = { provider, modelId, dimensionId, pairs: [] };
+      buckets.set(k, bucket);
+    }
+    bucket.pairs.push([judgeScore, humanScore]);
+  };
+
+  let samples = 0;
+  let evaluated = 0;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
+    if (!item?.transcript?.turns || !item.labels) continue;
+    const transcript = {
+      id: `golden-${datasetId ?? 'adhoc'}-${i}`,
+      scenarioName: item.scenarioName ?? `golden-${i}`,
+      turns: item.transcript.turns,
+      escalated: false,
+    } as unknown as Transcript;
+
+    let dims: Record<string, DimensionScore>;
+    let judgesRef: { provider: string; modelId: string }[];
+    try {
+      const result = await panel.evaluate(transcript, item.goal ?? 'evaluate', {
+        attack_type: item.attack_type,
+        domain: item.domain,
+      });
+      dims = result.dimensionScores;
+      judgesRef = result.judges ?? [];
+    } catch {
+      continue;
+    }
+    evaluated++;
+
+    for (const [dimId, humanScore] of Object.entries(item.labels)) {
+      if (typeof humanScore !== 'number') continue;
+      const ds = dims[dimId];
+      if (!ds) continue;
+      if (ds.judgeVotes && ds.judgeVotes.length > 0) {
+        for (const v of ds.judgeVotes) {
+          add(v.provider, v.modelId, dimId, v.score, humanScore);
+          add(v.provider, v.modelId, null, v.score, humanScore);
+          samples++;
+        }
+      } else if (judgesRef[0]) {
+        // Single-judge committee: the aggregate score is that judge's score.
+        add(judgesRef[0].provider, judgesRef[0].modelId, dimId, ds.score, humanScore);
+        add(judgesRef[0].provider, judgesRef[0].modelId, null, ds.score, humanScore);
+        samples++;
+      }
+    }
+  }
+
+  const rows = [...buckets.values()].map((bucket) => {
+    const stats = computeCalibrationStats(bucket.pairs);
+    return {
+      judgeProvider: bucket.provider,
+      judgeModelId: bucket.modelId,
+      dimensionId: bucket.dimensionId,
+      datasetId,
+      sampleCount: stats.sampleCount,
+      weightedKappa: stats.weightedKappa,
+      binaryKappa: stats.binaryKappa,
+      withinOneRate: stats.withinOneRate,
+      exactAgreement: stats.exactAgreement,
+      meanAbsError: stats.meanAbsError,
+      trust: classifyTrust(stats.weightedKappa, stats.sampleCount, thresholds),
+    };
+  });
+
+  await prisma.$transaction([
+    prisma.judgeCalibration.deleteMany({ where: { datasetId } }),
+    prisma.judgeCalibration.createMany({ data: rows }),
+  ]);
+
+  return { judges: rows.length, samples, items: evaluated };
 }
 
 export interface JudgeWeight {

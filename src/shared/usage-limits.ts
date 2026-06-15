@@ -10,6 +10,7 @@ export interface TierLimits {
   maxRunsPerMonth: number;
   maxModels: number;
   maxUsers: number;   // -1 = unlimited (enterprise), 1 = individual/free (owner only)
+  maxJudges: number;  // -1 = unlimited; caps committee size to control multi-judge cost
 }
 
 export interface UsageLimits extends TierLimits {
@@ -20,11 +21,11 @@ export interface UsageLimits extends TierLimits {
 }
 
 const DEFAULT_LIMITS_BY_TIER: Record<PricingTier, TierLimits> = {
-  free:                 { maxScenariosPerRun: 10,  maxRunsPerMonth: 5,    maxModels: 1,  maxUsers: 1  },
-  individual:           { maxScenariosPerRun: 30,  maxRunsPerMonth: 200,  maxModels: 2,  maxUsers: 1  },
-  enterprise_starter:   { maxScenariosPerRun: 120, maxRunsPerMonth: 900,  maxModels: 8,  maxUsers: 10 },
-  enterprise_pro:       { maxScenariosPerRun: 300, maxRunsPerMonth: 3000, maxModels: 20, maxUsers: 50 },
-  enterprise_unlimited: { maxScenariosPerRun: -1,  maxRunsPerMonth: -1,   maxModels: -1, maxUsers: -1 },
+  free:                 { maxScenariosPerRun: 10,  maxRunsPerMonth: 5,    maxModels: 1,  maxUsers: 1,  maxJudges: 1  },
+  individual:           { maxScenariosPerRun: 30,  maxRunsPerMonth: 200,  maxModels: 2,  maxUsers: 1,  maxJudges: 2  },
+  enterprise_starter:   { maxScenariosPerRun: 120, maxRunsPerMonth: 900,  maxModels: 8,  maxUsers: 10, maxJudges: 3  },
+  enterprise_pro:       { maxScenariosPerRun: 300, maxRunsPerMonth: 3000, maxModels: 20, maxUsers: 50, maxJudges: 3  },
+  enterprise_unlimited: { maxScenariosPerRun: -1,  maxRunsPerMonth: -1,   maxModels: -1, maxUsers: -1, maxJudges: -1 },
 };
 
 const VALID_TIERS: ReadonlySet<string> = new Set<string>([
@@ -72,6 +73,7 @@ export function getUsageLimits(): UsageLimits {
       maxRunsPerMonth: -1,
       maxModels: -1,
       maxUsers: -1,
+      maxJudges: -1,
     };
   }
 
@@ -82,6 +84,7 @@ export function getUsageLimits(): UsageLimits {
   const explicitRunLimit = parseLimit(process.env['MAX_RUNS_PER_MONTH'] ?? process.env['MAX_RUNS']);
   const explicitModelLimit = parseLimit(process.env['MAX_MODELS']);
   const explicitUserLimit = parseLimit(process.env['MAX_USERS']);
+  const explicitJudgeLimit = parseLimit(process.env['MAX_JUDGES']);
 
   return {
     enabled: true,
@@ -92,6 +95,7 @@ export function getUsageLimits(): UsageLimits {
     maxRunsPerMonth: explicitRunLimit ?? tierLimits.maxRunsPerMonth,
     maxModels: explicitModelLimit ?? tierLimits.maxModels,
     maxUsers: explicitUserLimit ?? tierLimits.maxUsers,
+    maxJudges: explicitJudgeLimit ?? tierLimits.maxJudges,
   };
 }
 
