@@ -139,3 +139,47 @@ export function weightForCalibration(c: { trust: TrustLevel; withinOneRate: numb
   if (c.trust === 'insufficient') return 1;
   return Math.max(0, Math.min(1, c.withinOneRate));
 }
+
+// ── Pairwise agreement (e.g. LMSYS Chatbot Arena) ────────────────────────────
+export type PairwiseChoice = 'A' | 'B' | 'tie';
+
+export interface PairwiseStats {
+  /** Items with a decisive human winner (A/B), used for accuracy + κ. */
+  sampleCount: number;
+  /** Fraction of decisive-human items where the judge picked the same winner. */
+  accuracy: number;
+  /** Cohen's κ on the binary A/B choice over decisive-human items. */
+  kappa: number;
+  /** Fraction of ALL items where the human voted tie. */
+  tieRate: number;
+  /** Total items scored (including human ties). */
+  totalItems: number;
+}
+
+/**
+ * Agreement between a judge's pairwise verdicts and human pairwise votes —
+ * the standard way to validate an LLM-judge against preference data like the
+ * LMSYS Chatbot Arena. `pairs = [judgeChoice, humanChoice]`. Human ties have no
+ * ground-truth winner, so they are excluded from accuracy/κ and reported as
+ * tieRate. A judge "tie" on a decisive item counts as a miss for accuracy.
+ */
+export function pairwiseAgreement(pairs: Array<[PairwiseChoice, PairwiseChoice]>): PairwiseStats {
+  const totalItems = pairs.length;
+  const humanTies = pairs.filter(([, h]) => h === 'tie').length;
+  const tieRate = totalItems === 0 ? 0 : humanTies / totalItems;
+
+  const decisive = pairs.filter(([, h]) => h === 'A' || h === 'B');
+  const sampleCount = decisive.length;
+  if (sampleCount === 0) return { sampleCount: 0, accuracy: 0, kappa: 0, tieRate, totalItems };
+
+  const correct = decisive.filter(([j, h]) => j === h).length;
+  const accuracy = correct / sampleCount;
+
+  // κ over items where BOTH gave a decisive A/B verdict — reuse cohenKappaBinary
+  // by mapping A→10 (pass), B→0 (fail).
+  const both = decisive.filter(([j]) => j === 'A' || j === 'B');
+  const scorePairs: ScorePair[] = both.map(([j, h]) => [j === 'A' ? 10 : 0, h === 'A' ? 10 : 0]);
+  const kappa = cohenKappaBinary(scorePairs);
+
+  return { sampleCount, accuracy, kappa, tieRate, totalItems };
+}

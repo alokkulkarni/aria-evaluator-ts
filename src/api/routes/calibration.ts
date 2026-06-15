@@ -7,8 +7,41 @@ import { prisma } from '../../db/client.js';
 import { recordAuditEventSafe } from '../audit-log.js';
 import { getRequestAuth, requireAdminAuth } from '../auth.js';
 import { calibrateExternalGoldenSet, recomputeCalibration, type GoldenItem } from '../calibration-service.js';
+import { getPairwiseSummary, runPairwiseCalibration } from '../pairwise-calibration-service.js';
 
 export const calibrationRouter = Router();
+
+interface PairwiseItemInput {
+  prompt?: unknown;
+  responseA?: unknown;
+  responseB?: unknown;
+  humanWinner?: unknown;
+  modelA?: unknown;
+  modelB?: unknown;
+  language?: unknown;
+}
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+function normalizePairwiseItem(it: PairwiseItemInput) {
+  const prompt = String(it?.prompt ?? '').trim();
+  const responseA = String(it?.responseA ?? '').trim();
+  const responseB = String(it?.responseB ?? '').trim();
+  const w = String(it?.humanWinner ?? '').trim().toUpperCase();
+  const humanWinner = w === 'A' ? 'A' : w === 'B' ? 'B' : w.startsWith('TIE') || w === 'BOTH_BAD' ? 'tie' : null;
+  if (!prompt || !responseA || !responseB || !humanWinner) return null;
+  return {
+    prompt,
+    responseA,
+    responseB,
+    humanWinner,
+    modelA: strOrNull(it.modelA),
+    modelB: strOrNull(it.modelB),
+    language: strOrNull(it.language),
+  };
+}
 
 interface LabelInput {
   runId?: unknown;
@@ -159,6 +192,66 @@ calibrationRouter.post('/recompute', async (req, res) => {
     const result = await recomputeCalibration(datasetId);
     await recordAuditEventSafe(req, 'calibration.recompute', datasetId, result);
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ── Pairwise calibration (LMSYS Chatbot Arena) ───────────────────────────────
+
+// GET /api/calibration/pairwise — per-judge pairwise agreement + datasets
+calibrationRouter.get('/pairwise', async (_req, res) => {
+  try {
+    res.json(await getPairwiseSummary());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST /api/calibration/pairwise/import — import pairwise items (admin).
+// Body: { datasetName?, description?, source?, items: [{ prompt, responseA, responseB, humanWinner, modelA?, modelB?, language? }] }
+calibrationRouter.post('/pairwise/import', requireAdminAuth, async (req, res) => {
+  try {
+    const auth = getRequestAuth(req);
+    const body = (req.body ?? {}) as { datasetName?: string; description?: string; source?: string; items?: PairwiseItemInput[] };
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    if (rawItems.length === 0) return res.status(400).json({ error: 'items[] is required' });
+    if (rawItems.length > 1000) return res.status(400).json({ error: 'Max 1000 items per request — split into batches.' });
+
+    const valid = rawItems.map(normalizePairwiseItem).filter((n): n is NonNullable<typeof n> => n !== null);
+    if (valid.length === 0) {
+      return res.status(400).json({ error: 'No valid items (each needs prompt, responseA, responseB, humanWinner = A|B|tie)' });
+    }
+
+    const dataset = await prisma.pairwiseDataset.create({
+      data: {
+        name: String(body.datasetName ?? 'LMSYS Chatbot Arena'),
+        description: body.description ?? null,
+        source: body.source === 'lmsys-arena' ? 'lmsys-arena' : 'import',
+        createdBy: auth?.userId ?? null,
+      },
+    });
+    await prisma.pairwiseItem.createMany({ data: valid.map((v) => ({ ...v, datasetId: dataset.id })) });
+    await recordAuditEventSafe(req, 'calibration.pairwise.import', dataset.id, { created: valid.length, skipped: rawItems.length - valid.length });
+    res.status(201).json({ datasetId: dataset.id, created: valid.length, skipped: rawItems.length - valid.length });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST /api/calibration/pairwise/run — score items with the committee (admin, background).
+calibrationRouter.post('/pairwise/run', requireAdminAuth, async (req, res) => {
+  try {
+    const datasetId = String((req.body as { datasetId?: string })?.datasetId ?? '').trim();
+    if (!datasetId) return res.status(400).json({ error: 'datasetId is required' });
+    const ds = await prisma.pairwiseDataset.findUnique({ where: { id: datasetId } });
+    if (!ds) return res.status(404).json({ error: 'dataset not found' });
+
+    await recordAuditEventSafe(req, 'calibration.pairwise.run', datasetId, {});
+    void runPairwiseCalibration(datasetId)
+      .then((r) => console.log(`[calibration] pairwise ${datasetId}: ${r.judges} judges / ${r.items} items / ${r.verdicts} verdicts`))
+      .catch((e) => console.error(`[calibration] pairwise ${datasetId} failed: ${(e as Error).message}`));
+    res.status(202).json({ datasetId, status: 'processing' });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

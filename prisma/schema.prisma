@@ -494,3 +494,70 @@ model JudgeCalibration {
   @@index([judgeModelId])
   @@index([trust])
 }
+
+// ── Pairwise calibration (e.g. LMSYS Chatbot Arena) ──────────────────────────
+// Human PAIRWISE preference data (response A vs B). Each judge picks a winner;
+// we measure agreement with the human vote. Distinct from the absolute
+// per-dimension κ above.
+
+model PairwiseDataset {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  source      String   @default("import") // lmsys-arena|import
+  createdAt   DateTime @default(now())
+  createdBy   String?
+
+  items        PairwiseItem[]
+  calibrations PairwiseCalibration[]
+
+  @@index([createdAt])
+}
+
+model PairwiseItem {
+  id          String   @id @default(cuid())
+  datasetId   String
+  dataset     PairwiseDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  prompt      String
+  responseA   String
+  responseB   String
+  humanWinner String   // A|B|tie
+  modelA      String?
+  modelB      String?
+  language    String?
+  createdAt   DateTime @default(now())
+
+  verdicts PairwiseVerdict[]
+
+  @@index([datasetId])
+}
+
+model PairwiseVerdict {
+  id            String   @id @default(cuid())
+  itemId        String
+  item          PairwiseItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  judgeProvider String
+  judgeModelId  String
+  preferred     String   // A|B|tie
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@unique([itemId, judgeModelId])
+  @@index([itemId])
+}
+
+model PairwiseCalibration {
+  id                String   @id @default(cuid())
+  judgeProvider     String
+  judgeModelId      String
+  datasetId         String
+  dataset           PairwiseDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  sampleCount       Int
+  agreementAccuracy Float
+  binaryKappa       Float
+  tieRate           Float
+  computedAt        DateTime @default(now())
+
+  @@unique([judgeModelId, datasetId])
+  @@index([judgeModelId])
+}

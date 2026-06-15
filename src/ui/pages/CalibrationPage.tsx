@@ -38,6 +38,105 @@ function trustBadge(trust: string): string {
   }
 }
 
+interface PairwiseCalibration {
+  id: string;
+  judgeProvider: string;
+  judgeModelId: string;
+  datasetId: string;
+  sampleCount: number;
+  agreementAccuracy: number;
+  binaryKappa: number;
+  tieRate: number;
+}
+interface PairwiseDataset { id: string; name: string; source: string; createdAt: string }
+interface PairwiseData { pairwise: PairwiseCalibration[]; datasets: PairwiseDataset[] }
+
+// Pairwise benchmark (LMSYS Chatbot Arena) — judge A-vs-B agreement with human votes.
+function PairwiseSection() {
+  const [data, setData] = useState<PairwiseData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try { setData(await apiFetch('/api/calibration/pairwise') as PairwiseData); }
+    catch (e) { setErr((e as Error).message); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  async function run(datasetId: string) {
+    setBusy(true); setErr(null); setNote(null);
+    try {
+      await apiFetch('/api/calibration/pairwise/run', { method: 'POST', body: JSON.stringify({ datasetId }) });
+      setNote('Pairwise calibration started — judges are scoring each pair in the background. Refresh in a minute.');
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  const datasets = data?.datasets ?? [];
+  const rows = data?.pairwise ?? [];
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700">Pairwise benchmark — LMSYS Chatbot Arena</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            How often each judge&apos;s A-vs-B preference matches the human vote on an external pairwise dataset —
+            separate from the per-dimension κ above. Import a sample with
+            {' '}<code className="font-mono">scripts/load-lmsys-arena.ts</code>.
+          </p>
+        </div>
+        <button type="button" onClick={() => void load()} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+          Refresh
+        </button>
+      </div>
+
+      {err && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-red-200">{err}</p>}
+      {note && <p className="mb-3 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700 ring-1 ring-green-200">{note}</p>}
+
+      {datasets.length === 0 ? (
+        <p className="text-sm text-slate-400">
+          No pairwise datasets yet. Run <code className="font-mono">npx tsx scripts/load-lmsys-arena.ts --limit 200</code> to import a sample, then click Run.
+        </p>
+      ) : (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {datasets.map((d) => (
+            <button key={d.id} type="button" disabled={busy} onClick={() => void run(d.id)}
+              className="rounded-full bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-50">
+              Run pairwise calibration · {d.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-left text-xs uppercase text-slate-400">
+              <th className="px-2 py-2">Judge</th><th className="px-2 py-2">Provider</th>
+              <th className="px-2 py-2">Samples</th><th className="px-2 py-2">Agreement</th>
+              <th className="px-2 py-2">Binary κ</th><th className="px-2 py-2">Tie rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.id} className="border-b border-slate-50">
+                <td className="px-2 py-2 font-medium text-slate-700">{c.judgeModelId}</td>
+                <td className="px-2 py-2 text-slate-500">{c.judgeProvider}</td>
+                <td className="px-2 py-2 text-slate-600">{c.sampleCount}</td>
+                <td className="px-2 py-2 font-mono">{(c.agreementAccuracy * 100).toFixed(0)}%</td>
+                <td className="px-2 py-2 font-mono">{c.binaryKappa.toFixed(3)}</td>
+                <td className="px-2 py-2">{(c.tieRate * 100).toFixed(0)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 export function CalibrationPage() {
   const [data, setData] = useState<CalibrationData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +277,9 @@ export function CalibrationPage() {
           </table>
         </section>
       )}
+
+      {/* Pairwise benchmark (LMSYS Chatbot Arena) */}
+      <PairwiseSection />
 
       {/* Manual labeling */}
       <section className="rounded-xl border border-slate-200 bg-white p-4">
