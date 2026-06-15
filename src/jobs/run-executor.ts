@@ -455,11 +455,35 @@ async function ingestRunArtifacts(
         judgeConfigHash,
       };
 
-      await prisma.evalResult.upsert({
+      const savedEval = await prisma.evalResult.upsert({
         where: { runId },
         update: evalData,
         create: { runId, ...evalData },
       });
+
+      // Phase 2: route judge disagreements to the human review queue. Idempotent
+      // (Review.evalResultId is unique) and never fatal to the run.
+      if (requiresHumanReview) {
+        try {
+          const existingReview = await prisma.review.findUnique({ where: { evalResultId: savedEval.id } });
+          if (!existingReview) {
+            const agreementPct = judgeAgreement != null ? `${Math.round(judgeAgreement * 100)}%` : 'n/a';
+            await prisma.review.create({
+              data: {
+                evalResultId: savedEval.id,
+                runId,
+                status: 'pending',
+                notes: `Auto-queued: committee judges disagreed beyond threshold (agreement ${agreementPct}).`,
+              },
+            });
+            appendRunLogLine(runId, '⚠ Judges disagreed — queued for human review.');
+          }
+        } catch (reviewErr) {
+          if ((reviewErr as { code?: string }).code !== 'P2002') {
+            appendRunLogLine(runId, `⚠ Could not auto-queue review: ${(reviewErr as Error).message}`);
+          }
+        }
+      }
     } catch (err) {
       const message = `⚠ Unable to parse report JSON: ${(err as Error).message}`;
       appendRunLogLine(runId, message);

@@ -256,7 +256,8 @@ model Baseline {
   // Config snapshot
   judgeModel             String
   judgeVersion           Int
-  
+  judgeConfigHash        String?                 // committee config hash at baseline time (drift detection)
+
   // Regression thresholds (configurable)
   thresholdOverridesJson String?                 // {passRateDrop: 5, scoreDrop: 0.5, latencyIncrease: 20}
   

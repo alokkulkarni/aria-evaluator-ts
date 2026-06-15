@@ -10,6 +10,7 @@ import {
   DEFAULT_JUDGE_TEMPERATURE,
 } from '../shared/judge-config.js';
 import {
+  assessVendorDiversity,
   committeeLabel,
   computeJudgeConfigHash,
   type JudgeCommitteeConfig,
@@ -65,6 +66,16 @@ export class JudgePanel {
       console.warn(`  ⚠  Skipping judges without credentials: ${skipped.map((j) => `${j.id}(${j.provider})`).join(', ')}`);
     }
     console.log(`  🧑‍⚖️  Judge committee: ${specs.map((s) => `${s.id}/${s.provider}:${s.modelId}`).join(', ')}`);
+
+    // Cross-family guard: warn when the active committee is single-vendor, which
+    // re-introduces the self-enhancement bias the committee exists to avoid.
+    const diversity = assessVendorDiversity(specs);
+    if (!diversity.crossVendor && specs.length > 0) {
+      console.warn(
+        `  ⚠  Single-vendor judge committee (${diversity.vendors.join(', ')}). ` +
+          `Add a cross-vendor judge (e.g. set OPENAI_API_KEY) to mitigate self-enhancement bias.`,
+      );
+    }
 
     const shared = {
       systemPrompt: this.committee.systemPrompt,

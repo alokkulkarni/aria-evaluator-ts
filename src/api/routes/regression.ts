@@ -7,6 +7,7 @@ import {
   detectRegression,
   type RunMetricsInput,
 } from '../../lib/metrics.js';
+import { detectJudgeDrift, predominantHash } from '../../lib/judge-drift.js';
 
 export const regressionRouter = express.Router();
 
@@ -86,6 +87,7 @@ regressionRouter.post(
               overallScore: true,
               createdAt: true,
               dimensionScores: true,
+              judgeConfigHash: true,
             },
           },
         },
@@ -150,6 +152,7 @@ regressionRouter.post(
           dimensionMetricsJson: JSON.stringify(metrics.dimensionMetrics),
           judgeModel,
           judgeVersion,
+          judgeConfigHash: predominantHash(runsWithResults.map((r) => r.evalResult?.judgeConfigHash)),
           thresholdOverridesJson,
           createdBy: userId,
           notes,
@@ -342,6 +345,7 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
             overallScore: true,
             createdAt: true,
             dimensionScores: true,
+            judgeConfigHash: true,
           },
         },
       },
@@ -387,6 +391,13 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
     // Detect regression
     const regressionReport = detectRegression(baseline, recentMetrics);
 
+    // Detect judge drift: if recent runs used a different committee config than
+    // the baseline, score-based regression is not comparable.
+    const judgeDrift = detectJudgeDrift(
+      baseline.judgeConfigHash,
+      runsWithResults.map((r) => r.evalResult?.judgeConfigHash),
+    );
+
     return res.json({
       baseline: {
         id: baseline.id,
@@ -396,8 +407,10 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
         passRate: baseline.passRate,
         avgScore: baseline.avgScore,
         avgLatencyMs: baseline.avgLatencyMs,
+        judgeConfigHash: baseline.judgeConfigHash,
       },
       regression: regressionReport,
+      judgeDrift,
       recentRunCount: runsWithResults.length,
       dateRange: {
         from: runsWithResults[runsWithResults.length - 1]?.createdAt,
