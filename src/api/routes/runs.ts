@@ -66,6 +66,7 @@ function normalizeProvider(raw?: string): RunProvider {
     candidate === 'connect' ||
     candidate === 'lex' ||
     candidate === 'azure' ||
+    candidate === 'azure-openai' ||
     candidate === 'strands' ||
     candidate === 'copilot' ||
     candidate === 'custom' ||

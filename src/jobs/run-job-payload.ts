@@ -4,6 +4,7 @@ export const RUN_PROVIDERS = [
   'connect',
   'lex',
   'azure',
+  'azure-openai',
   'strands',
   'copilot',
   'custom',

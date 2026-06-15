@@ -20,6 +20,7 @@
     "cli:connect": "tsx src/cli/run-connect.ts",
     "cli:lex": "tsx src/cli/run-lex.ts",
     "cli:azure": "tsx src/cli/run-azure.ts",
+    "cli:azure-openai": "tsx src/cli/run-azure-openai.ts",
     "cli:strands": "tsx src/cli/run-strands.ts",
     "cli:copilot": "tsx src/cli/run-copilot.ts",
     "cli:custom": "tsx src/cli/run-custom.ts",

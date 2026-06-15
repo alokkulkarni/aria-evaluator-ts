@@ -17,6 +17,7 @@ import { OpenApiHttpChatAdapter } from '../adapters/openapi-http-chat.js';
 import { CustomWebSocketVoiceAdapter } from '../adapters/custom-websocket-voice.js';
 import { StrandsChatAdapter } from '../adapters/strands-chat.js';
 import { WebSocketChatAdapter } from '../adapters/websocket-chat.js';
+import { AzureOpenAIChatAdapter } from '../adapters/azure-openai-chat.js';
 import type { BaseAdapter } from '../adapters/base.js';
 import { JudgePanel } from '../judge/judge-panel.js';
 import { getJudgeCommitteeConfig } from '../api/runtime-settings.js';
@@ -29,8 +30,8 @@ import type { Scenario } from '../types/scenario.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult } from '../types/evaluation.js';
 
-type EvaluatorProvider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
-const SUPPORTED_PROVIDERS: EvaluatorProvider[] = ['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi', 'websocket'];
+type EvaluatorProvider = 'connect' | 'lex' | 'azure' | 'azure-openai' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
+const SUPPORTED_PROVIDERS: EvaluatorProvider[] = ['connect', 'lex', 'azure', 'azure-openai', 'strands', 'copilot', 'custom', 'openapi', 'websocket'];
 
 // Parallel execution: triggered when scenario count exceeds this threshold
 const PARALLEL_THRESHOLD = 10;
@@ -380,6 +381,14 @@ function validateProviderEnv(provider: EvaluatorProvider, channel: 'chat' | 'voi
     return missing;
   }
 
+  if (provider === 'azure-openai') {
+    if (channel === 'voice') missing.push('azure-openai provider supports chat only');
+    if (!process.env['AZURE_OPENAI_AGENT_ENDPOINT']) missing.push('AZURE_OPENAI_AGENT_ENDPOINT');
+    if (!process.env['AZURE_OPENAI_AGENT_API_KEY']) missing.push('AZURE_OPENAI_AGENT_API_KEY');
+    if (!process.env['AZURE_OPENAI_AGENT_DEPLOYMENT']) missing.push('AZURE_OPENAI_AGENT_DEPLOYMENT');
+    return missing;
+  }
+
   if (provider === 'strands') {
     if (channel === 'voice') missing.push('strands provider supports chat only');
     if (!process.env['STRANDS_ENDPOINT']) missing.push('STRANDS_ENDPOINT');
@@ -445,6 +454,16 @@ function createChatAdapter(provider: EvaluatorProvider): BaseAdapter {
       secret: process.env['AZURE_DIRECT_LINE_SECRET']!,
       endpoint: process.env['AZURE_DIRECT_LINE_ENDPOINT'],
       userId: process.env['AZURE_DIRECT_LINE_USER_ID'],
+    });
+  }
+
+  if (provider === 'azure-openai') {
+    return new AzureOpenAIChatAdapter({
+      endpoint: process.env['AZURE_OPENAI_AGENT_ENDPOINT']!,
+      apiKey: process.env['AZURE_OPENAI_AGENT_API_KEY']!,
+      deployment: process.env['AZURE_OPENAI_AGENT_DEPLOYMENT']!,
+      apiVersion: process.env['AZURE_OPENAI_AGENT_API_VERSION'],
+      systemPrompt: process.env['AZURE_OPENAI_AGENT_SYSTEM_PROMPT'],
     });
   }
 
