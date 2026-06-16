@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { addMinutes, addHours, addDays, addMonths } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { checkRunQuota } from '../shared/quota-enforcement.js';
+import { tryAcquireTickLock } from '../lib/cache.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,13 @@ function computeNextRunAt(
 // ── Main Executor ──────────────────────────────────────────────────────────────
 
 async function pollSchedules(): Promise<void> {
+  // Multi-instance safety: only one instance polls per interval so scheduled runs
+  // aren't fired multiple times across autoscaled tasks. Fails open if Redis is
+  // down (executeSchedule should remain idempotent). Phase 4.
+  const lockTtl = Math.max(5_000, scheduleContext.pollIntervalMs - 5_000);
+  if (!(await tryAcquireTickLock('schedule-executor:poll', lockTtl))) {
+    return;
+  }
   try {
     const now = new Date();
 

@@ -16,6 +16,20 @@ const redis = new Redis({
 redis.on('connect', () => console.info('[Redis] Connected'));
 redis.on('error', (error) => console.error('[Redis] Connection error:', error));
 
+// Best-effort distributed lock so that, across autoscaled instances, only ONE
+// runs a periodic task (scheduler poll, heartbeat) per interval. Returns true if
+// THIS instance acquired the lock and should do the work. Fails OPEN (returns
+// true) when Redis is unreachable — better to run than to silently stall periodic
+// work; the gated task must stay idempotent. Phase 4 (multi-instance safety).
+export async function tryAcquireTickLock(key: string, ttlMs: number): Promise<boolean> {
+  try {
+    const res = await redis.set(`lock:${key}`, String(process.pid), 'PX', ttlMs, 'NX');
+    return res === 'OK';
+  } catch {
+    return true;
+  }
+}
+
 // Session management
 const SESSION_TTL = 24 * 60 * 60; // 24 hours
 const TOKEN_BLACKLIST_TTL = 7 * 24 * 60 * 60; // 7 days
