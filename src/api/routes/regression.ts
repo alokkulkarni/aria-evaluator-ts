@@ -65,7 +65,7 @@ regressionRouter.post(
       }
 
       // Verify scenario exists
-      const scenario = await prisma.scenario.findUnique({
+      const scenario = await prisma.scenario.findFirst({
         where: { id: scenarioId },
       });
       if (!scenario) {
@@ -216,7 +216,7 @@ regressionRouter.get('/baselines/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const idStr = Array.isArray(id) ? id[0] : id;
 
-    const baseline = await prisma.baseline.findUnique({
+    const baseline = await prisma.baseline.findFirst({
       where: { id: idStr },
       include: { user: { select: { username: true } } },
     });
@@ -247,7 +247,7 @@ regressionRouter.delete(
       const auth = getRequestAuth(req);
       const userId = auth?.userId;
 
-      const baseline = await prisma.baseline.findUnique({
+      const baseline = await prisma.baseline.findFirst({
         where: { id: idStr },
       });
 
@@ -297,7 +297,7 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
     }
 
     // Verify scenario exists
-    const scenario = await prisma.scenario.findUnique({
+    const scenario = await prisma.scenario.findFirst({
       where: { id: scenarioId },
     });
     if (!scenario) {

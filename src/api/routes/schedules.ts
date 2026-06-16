@@ -138,14 +138,14 @@ schedulesRouter.post('/', async (req, res) => {
     }
 
     if (scenarioId) {
-      const scenario = await prisma.scenario.findUnique({ where: { id: scenarioId } });
+      const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId } });
       if (!scenario) {
         return res.status(404).json({ error: 'scenarioId not found' });
       }
     }
 
     // Check name uniqueness
-    const existing = await prisma.schedule.findUnique({ where: { name } });
+    const existing = await prisma.schedule.findFirst({ where: { name } });
     if (existing) {
       return res.status(409).json({ error: 'name already exists' });
     }
@@ -211,7 +211,7 @@ schedulesRouter.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const schedule = await prisma.schedule.findUnique({
+    const schedule = await prisma.schedule.findFirst({
       where: { id },
       include: {
         scheduleRuns: { orderBy: { triggeredAt: 'desc' }, take: 20 },
@@ -246,7 +246,7 @@ schedulesRouter.patch('/:id', async (req, res) => {
       maxFailures,
     } = req.body;
 
-    const schedule = await prisma.schedule.findUnique({ where: { id } });
+    const schedule = await prisma.schedule.findFirst({ where: { id } });
     if (!schedule || schedule.deletedAt) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
@@ -273,7 +273,7 @@ schedulesRouter.patch('/:id', async (req, res) => {
     }
 
     if (scenarioId) {
-      const scenario = await prisma.scenario.findUnique({ where: { id: scenarioId } });
+      const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId } });
       if (!scenario) {
         return res.status(404).json({ error: 'scenarioId not found' });
       }
@@ -319,7 +319,7 @@ schedulesRouter.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const schedule = await prisma.schedule.findUnique({ where: { id } });
+    const schedule = await prisma.schedule.findFirst({ where: { id } });
     if (!schedule || schedule.deletedAt) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
@@ -343,7 +343,7 @@ schedulesRouter.post('/:id/pause', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const schedule = await prisma.schedule.findUnique({ where: { id } });
+    const schedule = await prisma.schedule.findFirst({ where: { id } });
     if (!schedule || schedule.deletedAt) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
@@ -367,7 +367,7 @@ schedulesRouter.post('/:id/resume', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const schedule = await prisma.schedule.findUnique({ where: { id } });
+    const schedule = await prisma.schedule.findFirst({ where: { id } });
     if (!schedule || schedule.deletedAt) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
@@ -401,7 +401,7 @@ schedulesRouter.post('/:id/trigger-now', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const schedule = await prisma.schedule.findUnique({
+    const schedule = await prisma.schedule.findFirst({
       where: { id },
       include: { scenario: { select: { id: true } } },
     });
@@ -428,7 +428,7 @@ schedulesRouter.post('/:id/trigger-now', async (req, res) => {
 
     // Create run
     const runId = randomUUID();
-    const scenario = await prisma.scenario.findUnique({
+    const scenario = await prisma.scenario.findFirst({
       where: { id: scenarioId },
       select: { name: true, yamlContent: true },
     });
