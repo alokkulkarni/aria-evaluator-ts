@@ -58,7 +58,7 @@ jobs:
         run: docker pull "$GHCR_IMAGE"
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.GHCR_IMAGE }}
           format: "sarif"
@@ -73,7 +73,7 @@ jobs:
           category: "trivy-${{ inputs.component }}-${{ inputs.environment }}"
 
       - name: Trivy gate (fail on CRITICAL)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.GHCR_IMAGE }}
           format: "table"
