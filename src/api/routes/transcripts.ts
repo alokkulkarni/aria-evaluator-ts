@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { basename } from 'node:path';
 import { prisma } from '../../db/client.js';
 import { getObjectStore } from '../../runtime/object-store.js';
+import { getCurrentTenantId } from '../../lib/tenant-context.js';
 
 export const transcriptsRouter = Router();
 
@@ -11,7 +12,11 @@ export const transcriptsRouter = Router();
 // the multi-tenant migration. See docs/MULTI_TENANT_SPEC.md.
 transcriptsRouter.get('/', async (_req, res) => {
   try {
+    // Scope to the caller's tenant (TranscriptArtifact isn't auto-scoped). Always-on;
+    // a null tenant (system/non-SSO) is unrestricted. Phase 3 hardening.
+    const tenantId = getCurrentTenantId();
     const rows = await prisma.transcriptArtifact.findMany({
+      where: tenantId ? { tenantId } : {},
       include: { run: { select: { id: true, scenarioName: true, status: true, startedAt: true } } },
       orderBy: { createdAt: 'desc' },
     });
