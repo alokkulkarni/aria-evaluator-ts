@@ -528,7 +528,7 @@ scenariosRouter.get('/revisions', async (req, res) => {
   }
 
   try {
-    const record = await prisma.scenario.findUnique({
+    const record = await prisma.scenario.findFirst({
       where: { filePath: makeScenarioKey(scenarioId) },
       select: {
         filePath: true,
@@ -646,7 +646,7 @@ scenariosRouter.patch('/metadata', async (req, res) => {
         lifecycleStatus,
       },
     );
-    const updated = await prisma.scenario.findUnique({
+    const updated = await prisma.scenario.findFirst({
       where: { filePath: makeScenarioKey(scenarioId) },
       select: {
         owner: true,

@@ -27,7 +27,7 @@ experimentsRouter.post('/', requireAdminAuth, async (req: Request, res: Response
     }
 
     // Verify scenario exists
-    const scenario = await prisma.scenario.findUnique({
+    const scenario = await prisma.scenario.findFirst({
       where: { id: scenarioId },
     });
     if (!scenario) {
@@ -161,7 +161,7 @@ experimentsRouter.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params as { id: string };
 
-    const experiment = await prisma.experiment.findUnique({
+    const experiment = await prisma.experiment.findFirst({
       where: { id },
       include: {
         legs: true,
@@ -235,7 +235,7 @@ experimentsRouter.post(
       }
 
       // Verify experiment exists
-      const experiment = await prisma.experiment.findUnique({
+      const experiment = await prisma.experiment.findFirst({
         where: { id },
         include: { legs: true },
       });
@@ -250,7 +250,7 @@ experimentsRouter.post(
       }
 
       // Verify run exists
-      const run = await prisma.run.findUnique({
+      const run = await prisma.run.findFirst({
         where: { id: runId },
       });
       if (!run) {
@@ -319,7 +319,7 @@ experimentsRouter.delete('/:id', requireAdminAuth, async (req: Request, res: Res
   try {
     const { id } = req.params as { id: string };
 
-    const experiment = await prisma.experiment.findUnique({
+    const experiment = await prisma.experiment.findFirst({
       where: { id },
     });
     if (!experiment) {
@@ -360,7 +360,7 @@ experimentsRouter.get('/:id/comparison', async (req: Request, res: Response) => 
     const { id } = req.params as { id: string };
     const { baselineLegs } = req.query as { baselineLegs?: string };
 
-    const experiment = await prisma.experiment.findUnique({
+    const experiment = await prisma.experiment.findFirst({
       where: { id },
       include: {
         legs: true,

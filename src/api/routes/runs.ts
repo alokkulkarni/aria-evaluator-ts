@@ -459,7 +459,9 @@ runsRouter.get('/:id/events', async (req, res) => {
   const parsedLastId = lastIdStr ? Number.parseInt(lastIdStr, 10) : Number.NaN;
   const startFrom = Number.isNaN(parsedLastId) ? 0 : parsedLastId + 1;
 
-  const run = await prisma.run.findUnique({
+  // findFirst (not findUnique) so the tenant guard scopes the by-id lookup under
+  // enforce — a guessed run id from another tenant resolves to null. Phase 3 hardening.
+  const run = await prisma.run.findFirst({
     where: { id: runId },
     include: { evalResult: true, report: true },
   });
