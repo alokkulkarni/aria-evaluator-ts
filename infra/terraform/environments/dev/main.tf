@@ -63,6 +63,23 @@ module "networking" {
   tags                = local.common_tags
 }
 
+# ── Aurora Serverless v2 (PostgreSQL) ─────────────────────────────────────────
+# Shared concurrent DB replacing SQLite-on-S3 (docs/MULTI_TENANT_SPEC.md, Phase 1).
+module "aurora" {
+  source = "../../modules/aurora"
+
+  environment                = var.environment
+  vpc_id                     = module.networking.vpc_id
+  subnet_ids                 = module.networking.public_subnet_ids
+  allowed_security_group_ids = [module.networking.ecs_service_security_group_id]
+  min_acu                    = 0.5
+  max_acu                    = 2
+  enable_proxy               = false # dev: low connection count, connect direct
+  deletion_protection        = false
+  skip_final_snapshot        = var.force_destroy
+  tags                       = local.common_tags
+}
+
 # ── ECR ───────────────────────────────────────────────────────────────────────
 
 module "ecr" {
@@ -104,7 +121,7 @@ module "iam" {
   pricing_tier        = var.pricing_tier
   # Grant the execution + task roles read access to cross-vendor judge API key secrets.
   secrets_arns          = local.judge_secret_arns
-  execution_secret_arns = local.judge_secret_arns
+  execution_secret_arns = concat(local.judge_secret_arns, [module.aurora.database_url_secret_arn])
   tags                  = local.common_tags
 }
 
@@ -181,7 +198,13 @@ module "ecs" {
     local.judge_environment_vars,
   )
 
-  extra_secrets = local.judge_secrets
+  # Postgres connection string comes from the Aurora module's Secrets Manager
+  # secret (injected at task start); omit the legacy plain SQLite DATABASE_URL.
+  database_url = ""
+  extra_secrets = concat(
+    local.judge_secrets,
+    [{ name = "DATABASE_URL", valueFrom = module.aurora.database_url_secret_arn }],
+  )
 
   saas_mode                     = false # dev is always standalone
   tenant_id                     = var.tenant_id

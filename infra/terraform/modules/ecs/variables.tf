@@ -267,3 +267,9 @@ variable "extra_secrets" {
   }))
   default = []
 }
+
+variable "database_url" {
+  description = "Plain DATABASE_URL env value. Default is the legacy SQLite file. Set to \"\" to omit it and supply DATABASE_URL via extra_secrets (Postgres/Aurora)."
+  type        = string
+  default     = "file:/app/state/data/aria-evaluator.db"
+}

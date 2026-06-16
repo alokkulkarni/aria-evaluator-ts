@@ -26,7 +26,6 @@ locals {
       { name = "AWS_S3_STATE_BUCKET", value = var.state_bucket_name },
       { name = "AWS_S3_STATE_PREFIX", value = var.s3_state_prefix },
       { name = "S3_SYNC_INTERVAL_SECONDS", value = tostring(var.s3_sync_interval_seconds) },
-      { name = "DATABASE_URL", value = "file:/app/state/data/aria-evaluator.db" },
       { name = "EVAL_REPORT_OUTPUT_DIR", value = "/app/state/reports" },
       { name = "SCENARIOS_DIR", value = "/app/state/scenarios" },
       { name = "TENANT_ID", value = var.tenant_id },
@@ -39,6 +38,9 @@ locals {
     var.control_plane_internal_url != "" ? [{ name = "CONTROL_PLANE_INTERNAL_URL", value = var.control_plane_internal_url }] : [],
     var.control_plane_internal_secret != "" ? [{ name = "CONTROL_PLANE_INTERNAL_SECRET", value = var.control_plane_internal_secret }] : [],
     var.website_url != "" ? [{ name = "ARIA_WEBSITE_URL", value = var.website_url }] : [],
+    # Plain DATABASE_URL only when not supplied via a secret (var.database_url="").
+    # Postgres deployments pass the connection string through extra_secrets instead.
+    var.database_url != "" ? [{ name = "DATABASE_URL", value = var.database_url }] : [],
   )
 
   all_environment = concat(local.base_environment, var.extra_environment_vars)
