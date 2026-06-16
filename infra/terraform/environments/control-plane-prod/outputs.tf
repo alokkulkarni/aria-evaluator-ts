@@ -29,54 +29,7 @@ output "cloudtrail_alarm_count" {
   value       = module.cloudtrail.alarm_count
 }
 
-# ── Provisioning infrastructure outputs ────────────────────────────────────────
-
-output "provisioning_api_endpoint" {
-  description = "API Gateway endpoint for instance provisioning"
-  value       = module.provisioning_lambda.api_endpoint
-}
-
-output "provisioning_lambda_arn" {
-  description = "ARN of the provisioning Lambda function"
-  value       = module.provisioning_lambda.lambda_function_arn
-}
-
-output "user_instances_table_name" {
-  description = "DynamoDB table name for tracking user instances"
-  value       = aws_dynamodb_table.user_instances.name
-}
-
-output "user_instances_table_arn" {
-  description = "DynamoDB table ARN for user instance tracking"
-  value       = aws_dynamodb_table.user_instances.arn
-}
-
 # ── Security Infrastructure Outputs ────────────────────────────────────────────
-
-output "jwt_authorizer_id" {
-  description = "API Gateway JWT Authorizer ID"
-  value       = module.provisioning_lambda.jwt_authorizer_id
-}
-
-output "api_waf_arn" {
-  description = "ARN of WAF Web ACL protecting the provisioning API"
-  value       = module.provisioning_lambda.waf_arn
-}
-
-output "provisioning_lambda_log_group" {
-  description = "CloudWatch log group for provisioning Lambda"
-  value       = module.provisioning_lambda.cloudwatch_log_group
-}
-
-output "provisioning_api_log_group" {
-  description = "CloudWatch log group for provisioning API Gateway"
-  value       = module.provisioning_lambda.api_gateway_log_group
-}
-
-output "provisioning_cloudtrail_name" {
-  description = "CloudTrail name for provisioning API audit logs"
-  value       = module.provisioning_lambda.cloudtrail_name
-}
 
 output "dynamodb_encryption_key_arn" {
   description = "ARN of KMS key for DynamoDB encryption"
@@ -86,11 +39,6 @@ output "dynamodb_encryption_key_arn" {
 output "cloudtrail_logs_bucket" {
   description = "S3 bucket for CloudTrail logs"
   value       = aws_s3_bucket.cloudtrail_logs.id
-}
-
-output "provisioning_alarms_sns_topic" {
-  description = "SNS topic for provisioning alarm notifications (empty when alert_email is not set)"
-  value       = module.provisioning_codebuild.sns_topic_arn
 }
 
 # ── Cross-VPC peering metadata ────────────────────────────────────────────────
