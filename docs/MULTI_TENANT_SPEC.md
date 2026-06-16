@@ -200,9 +200,16 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   subsystems) and removing the whole-dir state sync are moved to Phase 4** — they
   need a sync→async / cache refactor and are low-churn config, so the existing
   state sync covers them in the interim.
-- **Phase 3 — Enforce tenancy. ◀ NEXT.** Persist `tenantId` from SSO →
-  `AuthContext` → ALS; flip the Prisma guard to enforce; add per-route guards;
-  composite uniques.
+- **Phase 3 — Enforce tenancy. ◀ IN PROGRESS.** ✅ Tenant flows SSO →
+  `AuthContext` → ALS (persisted on `User`/`Tenant`). ✅ `enforce` mode in the
+  Prisma guard — auto-scopes filterable reads/writes + stamps creates; verified
+  cross-tenant isolation against Postgres; default **off**. **Remaining before
+  turning `enforce` on in prod:** per-route id guards (findUnique/upsert),
+  composite `@@unique([tenantId, …])` on `Scenario.filePath`/`Schedule.name`/etc.,
+  a system tenant for non-SSO surfaces, and **job-payload `tenantId` (Phase 4)** so
+  background jobs scope correctly (today they run unscoped as trusted system work).
+  Enforcement requires the Prisma op to be awaited within the ALS context — the
+  request flow satisfies this.
 - **Phase 4 — Quotas + multi-instance safety + remaining state.** Per-tenant
   quotas on `Tenant`; leader election for scheduler/heartbeat; job-payload
   tenantId; Redis mandatory; **runtime settings → Redis/DB, scenarios → object
