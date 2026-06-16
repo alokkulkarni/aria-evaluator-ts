@@ -210,10 +210,15 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   background jobs scope correctly (today they run unscoped as trusted system work).
   Enforcement requires the Prisma op to be awaited within the ALS context — the
   request flow satisfies this.
-- **Phase 4 — Quotas + multi-instance safety + remaining state.** Per-tenant
-  quotas on `Tenant`; leader election for scheduler/heartbeat; job-payload
-  tenantId; Redis mandatory; **runtime settings → Redis/DB, scenarios → object
-  store, then remove the whole-dir state sync.**
+- **Phase 4 — Quotas + multi-instance safety + remaining state. ◀ IN PROGRESS.**
+  ✅ Leader election for scheduler/heartbeat (Redis per-tick lock — only one
+  instance polls/emits per interval). ✅ Run-worker and schedule execution bound
+  to their run/schedule tenant (`runWithTenant`), so background DB access scopes
+  correctly under enforce. Per-tenant **quotas** then fall out of enforce (the
+  guard auto-scopes `checkRunQuota`'s count queries to the bound tenant) plus
+  per-tenant ECS env limits — no separate quota engine needed. **Remaining:** make
+  Redis mandatory; runtime settings → Redis/DB; scenarios → object store; then
+  remove the whole-dir state sync.
 - **Phase 5 — Per-tenant ECS + autoscaling infra.** Shared stack + per-tenant
   ECS service/target-group/ALB-rule; enable autoscaling; retire suspend/resume.
 - **Phase 6 — Control-plane.** Replace CodeBuild provisioning with

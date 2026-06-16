@@ -6,6 +6,7 @@ import { addMinutes, addHours, addDays, addMonths } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { checkRunQuota } from '../shared/quota-enforcement.js';
 import { tryAcquireTickLock } from '../lib/cache.js';
+import { runWithTenant } from '../lib/tenant-context.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -103,7 +104,10 @@ async function pollSchedules(): Promise<void> {
 
     for (const schedule of schedules) {
       try {
-        await executeSchedule(schedule, now);
+        // Bind the schedule's tenant so the run it creates is tenant-stamped and
+        // the quota check counts per-tenant under enforce (the poll loop itself
+        // runs as unscoped system work). Phase 4.
+        await runWithTenant(schedule.tenantId, () => executeSchedule(schedule, now));
       } catch (err) {
         console.error(`[schedule-executor] Error executing schedule ${schedule.id}:`, err);
       }
