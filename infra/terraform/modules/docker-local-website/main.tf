@@ -82,6 +82,11 @@ resource "null_resource" "build_app_image" {
   triggers = {
     dockerfile_sha   = filesha1("${local.effective_build_context}/${var.app_dockerfile}")
     package_lock_sha = filesha1("${local.effective_build_context}/package-lock.json")
+    # Rebuild whenever the website source changes (middleware, pages, lib, …) so
+    # `terraform apply` / `npm run local:up` reflect code edits, not just Dockerfile bumps.
+    source_sha = sha1(join("", [
+      for f in fileset(local.effective_build_context, "src/**") : filesha1("${local.effective_build_context}/${f}")
+    ]))
     # Increment this manually (or via -var) to force a rebuild of unchanged source:
     #   terraform apply -var='force_rebuild=2'
     force_rebuild = var.force_rebuild
