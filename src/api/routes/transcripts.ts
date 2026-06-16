@@ -4,6 +4,7 @@ import { readdirSync, statSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { appPaths } from '../../runtime/paths.js';
 import { prisma } from '../../db/client.js';
+import { getObjectStore } from '../../runtime/object-store.js';
 
 export const transcriptsRouter = Router();
 
@@ -56,13 +57,18 @@ transcriptsRouter.get('/', async (_req, res) => {
   }
 });
 
-transcriptsRouter.get('/:filename', (req, res) => {
+transcriptsRouter.get('/:filename', async (req, res) => {
   const filename = req.params['filename']!;
   if (!filename.endsWith('.json') || filename.includes('/') || filename.includes('..')) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
-  const filePath = join(TRANSCRIPTS_DIR, filename);
-  if (!existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
-  const content = JSON.parse(readFileSync(filePath, 'utf-8'));
-  res.json(content);
+  try {
+    // Serve from the object store so any instance can serve a transcript another
+    // instance produced (S3 in prod, local file otherwise). Phase 4.
+    const buf = await getObjectStore().get(`transcripts/${filename}`);
+    if (!buf) return res.status(404).json({ error: 'Not found' });
+    res.type('application/json').send(buf);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
