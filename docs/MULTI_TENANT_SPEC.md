@@ -249,8 +249,22 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   permission for that. The suspend/resume lambdas are unused by this path.
   `environments/platform-dev` is a validate-only reference composing it for 2 example
   tenants. (Not applied to dev/prod — user-driven.)
-- **Phase 6 — Control-plane.** Replace CodeBuild provisioning with
-  tenant-record + per-tenant-ECS + route; data-purge on delete.
+- **Phase 6 — Control-plane.** ✅ *App + IAM landed (validated, not applied).* The
+  control-plane provisions per-tenant compute via the **AWS SDK directly** (no
+  CodeBuild): `src/control-plane/tenant-provisioner.ts` does
+  RegisterTaskDefinition → CreateTargetGroup → CreateRule (host `<tenant>.<domain>`,
+  allocated priority) → CreateService (desired=0) → RegisterScalableTarget(min=0),
+  and `wakeTenantService` (UpdateService desired=1 on login, since ALB can't scale a
+  0-task service). Instance URLs are **host-based**. On delete,
+  `deprovisionTenantService` removes the service/TG/rule and
+  `src/control-plane/tenant-purge.ts` purges the tenant's Postgres rows (by
+  `tenantId`, resolved from `Tenant.externalId`) + object-store prefix — verified
+  locally against the local Postgres (purge + isolation). `modules/platform` grants
+  the control-plane role the provisioning + purge IAM (and optional control-plane SG
+  → Aurora ingress). Gated by `PLATFORM_ECS_CLUSTER` (absent ⇒ local mode).
+  *Remaining wiring (mechanical, unapplied):* the control-plane environment Terraform
+  must inject the platform outputs as the `PLATFORM_*` task env (see
+  `tenant-provisioner.ts` `loadConfig()` for the contract) + `DATABASE_URL` secret.
 - **Phase 7 — Decommission.** Remove `tenant-module` full-stack provisioning,
   CodeBuild project, and suspend/resume lambdas. (No data migration — greenfield.)
 

@@ -17,6 +17,14 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2';
+import { purgeTenantData } from './tenant-purge.js';
+import {
+  deprovisionTenantService,
+  isPlatformProvisioningEnabled,
+  provisionTenantService,
+  suspendTenantService,
+  wakeTenantService,
+} from './tenant-provisioner.js';
 
 type BillingPeriod = 'monthly' | 'annual';
 type PricingTier = 'free' | 'individual' | 'enterprise_starter' | 'enterprise_pro' | 'enterprise_unlimited';
@@ -84,6 +92,14 @@ interface ControlPlaneTenant {
   // state) when the destroy build reports SUCCEEDED.
   destroyBuildId?: string;
   destroyStartedAt?: string;
+  // Phase 6: per-tenant ECS service refs (AWS-mode provisioning on the shared platform).
+  host?: string;
+  listenerRulePriority?: number;
+  ecsServiceName?: string;
+  ecsServiceArn?: string;
+  targetGroupArn?: string;
+  listenerRuleArn?: string;
+  taskDefinitionArn?: string;
   ssoTokenHash?: string;
   ssoTokenExpiresAt?: string;
   billingStartedAt?: string;
@@ -106,6 +122,8 @@ interface ControlPlaneState {
   tenants: ControlPlaneTenant[];
   deletedAccounts: DeletedAccountRecord[];
   pendingHistoryWrites: PendingHistoryWrite[];
+  // Phase 6: monotonic allocator for per-tenant ALB listener-rule priorities.
+  nextListenerRulePriority?: number;
 }
 
 interface DeletedAccountRecord {
@@ -688,12 +706,29 @@ function defaultNameFromEmail(email: string): string {
 }
 
 function makeTenantInstanceUrl(tenantId: string): string {
-  const base = process.env['CONTROL_PLANE_INSTANCE_BASE_URL']?.trim() || 'https://ariaeval.io';
-  const normalizedBase = base.replace(/\/$/, '');
   if (DEPLOY_ENV === 'local') {
-    return normalizedBase;
+    const base = process.env['CONTROL_PLANE_INSTANCE_BASE_URL']?.trim() || 'http://localhost:3001';
+    return base.replace(/\/$/, '');
   }
-  return `${normalizedBase}/workspace/${tenantId}`;
+  // Phase 6: host-based — each tenant gets its own subdomain on the shared platform ALB.
+  const domain = process.env['PLATFORM_DOMAIN']?.trim();
+  if (domain) {
+    return `https://${tenantId}.${domain}`;
+  }
+  // Fallback when no platform domain is configured: legacy path-based URL.
+  const base = process.env['CONTROL_PLANE_INSTANCE_BASE_URL']?.trim() || 'https://ariaeval.io';
+  return `${base.replace(/\/$/, '')}/workspace/${tenantId}`;
+}
+
+/** Allocate a unique ALB listener-rule priority for a new tenant (monotonic). */
+async function allocateListenerRulePriority(): Promise<number> {
+  let priority = 100;
+  await mutateState((state) => {
+    const next = state.nextListenerRulePriority ?? 100;
+    priority = next;
+    state.nextListenerRulePriority = next + 1;
+  });
+  return priority;
 }
 
 function buildTenantSummary(user: ControlPlaneUser, state: ControlPlaneState): TenantSummaryResponse {
@@ -1120,52 +1155,48 @@ app.post('/tenant/provision', async (req, res) => {
     }
   });
 
-  // ── Real CodeBuild provisioning (when CODEBUILD_PROJECT_NAME is set) ──────
-  if (CODEBUILD_PROJECT_NAME) {
+  // ── Provisioning ──────────────────────────────────────────────────────────
+  // AWS mode (PLATFORM_ECS_CLUSTER set): create a per-tenant ECS service on the
+  // shared platform via the SDK (scale-to-zero; woken on login). Local mode: mark
+  // running immediately. Phase 6 — replaces the CodeBuild full-stack provisioning.
+  if (isPlatformProvisioningEnabled()) {
     try {
-      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
-      const startResponse = await codebuild.send(new StartBuildCommand({
-        projectName: CODEBUILD_PROJECT_NAME,
-        environmentVariablesOverride: [
-          { name: 'USER_ID',       value: tenantId,                             type: 'PLAINTEXT' },
-          { name: 'PLAN_TYPE',     value: parsed.data.plan,                     type: 'PLAINTEXT' },
-          { name: 'PRICING_TRACK', value: TIER_PRICING_TRACK[parsed.data.plan], type: 'PLAINTEXT' },
-          { name: 'TENANT_REGION', value: parsed.data.region,                   type: 'PLAINTEXT' },
-          { name: 'ENVIRONMENT',   value: process.env['ARIA_DEPLOY_ENV'] ?? 'prod', type: 'PLAINTEXT' },
-          { name: 'ADMIN_EMAIL',   value: user.email,                           type: 'PLAINTEXT' },
-          // Pass secret ARN (not the secret value) — buildspec fetches it at runtime via AWS CLI
-          ...(CONTROL_PLANE_SECRET_ARN
-            ? [{ name: 'CONTROL_PLANE_SECRET_ARN', value: CONTROL_PLANE_SECRET_ARN, type: 'PLAINTEXT' as const }]
-            : []
-          ),
-        ],
-      }));
-      const buildId = startResponse.build?.id;
-      const provisioningStartedAt = nowIso();
-      if (buildId) {
-        await mutateState((s) => {
-          const t = s.tenants.find((x) => x.id === tenantId);
-          if (t) {
-            t.provisioningBuildId = buildId;
-            t.provisioningStartedAt = provisioningStartedAt;
-            t.updatedAt = provisioningStartedAt;
-          }
-        });
-      }
-      console.info(`[provision] CodeBuild build started — tenant: ${tenantId}, plan: ${parsed.data.plan}, region: ${parsed.data.region}, build: ${buildId ?? '<unknown>'}`);
+      const host = `${tenantId}.${process.env['PLATFORM_DOMAIN']?.trim() ?? ''}`;
+      const priority = await allocateListenerRulePriority();
+      const refs = await provisionTenantService({
+        tenantId,
+        host,
+        pricingTier: parsed.data.plan,
+        listenerRulePriority: priority,
+      });
+      const provisionedAt = nowIso();
+      await mutateState((s) => {
+        const t = s.tenants.find((x) => x.id === tenantId);
+        if (t) {
+          t.status = 'running';
+          t.host = host;
+          t.listenerRulePriority = priority;
+          t.ecsServiceName = refs.ecsServiceName;
+          t.ecsServiceArn = refs.serviceArn;
+          t.targetGroupArn = refs.targetGroupArn;
+          t.listenerRuleArn = refs.listenerRuleArn;
+          t.taskDefinitionArn = refs.taskDefinitionArn;
+          t.updatedAt = provisionedAt;
+        }
+      });
+      console.info(`[provision] AWS provisioned tenant ${tenantId} -> ${host} (service ${refs.ecsServiceName})`);
     } catch (err) {
-      // Mark failed and surface error to caller
       await mutateState((s) => {
         const t = s.tenants.find((x) => x.id === tenantId);
         if (t) { t.status = 'error'; t.updatedAt = nowIso(); }
       });
-      console.error(`[provision] CodeBuild start failed: ${(err as Error).message}`);
-      res.status(502).json({ error: 'Failed to start provisioning job', detail: (err as Error).message });
+      console.error(`[provision] AWS provisioning failed: ${(err as Error).message}`);
+      res.status(502).json({ error: 'Failed to provision tenant instance', detail: (err as Error).message });
       return;
     }
   } else {
-    // ── Local / dev fallback — no AWS, mark running immediately ───────────
-    console.info(`[provision] Local mode — skipping CodeBuild, marking tenant ${tenantId} as running`);
+    // ── Local / dev — no AWS, mark running immediately ──────────────────────
+    console.info(`[provision] Local mode — marking tenant ${tenantId} as running`);
     await mutateState((s) => {
       const t = s.tenants.find((x) => x.id === tenantId);
       if (t) { t.status = 'running'; t.updatedAt = nowIso(); }
@@ -1175,7 +1206,7 @@ app.post('/tenant/provision', async (req, res) => {
   res.status(201).json({
     ok: true,
     tenantId,
-    status: CODEBUILD_PROJECT_NAME ? 'provisioning' : 'running',
+    status: 'running',
     instanceUrl,
     ssoUrl: null,
   });
@@ -1403,6 +1434,15 @@ app.post('/tenant/suspend', async (req, res) => {
     return
   }
 
+  if (isPlatformProvisioningEnabled() && tenant.ecsServiceName) {
+    try {
+      await suspendTenantService(tenant.ecsServiceName)
+    } catch (err) {
+      res.status(502).json({ error: 'Failed to suspend instance', detail: (err as Error).message })
+      return
+    }
+  }
+
   await mutateState((s) => {
     const t = s.tenants.find((x) => x.id === user.tenantId)
     if (t) { t.status = 'suspended'; t.updatedAt = nowIso() }
@@ -1422,6 +1462,15 @@ app.post('/tenant/resume', async (req, res) => {
   if (tenant.status !== 'suspended') {
     res.status(409).json({ error: `Cannot resume instance with status: ${tenant.status}` })
     return
+  }
+
+  if (isPlatformProvisioningEnabled() && tenant.ecsServiceName) {
+    try {
+      await wakeTenantService(tenant.ecsServiceName)
+    } catch (err) {
+      res.status(502).json({ error: 'Failed to resume instance', detail: (err as Error).message })
+      return
+    }
   }
 
   await mutateState((s) => {
@@ -1534,6 +1583,14 @@ app.post('/instance/sso-token', async (req, res) => {
       current.updatedAt = nowIso();
     }
   });
+
+  // Wake a scale-to-zero tenant so its instance is warming while the user redirects.
+  // Fire-and-forget — never block SSO on the ECS call (cold start ~30-60s is expected).
+  if (isPlatformProvisioningEnabled() && tenant.ecsServiceName) {
+    void wakeTenantService(tenant.ecsServiceName).catch((err: unknown) => {
+      console.warn(`[wake] failed for tenant ${tenant.id}: ${(err as Error).message}`);
+    });
+  }
 
   const instanceUrl = tenant.instanceUrl;
   res.json({
@@ -1867,59 +1924,25 @@ app.delete('/account', async (req, res) => {
     return;
   }
 
-  // Workspace exists — kick off `terraform destroy` via CodeBuild. We mark
-  // the tenant as 'destroying' and return 202 immediately so the UI can poll
-  // /account/delete/status. The final state cleanup (removing user, sessions,
-  // tenant) happens when the destroy build is observed to be SUCCEEDED.
-  if (!CODEBUILD_PROJECT_NAME) {
-    // Local/dev mode — no CodeBuild available. Fall through to synchronous
-    // state-only deletion, matching the historical behaviour.
-    console.info(`[account] Local mode: skipping destroy, removing state for ${user.email}`);
-    await finaliseAccountDeletion(user, tenant, 'CODEBUILD_PROJECT_NAME not set; skipped infra teardown');
-    res.json({ ok: true, status: 'completed', message: 'Account closed (no infra teardown in local mode)' });
-    return;
-  }
-
+  // Workspace exists — tear down per-tenant compute (AWS mode) and purge ALL tenant
+  // data (shared-Postgres rows + object-store prefix), then finalise. Phase 6:
+  // synchronous; replaces the CodeBuild `terraform destroy` + 'destroying' polling.
   try {
-    const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
-    const startResponse = await codebuild.send(new StartBuildCommand({
-      projectName: CODEBUILD_PROJECT_NAME,
-      environmentVariablesOverride: [
-        { name: 'ACTION',        value: 'destroy',                                  type: 'PLAINTEXT' },
-        { name: 'USER_ID',       value: tenant.id,                                  type: 'PLAINTEXT' },
-        { name: 'PLAN_TYPE',     value: tenant.plan,                                type: 'PLAINTEXT' },
-        { name: 'PRICING_TRACK', value: TIER_PRICING_TRACK[tenant.plan],            type: 'PLAINTEXT' },
-        { name: 'TENANT_REGION', value: tenant.region,                              type: 'PLAINTEXT' },
-        { name: 'ENVIRONMENT',   value: process.env['ARIA_DEPLOY_ENV'] ?? 'prod',   type: 'PLAINTEXT' },
-        { name: 'ADMIN_EMAIL',   value: user.email,                                 type: 'PLAINTEXT' },
-        ...(CONTROL_PLANE_SECRET_ARN
-          ? [{ name: 'CONTROL_PLANE_SECRET_ARN', value: CONTROL_PLANE_SECRET_ARN, type: 'PLAINTEXT' as const }]
-          : []),
-      ],
-    }));
-
-    const buildId = startResponse.build?.id;
-    const startedAt = nowIso();
-    await mutateState((s) => {
-      const t = s.tenants.find((x) => x.id === tenant.id);
-      if (!t) return;
-      t.status = 'destroying';
-      t.destroyBuildId = buildId;
-      t.destroyStartedAt = startedAt;
-      t.updatedAt = startedAt;
-    });
-
-    console.info(`[account] Destroy build started for ${user.email} (tenant ${tenant.id}): ${buildId}`);
-    res.status(202).json({
-      ok: true,
-      status: 'destroying',
-      tenantId: tenant.id,
-      buildId: buildId ?? null,
-      message: 'Workspace teardown in progress. Account will be closed when teardown finishes.',
-    });
+    if (isPlatformProvisioningEnabled() && tenant.ecsServiceName) {
+      await deprovisionTenantService({
+        ecsServiceName: tenant.ecsServiceName,
+        targetGroupArn: tenant.targetGroupArn,
+        listenerRuleArn: tenant.listenerRuleArn,
+        taskDefinitionArn: tenant.taskDefinitionArn,
+      });
+    }
+    const purge = await purgeTenantData(tenant.id);
+    console.info(`[account] Purged tenant ${tenant.id}: pg=${JSON.stringify(purge.postgres)} s3=${purge.objectStoreDeleted}${purge.skipped.length ? ` skipped=${purge.skipped.join('|')}` : ''}`);
+    await finaliseAccountDeletion(user, tenant, null);
+    res.json({ ok: true, status: 'completed', message: 'Workspace destroyed and account closed' });
   } catch (err) {
-    console.error(`[account] Failed to start destroy build for ${user.email}: ${(err as Error).message}`);
-    res.status(502).json({ error: 'Failed to start workspace teardown', detail: (err as Error).message });
+    console.error(`[account] Teardown failed for ${user.email}: ${(err as Error).message}`);
+    res.status(502).json({ error: 'Failed to tear down workspace', detail: (err as Error).message });
   }
 });
 
