@@ -165,11 +165,31 @@ model Run {
   scheduleRuns ScheduleRun[] @relation("scheduleRuns")
   telemetry    RunTelemetry?
   securityAttack SecurityAttack?
+  transcripts  TranscriptArtifact[]
   tenantId     String?
   createdAt    DateTime  @default(now())
 
   @@index([status, createdAt])
   @@index([scenarioId])
+  @@index([createdAt])
+  @@index([tenantId])
+}
+
+// Per-transcript artifact record so the transcripts listing can be DB-driven (no
+// filesystem scan) and any autoscaled instance lists every transcript. The file
+// itself lives in the object store. Phase 4 of the multi-tenant migration.
+model TranscriptArtifact {
+  id           String    @id @default(cuid())
+  runId        String
+  run          Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  ref          String    // object-store key, e.g. "transcripts/<file>.json"
+  scenarioName String
+  startedAt    DateTime?
+  tenantId     String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([runId, ref])
+  @@index([runId])
   @@index([createdAt])
   @@index([tenantId])
 }
