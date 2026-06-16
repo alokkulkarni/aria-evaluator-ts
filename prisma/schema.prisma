@@ -105,7 +105,7 @@ model AuditLog {
 // ─── Scenario ─────────────────────────────────────────────────────────────────
 model Scenario {
   id          String   @id @default(cuid())
-  filePath    String   @unique        // stable key, e.g. "scenario:banking_balance_01"
+  filePath    String                  // stable key, e.g. "scenario:banking_balance_01"
   sourceRef   String?                 // relative source ref, e.g. "banking/account_query.yaml#0"
   name        String
   channel     String                  // "chat" | "voice"
@@ -124,6 +124,7 @@ model Scenario {
   schedules   Schedule[]
   tenantId    String?
 
+  @@unique([tenantId, filePath])
   @@index([sourceRef])
   @@index([lifecycleStatus])
   @@index([tenantId])
@@ -443,7 +444,7 @@ model Report {
 // ─── Schedules ────────────────────────────────────────────────────────────────
 model Schedule {
   id                String   @id @default(cuid())
-  name              String   @unique
+  name              String
   description       String?
   status            String   @default("active") // active|paused|archived
   createdBy         String
@@ -478,6 +479,7 @@ model Schedule {
   scheduleRuns      ScheduleRun[]
   tenantId          String?
 
+  @@unique([tenantId, name])
   @@index([createdBy, status])
   @@index([nextRunAt, status])
   @@index([status])

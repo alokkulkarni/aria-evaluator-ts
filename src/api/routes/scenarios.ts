@@ -296,14 +296,17 @@ async function upsertScenarioState(
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {
-    const existing = await tx.scenario.findUnique({
+    // findFirst (not findUnique): filePath is now unique per tenant, so the bare
+    // key isn't a unique selector. The guard scopes this to the caller's tenant
+    // under enforce. Phase 3 hardening (composite uniques).
+    const existing = await tx.scenario.findFirst({
       where: { filePath: key },
       select: { id: true, contentHash: true, owner: true, lifecycleStatus: true },
     });
 
     const scenario = existing
       ? await tx.scenario.update({
-        where: { filePath: key },
+        where: { id: existing.id },
         data: {
           sourceRef,
           name: normalizedDoc.name,
