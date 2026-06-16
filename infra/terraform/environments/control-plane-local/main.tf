@@ -19,5 +19,10 @@ module "docker_local_control_plane" {
     { name = "CONTROL_PLANE_LOCAL_TEST_NAME", value = "Local Test User" },
     { name = "CONTROL_PLANE_LOCAL_TEST_TENANT_ID", value = "local-demo-tenant" },
     { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = "http://localhost:3001" },
+    # Trust the local website/evaluator browser origins. The container runs with
+    # NODE_ENV=production, which disables the localhost dev-bypass in
+    # validateOrigin(), so the website's forwarded Origin header (localhost:3000)
+    # would otherwise be rejected with 403 "Untrusted origin" on provision.
+    { name = "CONTROL_PLANE_CORS_ORIGINS", value = "http://localhost:3000,http://localhost:3001" },
   ]
 }
