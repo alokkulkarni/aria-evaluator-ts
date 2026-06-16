@@ -4,6 +4,12 @@ variable "app_name" {
   default     = "aria-evaluator"
 }
 
+variable "database_url" {
+  description = "DATABASE_URL for the app container. Defaults to the local Postgres container reached via host.docker.internal (mirrors the Redis pattern)."
+  type        = string
+  default     = "postgresql://aria:aria@host.docker.internal:5432/aria?schema=public"
+}
+
 variable "environment" {
   description = "Deployment environment label"
   type        = string

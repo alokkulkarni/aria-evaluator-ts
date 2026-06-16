@@ -44,7 +44,7 @@ locals {
     { name = "API_PORT", value = tostring(var.container_port) },
     { name = "AWS_S3_STATE_BUCKET", value = "" },
     { name = "AUTH_DEFAULT_ADMIN_ENABLED", value = "true" },
-    { name = "DATABASE_URL", value = "file:/app/state/data/aria-evaluator.db" },
+    { name = "DATABASE_URL", value = var.database_url },
     { name = "EVAL_REPORT_OUTPUT_DIR", value = "/app/state/reports" },
     { name = "SCENARIOS_DIR", value = "/app/state/scenarios" },
     { name = "ARIA_WEBSITE_URL", value = var.website_url },

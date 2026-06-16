@@ -26,6 +26,7 @@ import { calibrationRouter } from './routes/calibration.js';
 import { seedPairwiseDatasetIfNeeded } from './lmsys-import.js';
 import { transcriptsRouter } from './routes/transcripts.js';
 import { reportsRouter } from './routes/reports.js';
+import { artifactRouter } from './routes/artifacts.js';
 import { settingsRouter } from './routes/settings.js';
 import { openapiRouter } from './routes/openapi.js';
 import { regressionRouter } from './routes/regression.js';
@@ -206,10 +207,13 @@ app.use('/api/usage', usageRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/openapi', openapiRouter);
 
-// ── Static file serving ────────────────────────────────────────────────────────
-app.use('/reports', attachAuthContext, requireAuth, express.static(appPaths.reportsDir));
-app.use('/transcripts', attachAuthContext, requireAuth, express.static(appPaths.transcriptsDir));
-app.use('/audio', attachAuthContext, requireAuth, express.static(appPaths.audioDir));
+// ── Artifact serving ───────────────────────────────────────────────────────────
+// When S3-backed (dev/prod), serve artifacts from the object store so any
+// autoscaled instance can serve what another wrote; locally keep express.static.
+const SERVE_ARTIFACTS_FROM_S3 = Boolean(process.env['AWS_S3_STATE_BUCKET']?.trim());
+app.use('/reports', attachAuthContext, requireAuth, SERVE_ARTIFACTS_FROM_S3 ? artifactRouter('reports') : express.static(appPaths.reportsDir));
+app.use('/transcripts', attachAuthContext, requireAuth, SERVE_ARTIFACTS_FROM_S3 ? artifactRouter('transcripts') : express.static(appPaths.transcriptsDir));
+app.use('/audio', attachAuthContext, requireAuth, SERVE_ARTIFACTS_FROM_S3 ? artifactRouter('audio') : express.static(appPaths.audioDir));
 app.use(express.static(PUBLIC_DIR));
 if (existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));

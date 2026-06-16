@@ -13,12 +13,15 @@ import {
 import { prisma } from '../db/client.js';
 import { getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
 import { getJudgeWeights } from '../api/calibration-service.js';
+import { readFile } from 'node:fs/promises';
 import {
   appPaths,
   normalizeArtifactRef,
+  resolveArtifactRef,
   resolveLoggedArtifactPath,
   sanitizeArtifactPathInLogLine,
 } from '../runtime/paths.js';
+import { getObjectStore } from '../runtime/object-store.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore, JudgeVote } from '../types/evaluation.js';
 import { parseRunJobPayload } from './run-job-payload.js';
@@ -333,6 +336,20 @@ async function clearPreviousRunState(runId: string): Promise<void> {
   ]);
 }
 
+// Phase 2: when S3-backed, push a run artifact directly to the object store as
+// soon as it's produced so any autoscaled instance can serve it immediately,
+// rather than waiting for the whole-directory state sync. Local dev serves from
+// the filesystem, so this is a no-op there. Never fatal — the state sync remains
+// a fallback. See docs/MULTI_TENANT_SPEC.md.
+async function uploadArtifactToStore(ref: string | null, localPath: string, contentType: string): Promise<void> {
+  if (!ref || !process.env['AWS_S3_STATE_BUCKET']?.trim()) return;
+  try {
+    await getObjectStore().put(ref, await readFile(localPath), contentType);
+  } catch (err) {
+    console.error(`[artifacts] direct upload of ${ref} failed: ${(err as Error).message}`);
+  }
+}
+
 async function ingestRunArtifacts(
   runId: string,
   transcriptPaths: Set<string>,
@@ -352,6 +369,11 @@ async function ingestRunArtifacts(
     }
   }
   transcripts.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+
+  // Push transcripts to the object store immediately (no-op locally).
+  for (const path of transcriptPaths) {
+    await uploadArtifactToStore(normalizeArtifactRef('transcripts', path), path, 'application/json');
+  }
 
   let mergedTurnIndex = 0;
   const multiScenario = transcripts.length > 1;
@@ -387,6 +409,9 @@ async function ingestRunArtifacts(
       where: { id: runId, NOT: { status: 'deleted' } },
       data: { audioPath },
     });
+    const audioRef = normalizeArtifactRef('audio', audioPath);
+    const audioLocal = audioRef ? resolveArtifactRef(audioRef) : null;
+    if (audioRef && audioLocal) await uploadArtifactToStore(audioRef, audioLocal, 'audio/wav');
   }
 
   if (reportJsonPath && existsSync(reportJsonPath)) {
@@ -511,6 +536,8 @@ async function ingestRunArtifacts(
   if (reportJsonPath && reportHtmlPath && existsSync(reportJsonPath) && existsSync(reportHtmlPath)) {
     reportJsonRef = normalizeArtifactRef('reports', reportJsonPath);
     reportHtmlRef = normalizeArtifactRef('reports', reportHtmlPath);
+    await uploadArtifactToStore(reportJsonRef, reportJsonPath, 'application/json');
+    await uploadArtifactToStore(reportHtmlRef, reportHtmlPath, 'text/html');
   }
 
   if (reportJsonRef && reportHtmlRef) {
