@@ -37,6 +37,9 @@ prisma/data/*.db
 prisma/data/*.db-shm
 prisma/data/*.db-wal
 
+# Local Terraform docker stack runtime data (postgres/redis volumes) — never commit
+infra/data/
+
 # ── Build output ──────────────────────────────────────────────────────────────
 dist/
 
