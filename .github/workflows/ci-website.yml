@@ -78,7 +78,10 @@ jobs:
     with:
       component: auth-backend
       dockerfile: ./website/auth-backend/Dockerfile
-      context: ./website/auth-backend
+      # Context must be the website dir: the Dockerfile COPYs both auth-backend/
+      # and the shared src/ (src/auth.ts, src/lib) from the parent. This matches
+      # the local Terraform build (modules/docker-local-website).
+      context: ./website
     permissions:
       contents: read
       packages: write
