@@ -186,19 +186,27 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
 
 ## 6. Phased plan
 
-- **Phase 0 — Tenant scaffolding (dormant). ◀ IN PROGRESS**
-  Add `Tenant` model + nullable `tenantId` columns (additive, safe on SQLite now),
-  `AsyncLocalStorage` tenant context, and the Prisma scoping guard in **log-only**
-  mode (`TENANT_SCOPING_MODE`, default off). **No behavior change.**
-- **Phase 1 — PostgreSQL / Aurora.** Aurora SS v2 + RDS Proxy; provider →
-  postgresql for dev/prod (local SQLite via provider swap); rewrite the entrypoint
-  off SQLite-on-S3.
-- **Phase 2 — Artifacts to S3.** All file IO behind an S3-backed storage layer,
-  tenant-prefixed.
-- **Phase 3 — Enforce tenancy.** Persist `tenantId` from SSO → `AuthContext` →
-  ALS; flip the Prisma guard to enforce; add per-route guards; composite uniques.
-- **Phase 4 — Quotas + multi-instance safety.** Per-tenant quotas on `Tenant`;
-  leader election for scheduler/heartbeat; job-payload tenantId; Redis mandatory.
+- **Phase 0 — Tenant scaffolding (dormant). ✅ DONE**
+  `Tenant` model + nullable `tenantId` columns, `AsyncLocalStorage` tenant context,
+  and the Prisma scoping guard in **log-only** mode (`TENANT_SCOPING_MODE`, default
+  off). No behavior change.
+- **Phase 1 — PostgreSQL / Aurora. ✅ DONE.** Aurora SS v2 module + RDS Proxy;
+  Postgres everywhere (local container, dev wired to Aurora via a DATABASE_URL
+  secret); entrypoint off SQLite-on-S3. (Shared prod Aurora wiring lands with the
+  Phase 5 shared stack.)
+- **Phase 2 — Run artifacts to S3. ✅ DONE (artifact scope).** `ObjectStore`
+  abstraction; reports/transcripts/audio served from + written directly to the
+  object store (multi-instance-safe). **Scenarios and runtime settings (sync-FS
+  subsystems) and removing the whole-dir state sync are moved to Phase 4** — they
+  need a sync→async / cache refactor and are low-churn config, so the existing
+  state sync covers them in the interim.
+- **Phase 3 — Enforce tenancy. ◀ NEXT.** Persist `tenantId` from SSO →
+  `AuthContext` → ALS; flip the Prisma guard to enforce; add per-route guards;
+  composite uniques.
+- **Phase 4 — Quotas + multi-instance safety + remaining state.** Per-tenant
+  quotas on `Tenant`; leader election for scheduler/heartbeat; job-payload
+  tenantId; Redis mandatory; **runtime settings → Redis/DB, scenarios → object
+  store, then remove the whole-dir state sync.**
 - **Phase 5 — Per-tenant ECS + autoscaling infra.** Shared stack + per-tenant
   ECS service/target-group/ALB-rule; enable autoscaling; retire suspend/resume.
 - **Phase 6 — Control-plane.** Replace CodeBuild provisioning with
