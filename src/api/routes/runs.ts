@@ -2,12 +2,10 @@
 // Validates run requests, enqueues jobs, and serves run state + SSE log replay.
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import yaml from 'js-yaml';
 
 import { prisma } from '../../db/client.js';
-import { loadScenariosFromFile } from '../../conversation/scenario-loader.js';
+import { resolveScenariosByFile, resolveScenariosByRefs } from '../../conversation/scenario-store.js';
 import { hasRunEvents, listRunEvents, publishRunEventSafe } from '../../jobs/run-events.js';
 import { createQueuedRun } from '../../jobs/run-jobs.js';
 import type { RunProvider } from '../../jobs/run-job-payload.js';
@@ -21,10 +19,6 @@ import { checkRunQuota } from '../../shared/quota-enforcement.js';
 import { getUsageLimits } from '../../shared/usage-limits.js';
 
 export const runsRouter = Router();
-
-const SCENARIOS_DIR = resolve(
-  process.env['SCENARIOS_DIR'] ?? join('..', 'aria-evaluator-v2', 'scenarios'),
-);
 
 interface RunRequestBody {
   scenarioFile?: string;
@@ -564,57 +558,34 @@ runsRouter.post('/', async (req, res) => {
   const selectedScenarios: Scenario[] = [];
   let selectedFiles: string[] = [];
 
-  if (normalizedRefs.length > 0) {
-    const uniqueRefs = [...new Set(normalizedRefs)];
-    selectedFiles = [...new Set(uniqueRefs.map((ref) => ref.split('#')[0]!))];
-    const docsByFile = new Map<string, Scenario[]>();
+  try {
+    if (normalizedRefs.length > 0) {
+      const uniqueRefs = [...new Set(normalizedRefs)];
+      selectedFiles = [...new Set(uniqueRefs.map((ref) => ref.split('#')[0]!))];
+      selectedScenarios.push(...(await resolveScenariosByRefs(uniqueRefs)));
+    } else {
+      selectedFiles = normalizedFiles.length > 0
+        ? [...new Set(normalizedFiles)]
+        : (() => {
+            const single = sanitizeRelativePath(scenarioFile ?? '');
+            return single ? [single] : [];
+          })();
 
-    for (const relativeFile of selectedFiles) {
-      const fullPath = join(SCENARIOS_DIR, relativeFile);
-      if (!fullPath.startsWith(SCENARIOS_DIR) || !existsSync(fullPath)) {
-        return res.status(404).json({ error: `Scenario file not found: ${relativeFile}` });
-      }
-      docsByFile.set(relativeFile, loadScenariosFromFile(fullPath, SCENARIOS_DIR));
-    }
-
-    for (const ref of uniqueRefs) {
-      const [relativeFile, rawIndex] = ref.split('#');
-      const index = Number.parseInt(rawIndex ?? '', 10);
-      const docs = docsByFile.get(relativeFile ?? '');
-      const picked = docs?.[index];
-      if (!picked) return res.status(400).json({ error: `Scenario ref out of range: ${ref}` });
-      selectedScenarios.push(picked);
-    }
-  } else {
-    selectedFiles = normalizedFiles.length > 0
-      ? [...new Set(normalizedFiles)]
-      : (() => {
-          const single = sanitizeRelativePath(scenarioFile ?? '');
-          return single ? [single] : [];
-        })();
-
-    if (selectedFiles.length === 0) {
-      return res.status(400).json({ error: 'scenarioFile, scenarioFiles[] or scenarioRefs[] is required' });
-    }
-
-    for (const relativeFile of selectedFiles) {
-      const fullPath = join(SCENARIOS_DIR, relativeFile);
-      if (!fullPath.startsWith(SCENARIOS_DIR) || !existsSync(fullPath)) {
-        return res.status(404).json({ error: `Scenario file not found: ${relativeFile}` });
+      if (selectedFiles.length === 0) {
+        return res.status(400).json({ error: 'scenarioFile, scenarioFiles[] or scenarioRefs[] is required' });
       }
 
-      const docs = loadScenariosFromFile(fullPath, SCENARIOS_DIR);
-      if (docs.length === 0) continue;
-
-      if (selectedFiles.length === 1 && scenarioIndex != null) {
-        const picked = docs[scenarioIndex];
-        if (!picked) return res.status(400).json({ error: 'Scenario index out of range' });
-        selectedScenarios.push(picked);
-        continue;
+      for (const relativeFile of selectedFiles) {
+        const useIndex = selectedFiles.length === 1 && scenarioIndex != null ? scenarioIndex : undefined;
+        const docs = await resolveScenariosByFile(relativeFile, useIndex);
+        if (useIndex != null && docs.length === 0) {
+          return res.status(400).json({ error: 'Scenario index out of range' });
+        }
+        selectedScenarios.push(...docs);
       }
-
-      selectedScenarios.push(...docs);
     }
+  } catch (err) {
+    return res.status(404).json({ error: (err as Error).message });
   }
 
   if (selectedScenarios.length === 0) {

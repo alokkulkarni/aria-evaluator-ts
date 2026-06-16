@@ -1,41 +1,39 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { Router } from 'express';
 import yaml from 'js-yaml';
 
 import { getRequestAuth } from '../auth.js';
-import { prisma } from '../../db/client.js';
 import { checkScenarioQuota } from '../../shared/quota-enforcement.js';
 import { getUsageLimits } from '../../shared/usage-limits.js';
-import { loadScenariosFromDir } from '../../conversation/scenario-loader.js';
-import type { Scenario } from '../../types/scenario.js';
+import {
+  deterministicScenarioId,
+  normalizeScenarioDoc,
+  parseOwner,
+  parseScenarioDocuments,
+  parseLifecycleStatus,
+  parseScenarioId,
+  type ScenarioLifecycleStatus,
+} from '../../conversation/scenario-doc.js';
+import {
+  countOwnScenarioDocsForFile,
+  getScenarioFileContentFromDb,
+  getScenarioRevisions,
+  listScenarioFilesFromDb,
+  listScenariosFromDb,
+  shouldWriteScenarioFiles,
+  updateScenarioMetadata,
+  upsertScenarioState,
+} from '../../conversation/scenario-store.js';
 
 export const scenariosRouter = Router();
 
+// Bundled scenarios live here and seed the GLOBAL library at startup (server.ts).
+// At request time scenarios are served from the DB (Postgres), not these files.
 const SCENARIOS_DIR = resolve(
   process.env['SCENARIOS_DIR'] ?? join('..', 'aria-evaluator-v2', 'scenarios'),
 );
-
-const SCENARIO_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{2,79}$/;
-const LIFECYCLE_STATUS = new Set(['draft', 'active', 'deprecated']);
-
-type ScenarioLifecycleStatus = 'draft' | 'active' | 'deprecated';
-
-interface NormalizedScenarioDoc {
-  scenarioId: string;
-  name: string;
-  channel: 'chat' | 'voice' | 'both';
-  description: string | null;
-  yamlContent: string;
-  contentHash: string;
-}
-
-interface ParsedDocumentsResult {
-  docs: NormalizedScenarioDoc[];
-  details: string[];
-}
 
 function normalizePathSeparators(pathValue: string): string {
   return pathValue.replace(/\\/g, '/');
@@ -64,207 +62,6 @@ function resolveScenarioFilePath(input: string): { filePath: string; fullPath: s
   return { filePath, fullPath };
 }
 
-function parseScenarioRef(input: string): { scenarioRef: string; filePath: string; fullPath: string; docIndex: number } | null {
-  const [rawPath, rawIndex] = input.split('#');
-  if (!rawPath || rawIndex == null) return null;
-
-  const resolvedPath = resolveScenarioFilePath(rawPath);
-  if (!resolvedPath) return null;
-
-  const docIndex = Number.parseInt(rawIndex, 10);
-  if (!Number.isFinite(docIndex) || docIndex < 0) return null;
-
-  return {
-    scenarioRef: `${resolvedPath.filePath}#${docIndex}`,
-    filePath: resolvedPath.filePath,
-    fullPath: resolvedPath.fullPath,
-    docIndex,
-  };
-}
-
-function makeScenarioKey(scenarioId: string): string {
-  return `scenario:${scenarioId}`;
-}
-
-function slugifyScenarioId(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40);
-  const suffix = randomUUID().replace(/-/g, '').slice(0, 10);
-  return `${base || 'scenario'}_${suffix}`;
-}
-
-function normalizeScenarioId(raw: unknown, nameHint: string, assignIfMissing: boolean): string {
-  if (typeof raw === 'string' && raw.trim()) {
-    const candidate = raw.trim().toLowerCase();
-    if (!SCENARIO_ID_PATTERN.test(candidate)) {
-      throw new Error('scenario_id must match /^[a-z0-9][a-z0-9_-]{2,79}$/');
-    }
-    return candidate;
-  }
-  if (!assignIfMissing) {
-    throw new Error('scenario_id is required');
-  }
-  return slugifyScenarioId(nameHint);
-}
-
-function getDocSendValue(turn: unknown): string {
-  if (!turn || typeof turn !== 'object') return '';
-  const row = turn as Record<string, unknown>;
-  if (typeof row['send'] === 'string') return row['send'];
-  if (typeof row['customer'] === 'string') return row['customer'];
-  if (typeof row['content'] === 'string') return row['content'];
-  if (typeof row['message'] === 'string') return row['message'];
-  return '';
-}
-
-function validateScenarioDocShape(
-  doc: Record<string, unknown>,
-  docNumber: number,
-): string[] {
-  const errors: string[] = [];
-
-  const name = doc['name'];
-  if (typeof name !== 'string' || !name.trim()) {
-    errors.push(`Document ${docNumber}: name is required`);
-  }
-
-  const channel = doc['channel'];
-  if (channel !== 'chat' && channel !== 'voice' && channel !== 'both') {
-    errors.push(`Document ${docNumber}: channel must be one of chat, voice, or both`);
-  }
-
-  const mode = doc['mode'];
-  if (mode != null && mode !== 'agent' && mode !== 'script') {
-    errors.push(`Document ${docNumber}: mode must be either agent or script`);
-  }
-
-  const attackType = doc['attack_type'];
-  if (attackType != null && (typeof attackType !== 'string' || !attackType.trim())) {
-    errors.push(`Document ${docNumber}: attack_type must be a non-empty string when provided`);
-  }
-
-  if (mode === 'script') {
-    const turns = doc['turns'];
-    if (!Array.isArray(turns) || turns.length === 0) {
-      errors.push(`Document ${docNumber}: script mode requires at least one turn`);
-    } else {
-      turns.forEach((turn, index) => {
-        if (!getDocSendValue(turn).trim()) {
-          errors.push(`Document ${docNumber}: turn ${index + 1} must include send/customer/content/message text`);
-        }
-      });
-    }
-  }
-
-  const maxTurns = doc['max_turns'];
-  if (maxTurns != null && (!Number.isInteger(maxTurns) || Number(maxTurns) <= 0)) {
-    errors.push(`Document ${docNumber}: max_turns must be a positive integer when provided`);
-  }
-
-  const defaultTimeout = doc['default_timeout_seconds'];
-  if (defaultTimeout != null && (!Number.isInteger(defaultTimeout) || Number(defaultTimeout) <= 0)) {
-    errors.push(`Document ${docNumber}: default_timeout_seconds must be a positive integer when provided`);
-  }
-
-  const delay = doc['turn_delay_seconds'];
-  if (delay != null && (typeof delay !== 'number' || !Number.isFinite(delay) || delay < 0)) {
-    errors.push(`Document ${docNumber}: turn_delay_seconds must be a non-negative number when provided`);
-  }
-
-  return errors;
-}
-
-function normalizeScenarioDoc(
-  inputDoc: unknown,
-  docNumber: number,
-  assignScenarioId: boolean,
-): { doc: NormalizedScenarioDoc | null; details: string[] } {
-  if (!inputDoc || typeof inputDoc !== 'object' || Array.isArray(inputDoc)) {
-    return { doc: null, details: [`Document ${docNumber}: must be a YAML object`] };
-  }
-
-  const doc = { ...(inputDoc as Record<string, unknown>) };
-  const details = validateScenarioDocShape(doc, docNumber);
-  if (details.length > 0) return { doc: null, details };
-
-  const name = String(doc['name'] ?? '').trim();
-  let scenarioId: string;
-  try {
-    scenarioId = normalizeScenarioId(doc['scenario_id'], name, assignScenarioId);
-  } catch (err) {
-    return { doc: null, details: [`Document ${docNumber}: ${(err as Error).message}`] };
-  }
-
-  doc['scenario_id'] = scenarioId;
-  const yamlContent = yaml.dump(doc, { lineWidth: -1, noRefs: true }).trimEnd();
-  const canonicalYaml = yaml.dump(doc, { lineWidth: -1, noRefs: true, sortKeys: true }).trimEnd();
-  const contentHash = createHash('sha256').update(canonicalYaml).digest('hex');
-
-  return {
-    doc: {
-      scenarioId,
-      name,
-      channel: doc['channel'] as 'chat' | 'voice' | 'both',
-      description: typeof doc['description'] === 'string' && doc['description'].trim()
-        ? doc['description'].trim()
-        : null,
-      yamlContent,
-      contentHash,
-    },
-    details: [],
-  };
-}
-
-function parseScenarioDocuments(content: string, options?: { enforceSingleDoc?: boolean; assignScenarioId?: boolean }): ParsedDocumentsResult {
-  const details: string[] = [];
-  let parsedDocs: unknown[] = [];
-
-  try {
-    parsedDocs = yaml.loadAll(content).filter((doc) => doc != null);
-  } catch (err) {
-    return { docs: [], details: [`Invalid YAML: ${(err as Error).message}`] };
-  }
-
-  if (parsedDocs.length === 0) {
-    return { docs: [], details: ['YAML must contain at least one scenario document'] };
-  }
-  if (options?.enforceSingleDoc && parsedDocs.length !== 1) {
-    return { docs: [], details: ['Exactly one YAML document is required'] };
-  }
-
-  const docs: NormalizedScenarioDoc[] = [];
-  const seenScenarioIds = new Map<string, number>();
-  parsedDocs.forEach((parsedDoc, index) => {
-    const normalized = normalizeScenarioDoc(parsedDoc, index + 1, options?.assignScenarioId ?? false);
-    details.push(...normalized.details);
-    if (!normalized.doc) return;
-
-    const previousDocNumber = seenScenarioIds.get(normalized.doc.scenarioId);
-    if (previousDocNumber != null) {
-      details.push(`Document ${index + 1}: duplicate scenario_id "${normalized.doc.scenarioId}" (already used in document ${previousDocNumber})`);
-      return;
-    }
-
-    seenScenarioIds.set(normalized.doc.scenarioId, index + 1);
-    docs.push(normalized.doc);
-  });
-
-  return { docs, details };
-}
-
-function walkYaml(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) return walkYaml(fullPath);
-    if (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml')) return [relative(SCENARIOS_DIR, fullPath)];
-    return [];
-  });
-}
-
 function splitMultiDoc(content: string): { preamble: string; docs: string[] } {
   const rawParts = content.split(/^---\s*$/m);
   if (rawParts.length <= 1) {
@@ -285,113 +82,7 @@ function joinMultiDoc(preamble: string, docs: string[]): string {
   return `${sections.join('\n')}\n`;
 }
 
-async function upsertScenarioState(
-  normalizedDoc: NormalizedScenarioDoc,
-  sourceRef: string,
-  source: 'create' | 'edit' | 'sync',
-  changedBy: string | null,
-  metadata?: { owner?: string | null; lifecycleStatus?: ScenarioLifecycleStatus },
-): Promise<void> {
-  const key = makeScenarioKey(normalizedDoc.scenarioId);
-  const now = new Date();
-
-  await prisma.$transaction(async (tx) => {
-    // findFirst (not findUnique): filePath is now unique per tenant, so the bare
-    // key isn't a unique selector. The guard scopes this to the caller's tenant
-    // under enforce. Phase 3 hardening (composite uniques).
-    const existing = await tx.scenario.findFirst({
-      where: { filePath: key },
-      select: { id: true, contentHash: true, owner: true, lifecycleStatus: true },
-    });
-
-    const scenario = existing
-      ? await tx.scenario.update({
-        where: { id: existing.id },
-        data: {
-          sourceRef,
-          name: normalizedDoc.name,
-          channel: normalizedDoc.channel,
-          description: normalizedDoc.description,
-          yamlContent: normalizedDoc.yamlContent,
-          contentHash: normalizedDoc.contentHash,
-          owner: metadata?.owner !== undefined ? metadata.owner : existing.owner,
-          lifecycleStatus: metadata?.lifecycleStatus ?? existing.lifecycleStatus,
-        },
-        select: { id: true },
-      })
-      : await tx.scenario.create({
-        data: {
-          filePath: key,
-          sourceRef,
-          name: normalizedDoc.name,
-          channel: normalizedDoc.channel,
-          description: normalizedDoc.description,
-          yamlContent: normalizedDoc.yamlContent,
-          contentHash: normalizedDoc.contentHash,
-          owner: metadata?.owner ?? null,
-          lifecycleStatus: metadata?.lifecycleStatus ?? 'active',
-          lastRevisionAt: now,
-        },
-        select: { id: true },
-      });
-
-    const shouldRecordRevision = !existing || existing.contentHash !== normalizedDoc.contentHash;
-    if (!shouldRecordRevision) return;
-
-    await tx.scenarioRevision.upsert({
-      where: {
-        scenarioId_contentHash: {
-          scenarioId: scenario.id,
-          contentHash: normalizedDoc.contentHash,
-        },
-      },
-      update: {
-        sourceRef,
-        yamlContent: normalizedDoc.yamlContent,
-        source,
-        changedBy,
-      },
-      create: {
-        scenarioId: scenario.id,
-        sourceRef,
-        yamlContent: normalizedDoc.yamlContent,
-        contentHash: normalizedDoc.contentHash,
-        source,
-        changedBy,
-      },
-    });
-
-    await tx.scenario.update({
-      where: { id: scenario.id },
-      data: { lastRevisionAt: now },
-    });
-  });
-}
-
-function parseLifecycleStatus(raw: unknown): ScenarioLifecycleStatus | null {
-  if (typeof raw !== 'string') return null;
-  const value = raw.trim().toLowerCase();
-  if (!LIFECYCLE_STATUS.has(value)) return null;
-  return value as ScenarioLifecycleStatus;
-}
-
-function parseOwner(raw: unknown): string | null | undefined {
-  if (raw === undefined) return undefined;
-  if (raw === null) return null;
-  if (typeof raw !== 'string') return undefined;
-  const owner = raw.trim();
-  if (!owner) return null;
-  return owner.slice(0, 128);
-}
-
-function parseScenarioId(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const scenarioId = raw.trim().toLowerCase();
-  if (!SCENARIO_ID_PATTERN.test(scenarioId)) return null;
-  return scenarioId;
-}
-
-function readDocFromRef(filePath: string, fullPath: string, docIndex: number): { docText: string; preamble: string; docs: string[] } | null {
+function readDocFromRef(fullPath: string, docIndex: number): { docText: string; preamble: string; docs: string[] } | null {
   if (!existsSync(fullPath)) return null;
   const raw = readFileSync(fullPath, 'utf-8');
   const { preamble, docs } = splitMultiDoc(raw);
@@ -401,101 +92,28 @@ function readDocFromRef(filePath: string, fullPath: string, docIndex: number): {
   return { docText, preamble, docs };
 }
 
-function getScenarioMetadataByKey(
-  records: Array<{
-    filePath: string;
-    sourceRef: string | null;
-    owner: string | null;
-    lifecycleStatus: string;
-    lastRevisionAt: Date | null;
-    _count: { revisions: number };
-  }>,
-  scenario: Scenario,
-): { owner: string | null; lifecycleStatus: ScenarioLifecycleStatus; revisionCount: number; lastRevisionAt: string | null } | null {
-  const sourceRef = scenario.filePath ?? null;
-  const scenarioId = parseScenarioId(scenario.scenario_id);
-  const key = scenarioId ? makeScenarioKey(scenarioId) : null;
-
-  const match = (key
-    ? records.find((record) => record.filePath === key)
-    : null)
-    ?? (sourceRef ? records.find((record) => record.sourceRef === sourceRef) : null);
-  if (!match) return null;
-
-  const lifecycleStatus = parseLifecycleStatus(match.lifecycleStatus) ?? 'active';
-  return {
-    owner: match.owner,
-    lifecycleStatus,
-    revisionCount: match._count.revisions,
-    lastRevisionAt: match.lastRevisionAt?.toISOString() ?? null,
-  };
-}
-
-// GET /api/scenarios — list all scenarios (YAML is source of truth; DB augments metadata only)
+// GET /api/scenarios — list scenarios visible to the caller (DB-authoritative)
 scenariosRouter.get('/', async (_req, res) => {
   try {
-    if (!existsSync(SCENARIOS_DIR)) {
-      return res.json({ scenarios: [], dir: SCENARIOS_DIR, error: 'Directory not found' });
-    }
-
-    const scenarios = loadScenariosFromDir(SCENARIOS_DIR);
-    const scenarioKeys = scenarios
-      .map((scenario) => parseScenarioId(scenario.scenario_id))
-      .filter((scenarioId): scenarioId is string => !!scenarioId)
-      .map((scenarioId) => makeScenarioKey(scenarioId));
-    const sourceRefs = scenarios
-      .map((scenario) => scenario.filePath?.trim() ?? '')
-      .filter(Boolean);
-
-    const records = scenarioKeys.length > 0 || sourceRefs.length > 0
-      ? await prisma.scenario.findMany({
-        where: {
-          OR: [
-            ...(scenarioKeys.length > 0 ? [{ filePath: { in: scenarioKeys } }] : []),
-            ...(sourceRefs.length > 0 ? [{ sourceRef: { in: sourceRefs } }] : []),
-          ],
-        },
-        select: {
-          filePath: true,
-          sourceRef: true,
-          owner: true,
-          lifecycleStatus: true,
-          lastRevisionAt: true,
-          _count: { select: { revisions: true } },
-        },
-      })
-      : [];
-
-    const enrichedScenarios = scenarios.map((scenario) => {
-      const metadata = getScenarioMetadataByKey(records, scenario);
-      if (!metadata) return scenario;
-      return {
-        ...scenario,
-        owner: metadata.owner,
-        lifecycle_status: metadata.lifecycleStatus,
-        revision_count: metadata.revisionCount,
-        last_revision_at: metadata.lastRevisionAt,
-      };
-    });
-
-    res.json({ scenarios: enrichedScenarios, total: enrichedScenarios.length, dir: SCENARIOS_DIR });
+    const scenarios = await listScenariosFromDb();
+    res.json({ scenarios, total: scenarios.length, dir: SCENARIOS_DIR });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
 });
 
-// GET /api/scenarios/files — list YAML files
-scenariosRouter.get('/files', (_req, res) => {
+// GET /api/scenarios/files — list YAML file paths visible to the caller
+scenariosRouter.get('/files', async (_req, res) => {
   try {
-    const files = walkYaml(SCENARIOS_DIR).sort();
+    const files = await listScenarioFilesFromDb();
     res.json({ files, dir: SCENARIOS_DIR });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
 });
 
-// GET /api/scenarios/file?path=banking/account_query.yaml — get raw YAML
-scenariosRouter.get('/file', (req, res) => {
+// GET /api/scenarios/file?path=banking/account_query.yaml — raw YAML (DB-first)
+scenariosRouter.get('/file', async (req, res) => {
   const pathInput = req.query['path'];
   if (typeof pathInput !== 'string' || !pathInput.trim()) {
     return res.status(400).json({ error: 'path query param required' });
@@ -503,20 +121,29 @@ scenariosRouter.get('/file', (req, res) => {
 
   const resolvedPath = resolveScenarioFilePath(pathInput);
   if (!resolvedPath) return res.status(400).json({ error: 'Invalid path' });
-  if (!existsSync(resolvedPath.fullPath)) return res.status(404).json({ error: 'File not found' });
 
-  const content = readFileSync(resolvedPath.fullPath, 'utf-8');
-  res.json({ path: resolvedPath.filePath, content });
+  try {
+    const dbContent = await getScenarioFileContentFromDb(resolvedPath.filePath);
+    if (dbContent != null) {
+      return res.json({ path: resolvedPath.filePath, content: dbContent });
+    }
+    // Admin authoring fallback: a file on disk not yet imported into the DB.
+    if (shouldWriteScenarioFiles() && existsSync(resolvedPath.fullPath)) {
+      return res.json({ path: resolvedPath.filePath, content: readFileSync(resolvedPath.fullPath, 'utf-8') });
+    }
+    return res.status(404).json({ error: 'Scenario not found' });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
-// GET /api/scenarios/folders — list subdirectory names for the file location picker
-scenariosRouter.get('/folders', (_req, res) => {
+// GET /api/scenarios/folders — top-level directory names for the location picker
+scenariosRouter.get('/folders', async (_req, res) => {
   try {
-    if (!existsSync(SCENARIOS_DIR)) return res.json({ folders: [] });
-    const folders = readdirSync(SCENARIOS_DIR, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
+    const files = await listScenarioFilesFromDb();
+    const folders = [...new Set(
+      files.filter((file) => file.includes('/')).map((file) => file.split('/')[0]!),
+    )].sort();
     res.json({ folders });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -531,74 +158,28 @@ scenariosRouter.get('/revisions', async (req, res) => {
   }
 
   try {
-    const record = await prisma.scenario.findFirst({
-      where: { filePath: makeScenarioKey(scenarioId) },
-      select: {
-        filePath: true,
-        sourceRef: true,
-        owner: true,
-        lifecycleStatus: true,
-        lastRevisionAt: true,
-        revisions: {
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: 50,
-          select: {
-            id: true,
-            source: true,
-            sourceRef: true,
-            changedBy: true,
-            createdAt: true,
-          },
-        },
-      },
-    });
-
-    if (!record) {
+    const data = await getScenarioRevisions(scenarioId);
+    if (!data) {
       return res.json({
         scenarioId,
-        metadata: {
-          owner: null,
-          lifecycleStatus: 'active',
-          lastRevisionAt: null,
-        },
+        metadata: { owner: null, lifecycleStatus: 'active', lastRevisionAt: null },
         revisions: [],
       });
     }
-
-    const lifecycleStatus = parseLifecycleStatus(record.lifecycleStatus) ?? 'active';
-    res.json({
-      scenarioId,
-      metadata: {
-        owner: record.owner,
-        lifecycleStatus,
-        lastRevisionAt: record.lastRevisionAt?.toISOString() ?? null,
-      },
-      revisions: record.revisions.map((revision) => ({
-        id: revision.id,
-        source: revision.source,
-        sourceRef: revision.sourceRef,
-        changedBy: revision.changedBy,
-        createdAt: revision.createdAt.toISOString(),
-      })),
-    });
+    res.json({ scenarioId, metadata: data.metadata, revisions: data.revisions });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
 });
 
-// PATCH /api/scenarios/metadata — set owner / lifecycle status without changing YAML source of truth
+// PATCH /api/scenarios/metadata — set owner / lifecycle status on the caller's scenario row
 scenariosRouter.patch('/metadata', async (req, res) => {
   const auth = getRequestAuth(req);
   if (!auth || auth.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
 
-  const body = req.body as {
-    scenarioId?: unknown;
-    scenarioRef?: unknown;
-    owner?: unknown;
-    lifecycleStatus?: unknown;
-  };
+  const body = req.body as { scenarioId?: unknown; owner?: unknown; lifecycleStatus?: unknown };
 
   const scenarioId = parseScenarioId(body.scenarioId);
   if (!scenarioId) return res.status(400).json({ error: 'scenarioId is required and must be valid' });
@@ -620,53 +201,19 @@ scenariosRouter.patch('/metadata', async (req, res) => {
     return res.status(400).json({ error: 'Nothing to update' });
   }
 
-  const scenarioRef = typeof body.scenarioRef === 'string' ? parseScenarioRef(body.scenarioRef) : null;
-  if (!scenarioRef) {
-    return res.status(400).json({ error: 'scenarioRef is required and must be a valid path#index value' });
-  }
-
-  const sourceDoc = readDocFromRef(scenarioRef.filePath, scenarioRef.fullPath, scenarioRef.docIndex);
-  if (!sourceDoc) return res.status(404).json({ error: 'Scenario document not found' });
-
-  const parsed = parseScenarioDocuments(sourceDoc.docText, { enforceSingleDoc: true, assignScenarioId: false });
-  if (parsed.details.length > 0) {
-    return res.status(400).json({ error: 'Scenario document failed validation', details: parsed.details });
-  }
-
-  const doc = parsed.docs[0]!;
-  if (doc.scenarioId !== scenarioId) {
-    return res.status(409).json({ error: 'scenarioId does not match the scenario_id in scenarioRef' });
-  }
-
   try {
-    await upsertScenarioState(
-      doc,
-      scenarioRef.scenarioRef,
-      'sync',
-      auth.username,
-      {
-        owner,
-        lifecycleStatus,
-      },
-    );
-    const updated = await prisma.scenario.findFirst({
-      where: { filePath: makeScenarioKey(scenarioId) },
-      select: {
-        owner: true,
-        lifecycleStatus: true,
-        lastRevisionAt: true,
-        _count: { select: { revisions: true } },
-      },
-    });
-    const updatedStatus = parseLifecycleStatus(updated?.lifecycleStatus) ?? 'active';
+    const metadata = await updateScenarioMetadata(scenarioId, { owner, lifecycleStatus });
+    if (!metadata) {
+      return res.status(404).json({ error: 'Scenario not found — create or edit it first' });
+    }
     res.json({
       ok: true,
       scenarioId,
       metadata: {
-        owner: updated?.owner ?? null,
-        lifecycleStatus: updatedStatus,
-        revisionCount: updated?._count.revisions ?? 0,
-        lastRevisionAt: updated?.lastRevisionAt?.toISOString() ?? null,
+        owner: metadata.owner,
+        lifecycleStatus: metadata.lifecycleStatus,
+        revisionCount: metadata.revisionCount,
+        lastRevisionAt: metadata.lastRevisionAt,
       },
     });
   } catch (err) {
@@ -674,7 +221,8 @@ scenariosRouter.patch('/metadata', async (req, res) => {
   }
 });
 
-// POST /api/scenarios/file — create a new YAML file (or append docs to an existing one)
+// POST /api/scenarios/file — create a scenario (or append docs). DB-authoritative;
+// the YAML file is written only in the admin/system context (never for tenants).
 scenariosRouter.post('/file', async (req, res) => {
   const { path: rawPath, content, append } = req.body as {
     path?: unknown;
@@ -686,7 +234,6 @@ scenariosRouter.post('/file', async (req, res) => {
     return res.status(400).json({ error: 'path and content required' });
   }
 
-  // Only check quota for new files, not appends (appends add to an existing file)
   if (append !== true) {
     const quota = await checkScenarioQuota();
     if (!quota.allowed) {
@@ -710,27 +257,33 @@ scenariosRouter.post('/file', async (req, res) => {
   }
 
   const changedBy = getRequestAuth(req)?.username ?? null;
+  const writeFiles = shouldWriteScenarioFiles();
 
   try {
-    mkdirSync(dirname(resolvedPath.fullPath), { recursive: true });
     let existingDocs: string[] = [];
     let preamble = '';
-    if (existsSync(resolvedPath.fullPath)) {
-      if (append !== true) {
-        return res.status(409).json({
-          error: 'File already exists. Set append=true to add this scenario to it, or choose a different filename.',
-        });
-      }
-      const existingRaw = readFileSync(resolvedPath.fullPath, 'utf-8');
-      const split = splitMultiDoc(existingRaw);
+    let fileExists = false;
+    if (writeFiles && existsSync(resolvedPath.fullPath)) {
+      fileExists = true;
+      const split = splitMultiDoc(readFileSync(resolvedPath.fullPath, 'utf-8'));
       preamble = split.preamble;
       existingDocs = split.docs;
     }
 
-    const startingIndex = existingDocs.length;
-    const docsToAppend = parsed.docs.map((doc) => doc.yamlContent);
-    const joined = joinMultiDoc(preamble, [...existingDocs, ...docsToAppend]);
-    writeFileSync(resolvedPath.fullPath, joined, 'utf-8');
+    const dbCount = await countOwnScenarioDocsForFile(resolvedPath.filePath);
+    if ((fileExists || dbCount > 0) && append !== true) {
+      return res.status(409).json({
+        error: 'Scenario file already exists. Set append=true to add this scenario to it, or choose a different filename.',
+      });
+    }
+
+    const startingIndex = fileExists ? existingDocs.length : dbCount;
+
+    if (writeFiles) {
+      mkdirSync(dirname(resolvedPath.fullPath), { recursive: true });
+      const docsToAppend = parsed.docs.map((doc) => doc.yamlContent);
+      writeFileSync(resolvedPath.fullPath, joinMultiDoc(preamble, [...existingDocs, ...docsToAppend]), 'utf-8');
+    }
 
     await Promise.all(parsed.docs.map((doc, index) => upsertScenarioState(
       doc,
@@ -749,7 +302,7 @@ scenariosRouter.post('/file', async (req, res) => {
   }
 });
 
-// POST /api/scenarios/update-doc — replace one YAML document in a multi-doc file
+// POST /api/scenarios/update-doc — replace one scenario document
 // Body: { filePath: 'banking/account_query.yaml', docIndex: 2, docContent: '<yaml string>' }
 scenariosRouter.post('/update-doc', async (req, res) => {
   const { filePath: rawFilePath, docIndex, docContent } = req.body as {
@@ -762,39 +315,52 @@ scenariosRouter.post('/update-doc', async (req, res) => {
     return res.status(400).json({ error: 'filePath, docIndex and docContent required' });
   }
   const targetDocIndex = Number(docIndex);
+  if (targetDocIndex < 0) return res.status(400).json({ error: 'docIndex must be >= 0' });
 
   const resolvedPath = resolveScenarioFilePath(rawFilePath);
   if (!resolvedPath) return res.status(400).json({ error: 'Invalid path' });
-  if (!existsSync(resolvedPath.fullPath)) return res.status(404).json({ error: 'File not found' });
 
-  const parsed = parseScenarioDocuments(docContent, { enforceSingleDoc: true, assignScenarioId: true });
-  if (parsed.details.length > 0) {
-    return res.status(400).json({ error: 'Invalid scenario YAML', details: parsed.details });
+  const sourceRef = `${resolvedPath.filePath}#${targetDocIndex}`;
+
+  let parsedYaml: unknown;
+  try {
+    parsedYaml = yaml.load(docContent); // throws on multi-doc input (single doc required)
+  } catch (err) {
+    return res.status(400).json({ error: `Invalid scenario YAML: ${(err as Error).message}` });
+  }
+  if (!parsedYaml || typeof parsedYaml !== 'object' || Array.isArray(parsedYaml)) {
+    return res.status(400).json({ error: 'Scenario document must be a single YAML object' });
+  }
+
+  const docObject = parsedYaml as Record<string, unknown>;
+  if (typeof docObject['scenario_id'] !== 'string' || !(docObject['scenario_id'] as string).trim()) {
+    docObject['scenario_id'] = deterministicScenarioId(sourceRef);
+  }
+
+  const normalized = normalizeScenarioDoc(docObject, 1, false);
+  if (!normalized.doc) {
+    return res.status(400).json({ error: 'Invalid scenario YAML', details: normalized.details });
   }
 
   const changedBy = getRequestAuth(req)?.username ?? null;
 
   try {
-    const source = readDocFromRef(resolvedPath.filePath, resolvedPath.fullPath, targetDocIndex);
-    if (!source) {
-      const docCount = splitMultiDoc(readFileSync(resolvedPath.fullPath, 'utf-8')).docs.length;
-      return res.status(400).json({ error: `docIndex ${targetDocIndex} out of range (file has ${docCount} docs)` });
+    if (shouldWriteScenarioFiles() && existsSync(resolvedPath.fullPath)) {
+      const source = readDocFromRef(resolvedPath.fullPath, targetDocIndex);
+      if (!source) {
+        const docCount = splitMultiDoc(readFileSync(resolvedPath.fullPath, 'utf-8')).docs.length;
+        return res.status(400).json({ error: `docIndex ${targetDocIndex} out of range (file has ${docCount} docs)` });
+      }
+      source.docs[targetDocIndex] = normalized.doc.yamlContent;
+      writeFileSync(resolvedPath.fullPath, joinMultiDoc(source.preamble, source.docs), 'utf-8');
     }
 
-    source.docs[targetDocIndex] = parsed.docs[0]!.yamlContent;
-    writeFileSync(resolvedPath.fullPath, joinMultiDoc(source.preamble, source.docs), 'utf-8');
-
-    await upsertScenarioState(
-      parsed.docs[0]!,
-      `${resolvedPath.filePath}#${targetDocIndex}`,
-      'edit',
-      changedBy,
-    );
+    await upsertScenarioState(normalized.doc, sourceRef, 'edit', changedBy);
     res.json({
       ok: true,
       filePath: resolvedPath.filePath,
       docIndex: targetDocIndex,
-      scenarioId: parsed.docs[0]!.scenarioId,
+      scenarioId: normalized.doc.scenarioId,
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
