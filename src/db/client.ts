@@ -1,6 +1,6 @@
 // src/db/client.ts
 import { PrismaClient } from '@prisma/client';
-import { hasTenantContext } from '../lib/tenant-context.js';
+import { getCurrentTenantId, hasTenantContext } from '../lib/tenant-context.js';
 
 const parsedBusyTimeoutMs = Number.parseInt(process.env['SQLITE_BUSY_TIMEOUT_MS'] ?? '5000', 10);
 const busyTimeoutMs = Math.max(0, Number.isNaN(parsedBusyTimeoutMs) ? 5000 : parsedBusyTimeoutMs);
@@ -8,43 +8,73 @@ const busyTimeoutMs = Math.max(0, Number.isNaN(parsedBusyTimeoutMs) ? 5000 : par
 const logLevel: ('warn' | 'error')[] =
   process.env['NODE_ENV'] === 'development' ? ['warn', 'error'] : ['error'];
 
-// ── Tenant scoping guard (Phase 0 — dormant by default) ──────────────────────
-// Models whose rows belong to a single tenant. In Phase 3 the guard auto-injects
-// `where/data: { tenantId }` for these; for now it only OBSERVES, so we can audit
-// every call site that touches a tenant-scoped model without a tenant context.
-//
-// TENANT_SCOPING_MODE:
-//   off  (default) — guard disabled, zero overhead. No behavior change.
+// ── Tenant scoping guard ─────────────────────────────────────────────────────
+// Models whose rows belong to a single tenant. The guard is a transparent Prisma
+// query extension. TENANT_SCOPING_MODE:
+//   off  (default) — disabled, zero overhead. No behavior change.
 //   log            — warn when a tenant-scoped model is queried with no tenant
-//                    context bound (use during the Phase 3 audit).
-// Enforcement ("enforce") lands in Phase 3. See docs/MULTI_TENANT_SPEC.md.
+//                    context bound (audit which call sites are unscoped).
+//   enforce        — when a tenant is bound to the request (AsyncLocalStorage),
+//                    auto-inject `where: { tenantId }` on filterable reads/writes
+//                    and `data: { tenantId }` on creates. System/job/unauth
+//                    contexts (no bound tenant) are left UNRESTRICTED so trusted
+//                    background work still sees everything.
+//
+// findUnique/upsert/update/delete by a UNIQUE where can't take an extra tenant
+// filter, so those are covered by per-route id guards (defense in depth).
+// See docs/MULTI_TENANT_SPEC.md.
 const TENANT_SCOPED_MODELS = new Set<string>([
   'User', 'AuthSession', 'AuditLog', 'Scenario', 'Run',
   'Baseline', 'Experiment', 'Schedule', 'CalibrationDataset',
 ]);
 const TENANT_SCOPING_MODE = process.env['TENANT_SCOPING_MODE'] ?? 'off';
 
+// Operations whose `where` accepts arbitrary filters (safe to inject tenantId).
+const FILTERABLE_OPS = new Set([
+  'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy',
+  'updateMany', 'deleteMany',
+]);
+
+function scopeArgsToTenant(operation: string, args: any, tenantId: string): any {
+  if (FILTERABLE_OPS.has(operation)) {
+    return { ...args, where: { ...(args?.where ?? {}), tenantId } };
+  }
+  if (operation === 'create') {
+    return { ...args, data: { ...(args?.data ?? {}), tenantId } };
+  }
+  if (operation === 'createMany') {
+    const rows = args?.data;
+    return { ...args, data: Array.isArray(rows) ? rows.map((r: any) => ({ ...r, tenantId })) : { ...rows, tenantId } };
+  }
+  // Unique-where ops (findUnique/upsert/update/delete) — left to per-route guards.
+  return args;
+}
+
 const basePrisma = new PrismaClient({ log: logLevel });
 
-// When TENANT_SCOPING_MODE=log, wrap the client in a transparent query extension
-// that warns on tenant-scoped access with no bound tenant. The cast keeps the
-// exported type as PrismaClient (the extension only observes — it never alters
-// query behavior), so existing call sites are unaffected.
+// The cast keeps the exported type as PrismaClient so the existing call sites are
+// unaffected; the extension only filters/stamps tenant-scoped queries.
 export const prisma: PrismaClient =
-  TENANT_SCOPING_MODE === 'log'
-    ? (basePrisma.$extends({
+  TENANT_SCOPING_MODE === 'off'
+    ? basePrisma
+    : (basePrisma.$extends({
         query: {
           $allModels: {
             async $allOperations({ model, operation, args, query }) {
-              if (model && TENANT_SCOPED_MODELS.has(model) && !hasTenantContext()) {
-                console.warn(`[tenant-scope] ${model}.${operation} ran without a tenant context`);
+              if (!model || !TENANT_SCOPED_MODELS.has(model)) return query(args);
+              if (TENANT_SCOPING_MODE === 'log') {
+                if (!hasTenantContext()) {
+                  console.warn(`[tenant-scope] ${model}.${operation} ran without a tenant context`);
+                }
+                return query(args);
               }
-              return query(args);
+              const tenantId = getCurrentTenantId();
+              if (tenantId == null) return query(args); // system/job/unauth — unrestricted
+              return query(scopeArgsToTenant(operation, args, tenantId));
             },
           },
         },
-      }) as unknown as PrismaClient)
-    : basePrisma;
+      }) as unknown as PrismaClient);
 
 // Read-replica client: uses DATABASE_READ_REPLICA_URL when set (e.g. RDS read replica),
 // otherwise falls back to the primary connection so local/SQLite deployments need no change.
