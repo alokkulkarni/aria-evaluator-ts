@@ -36,18 +36,18 @@ resource "aws_security_group" "db" {
   name        = "${local.name}-sg"
   description = "ARIA ${var.environment} Aurora — Postgres ingress from the app"
   vpc_id      = var.vpc_id
-  tags        = merge(var.tags, { Name = "${local.name}-sg" })
-}
 
-resource "aws_security_group_rule" "ingress_pg" {
-  for_each                 = toset(var.allowed_security_group_ids)
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.db.id
-  source_security_group_id = each.value
-  description              = "Postgres from app security group ${each.value}"
+  # Inline ingress (not a for_each'd aws_security_group_rule) so the allowed app
+  # SG ids may be computed/unknown at plan time without an Invalid for_each error.
+  ingress {
+    description     = "Postgres from the app security group(s)"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = var.allowed_security_group_ids
+  }
+
+  tags = merge(var.tags, { Name = "${local.name}-sg" })
 }
 
 # ── Aurora Serverless v2 cluster ──────────────────────────────────────────────
