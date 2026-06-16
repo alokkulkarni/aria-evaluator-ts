@@ -4,6 +4,7 @@ import { Router } from 'express';
 
 import { prisma } from '../db/client.js';
 import { getCachedAuthSession, cacheAuthSession, invalidateCachedAuthSession } from '../lib/cache.js';
+import { runWithTenant } from '../lib/tenant-context.js';
 import { recordAuditEventSafe } from './audit-log.js';
 import { getWebsiteSignOutUrl } from './control-plane.js';
 import { checkUserQuota } from '../shared/quota-enforcement.js';
@@ -52,6 +53,7 @@ export interface AuthContext {
   sessionId: string;
   email: string | null;
   ssoSubject: string | null;
+  tenantId: string | null;
   workspaceEligible: boolean;
   requirePasswordChange: boolean;
   suspended: boolean;
@@ -494,8 +496,9 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
     // 1. Try Redis cache first (60 s TTL, shared across instances)
     const cached = await getCachedAuthSession(tokenHash).catch(() => null);
     if (cached) {
-      (req as AuthenticatedRequest).auth = cached as AuthContext;
-      next();
+      const ctx = cached as AuthContext;
+      (req as AuthenticatedRequest).auth = ctx;
+      runWithTenant(ctx.tenantId ?? null, () => next());
       return;
     }
 
@@ -535,6 +538,7 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       sessionId: session.id,
       email: session.user.email,
       ssoSubject: session.user.ssoSubject,
+      tenantId: session.user.tenantId,
       workspaceEligible: !!session.user.ssoSubject,
       requirePasswordChange: isTemporaryPasswordHash(session.user.passwordHash),
       suspended: session.user.suspended,
@@ -554,7 +558,7 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       });
     }
 
-    next();
+    runWithTenant(authContext.tenantId, () => next());
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -658,6 +662,7 @@ authRouter.post('/bootstrap', async (req, res) => {
       sessionId: session.sessionId,
       email: createdUser.email,
       ssoSubject: createdUser.ssoSubject,
+      tenantId: null,
       workspaceEligible: !!createdUser.ssoSubject,
       requirePasswordChange: false,
       suspended: false,
@@ -747,6 +752,7 @@ authRouter.post('/login', async (req, res) => {
       sessionId: session.sessionId,
       email: user.email,
       ssoSubject: user.ssoSubject,
+      tenantId: null,
       workspaceEligible: !!user.ssoSubject,
       requirePasswordChange,
       suspended: user.suspended,
@@ -1159,13 +1165,29 @@ function isValidReturnPath(value: string | null | undefined): boolean {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//');
 }
 
+// Map the control-plane tenant id (stored as Tenant.externalId) to the local
+// Tenant row id, creating the Tenant on first sight. Returns null when no tenant
+// id is provided (e.g. non-SSO logins). Phase 3 of the multi-tenant migration.
+async function resolveLocalTenantId(externalTenantId: string | null): Promise<string | null> {
+  const ext = externalTenantId?.trim();
+  if (!ext) return null;
+  const tenant = await prisma.tenant.upsert({
+    where: { externalId: ext },
+    update: {},
+    create: { externalId: ext },
+  });
+  return tenant.id;
+}
+
 async function upsertSsoUser(params: {
   ssoSubject: string;
   email: string;
   name: string | null;
   role: string;
+  tenantId: string | null;
 }): Promise<{ userId: string; isNewUser: boolean }> {
   const { ssoSubject, email, name, role } = params;
+  const localTenantId = await resolveLocalTenantId(params.tenantId);
   // Use the control-plane userId directly as username — guaranteed unique,
   // no slug collision risk, and SSO users never log in via username/password.
   const safeUsername = `sso_${ssoSubject}`;
@@ -1185,6 +1207,7 @@ async function upsertSsoUser(params: {
         ssoSubject,
         role: mappedRole,
         lastLoginAt: new Date(),
+        tenantId: localTenantId,
       },
     });
     return { userId: existing.id, isNewUser: false };
@@ -1204,6 +1227,7 @@ async function upsertSsoUser(params: {
       passwordHash: SSO_PASSWORD_PLACEHOLDER,
       role: mappedRole,
       lastLoginAt: new Date(),
+      tenantId: localTenantId,
     },
     select: { id: true },
   });
@@ -1271,6 +1295,7 @@ ssoRouter.get('/', async (req, res) => {
       email: cpUser.email,
       name: cpUser.name,
       role: cpUser.role,
+      tenantId: cpUser.tenantId,
     });
 
     const session = await createSessionForUser(userId);
