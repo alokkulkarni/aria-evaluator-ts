@@ -5,7 +5,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import type { NextFunction, Request, Response } from 'express';
@@ -20,6 +20,7 @@ import { authCredentialsRouter } from './routes/auth-credentials.js';
 import { authOAuthRouter } from './routes/auth-oauth.js';
 import { tokenRouter } from './routes/auth-token.js';
 import { scenariosRouter } from './routes/scenarios.js';
+import { importScenariosFromDir } from '../conversation/scenario-store.js';
 import { runsRouter } from './routes/runs.js';
 import { reviewsRouter } from './routes/reviews.js';
 import { calibrationRouter } from './routes/calibration.js';
@@ -43,6 +44,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env['API_PORT'] ?? '3001', 10);
 const DIST_DIR = join(__dirname, '../../dist/ui');
 const PUBLIC_DIR = join(__dirname, '../../public');
+const SCENARIOS_DIR = resolve(
+  process.env['SCENARIOS_DIR'] ?? join('..', 'aria-evaluator-v2', 'scenarios'),
+);
 const configuredCorsOrigins = (process.env['CORS_ORIGINS'] ?? '')
   .split(',')
   .map((origin) => origin.trim())
@@ -280,6 +284,17 @@ if (process.env['NODE_ENV'] !== 'test') {
     await loadSettingsFromDb();
     setInterval(() => void loadSettingsFromDb(), 15_000).unref?.();
     await ensureDefaultAdminAccount();
+    // Seed the GLOBAL scenario library from the bundled YAML. The DB is the source
+    // of truth at request time; this import is idempotent (Phase 4 inversion).
+    try {
+      const imported = await importScenariosFromDir(SCENARIOS_DIR);
+      console.info(
+        `[scenarios] global library: ${imported.created} new, ${imported.updated} updated, ` +
+        `${imported.total} bundled docs scanned`,
+      );
+    } catch (err) {
+      console.error(`[scenarios] import failed: ${(err as Error).message}`);
+    }
     await startRunJobWorker();
     await startScheduleExecutor();
     startHeartbeatEmitter();

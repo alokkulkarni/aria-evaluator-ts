@@ -13,11 +13,15 @@ mkdir -p \
   "${STATE_DIR}/transcripts/audio" \
   "${STATE_DIR}/scenarios"
 
-# Scenarios are the only remaining file-based shared state — everything else now
-# lives in Postgres (DB, runtime settings, report/transcript listings, run logs)
-# or the object store (reports/transcripts/audio, written + served directly). So
-# the former whole-directory state sync is narrowed to the scenarios/ prefix.
-# Phase 4 of the multi-tenant migration (docs/MULTI_TENANT_SPEC.md).
+# Scenario YAML is now a SEED SOURCE, not the read authority. At boot the app
+# imports this directory into the Scenario table as the GLOBAL library (tenantId
+# = null); at request time scenarios are served and run from Postgres, tenant-
+# scoped. Per-tenant scenarios are DB-only and never touch this dir / S3. The S3
+# sync therefore only carries the global (bundled + admin-authored) library, which
+# reseeds the DB idempotently on a fresh task. Everything else lives in Postgres
+# (DB, runtime settings, report/transcript listings, run logs) or the object store
+# (reports/transcripts/audio). Phase 4 of the multi-tenant migration
+# (docs/MULTI_TENANT_SPEC.md).
 restore_state() {
   if [[ -z "${STATE_BUCKET}" ]]; then
     return 0

@@ -224,11 +224,18 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   rows; no FS scan) and artifacts are served from the object store. ✅ With those
   done, the former **whole-directory state sync is narrowed to the `scenarios/`
   prefix** — every other piece is now in Postgres or the object store.
-  **Remaining (focused refactor):** scenarios are still YAML-file-authoritative
-  (the DB augments metadata only) — inverting them to DB/object-store-authoritative
-  across the listing, run-creation, and create/edit/delete paths is what lets the
-  scenario sync be dropped entirely too. Until then a minimal scenarios-only sync
-  remains.
+  ✅ **Scenario inversion** — scenarios are now **DB-authoritative**
+  (`src/conversation/scenario-store.ts`). The bundled YAML seeds the **global
+  library** (`tenantId = null`) at startup — idempotent, with deterministic ids
+  derived from the source ref since bundled docs ship without a `scenario_id`.
+  Listing, run-creation, raw-fetch, and create/edit/metadata all read/write the
+  `Scenario` table, tenant-scoped: a caller sees **global ∪ own**, and a tenant's
+  edit of a global scenario writes an own-tenant **copy that shadows the global**
+  (copy-on-write via the guard). Per-tenant scenarios are **DB-only** — they never
+  touch the shared FS (a tenant write would otherwise be re-imported as a global
+  and leak across tenants), so the `scenarios/` S3 sync now only carries the global
+  (bundled + admin-authored) library as a reseed source; the DB is the read
+  authority. File writes are gated to the admin/system context.
 - **Phase 5 — Per-tenant ECS + autoscaling infra.** Shared stack + per-tenant
   ECS service/target-group/ALB-rule; enable autoscaling; retire suspend/resume.
 - **Phase 6 — Control-plane.** Replace CodeBuild provisioning with
