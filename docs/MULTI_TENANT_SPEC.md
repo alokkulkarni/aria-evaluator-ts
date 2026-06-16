@@ -236,8 +236,19 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   and leak across tenants), so the `scenarios/` S3 sync now only carries the global
   (bundled + admin-authored) library as a reseed source; the DB is the read
   authority. File writes are gated to the admin/system context.
-- **Phase 5 — Per-tenant ECS + autoscaling infra.** Shared stack + per-tenant
-  ECS service/target-group/ALB-rule; enable autoscaling; retire suspend/resume.
+- **Phase 5 — Per-tenant ECS + autoscaling infra.** ✅ *Terraform landed
+  (validated, not applied).* `modules/platform` is the shared stack — one VPC, one
+  ALB (wildcard `*.<domain>` cert + default-404; tenants add a host-header rule),
+  one Aurora Serverless v2 (RDS Proxy on), one ECS cluster, one Redis, reusing the
+  `networking`/`aurora`/`iam` modules. `modules/tenant-service` is the per-tenant
+  compute — task def + target group + host-header listener rule + ECS service +
+  autoscaling, `DATABASE_URL` from the shared Aurora secret. Routing is host-based
+  (`<tenant>.<domain>`); idle is **scale-to-zero** (`min_capacity=0`, `desired=0`),
+  with the control-plane waking a tenant on login (`desired=1`, Phase 6) since ALB
+  traffic can't scale a 0-task service — `platform` ships the `ecs:UpdateService`
+  permission for that. The suspend/resume lambdas are unused by this path.
+  `environments/platform-dev` is a validate-only reference composing it for 2 example
+  tenants. (Not applied to dev/prod — user-driven.)
 - **Phase 6 — Control-plane.** Replace CodeBuild provisioning with
   tenant-record + per-tenant-ECS + route; data-purge on delete.
 - **Phase 7 — Decommission.** Remove `tenant-module` full-stack provisioning,

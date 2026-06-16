@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars and fill in. This environment is a REFERENCE for the
+# shared-platform + per-tenant-service composition; validate/plan only (do not apply
+# until reviewed). See docs/MULTI_TENANT_SPEC.md (Phase 5).
+
+aws_region          = "eu-west-2"
+environment         = "dev"
+domain              = "dev.aria-evaluator.app"
+route53_zone_id     = "Z0123456789ABCDEFGHIJ"
+acm_certificate_arn = "arn:aws:acm:eu-west-2:123456789012:certificate/REPLACE-ME"
+app_image_uri       = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/aria-evaluator:dev"
+website_url         = "https://aria-evaluator.app"
+
+# Grant the control-plane role permission to wake/suspend tenant services (Phase 6):
+# control_plane_role_name    = "aria-evaluator-dev-control-plane-task"
+# control_plane_internal_url = "http://control-plane.dev.internal:4000"
