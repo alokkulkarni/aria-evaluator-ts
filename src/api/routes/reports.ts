@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { basename } from 'node:path';
 import { prisma } from '../../db/client.js';
+import { getCurrentTenantId } from '../../lib/tenant-context.js';
 
 export const reportsRouter = Router();
 
@@ -11,7 +12,12 @@ export const reportsRouter = Router();
 // of the multi-tenant migration. See docs/MULTI_TENANT_SPEC.md.
 reportsRouter.get('/', async (_req, res) => {
   try {
+    // Scope to the caller's tenant via the run relation (Report isn't an
+    // auto-scoped model). Always-on, so it's correct regardless of enforce mode;
+    // a null tenant (system/non-SSO) is unrestricted. Phase 3 hardening.
+    const tenantId = getCurrentTenantId();
     const dbReports = await prisma.report.findMany({
+      where: tenantId ? { run: { tenantId } } : {},
       include: { run: { select: { id: true, scenarioName: true, status: true, startedAt: true } } },
       orderBy: { createdAt: 'desc' },
     });
