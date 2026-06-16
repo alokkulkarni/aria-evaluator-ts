@@ -47,7 +47,7 @@ settingsRouter.put('/', async (req, res) => {
   try {
     const payload = (req.body as { settings?: Record<string, unknown> })?.settings ?? {};
     const changedKeys = EDITABLE_SETTING_KEYS.filter((key) => key in payload);
-    saveSettings(payload);
+    await saveSettings(payload);
     await recordAuditEventSafe(req, 'settings.update', 'runtime-settings', {
       changedKeys,
       changedCount: changedKeys.length,

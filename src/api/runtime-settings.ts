@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { appPaths } from '../runtime/paths.js';
+import { prisma } from '../db/client.js';
 import {
   DEFAULT_JUDGE_MAX_TOKENS,
   DEFAULT_JUDGE_MODEL_ID,
@@ -167,24 +168,67 @@ export const SECRET_SETTING_KEYS = new Set<EditableSettingKey>([
   'HUGGINGFACE_TOKEN',
 ]);
 
+// The deployment's tenant (process env) keys the shared settings row. For a
+// per-tenant ECS service all its tasks share this id; "" for local/non-SaaS.
+const PROCESS_TENANT = process.env['TENANT_ID']?.trim() ?? '';
+
+function parseOverrides(raw: string): SettingsMap {
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const out: SettingsMap = {};
+  for (const key of EDITABLE_SETTING_KEYS) {
+    const value = parsed[key];
+    if (typeof value === 'string' && value.trim()) out[key] = value;
+  }
+  return out;
+}
+
+// Synchronous read of the local file cache — kept in sync with the DB by
+// loadSettingsFromDb() (startup + periodic) and writeOverrides() (write-through).
 function readOverrides(): SettingsMap {
   if (!existsSync(SETTINGS_FILE)) return {};
   try {
-    const parsed = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) as Record<string, unknown>;
-    const out: SettingsMap = {};
-    for (const key of EDITABLE_SETTING_KEYS) {
-      const value = parsed[key];
-      if (typeof value === 'string' && value.trim()) out[key] = value;
-    }
-    return out;
+    return parseOverrides(readFileSync(SETTINGS_FILE, 'utf-8'));
   } catch {
     return {};
   }
 }
 
-function writeOverrides(overrides: SettingsMap): void {
+function writeFileCache(overrides: SettingsMap): void {
   mkdirSync(dirname(SETTINGS_FILE), { recursive: true });
   writeFileSync(SETTINGS_FILE, JSON.stringify(overrides, null, 2), 'utf-8');
+}
+
+// Write-through: update the local read cache immediately, then persist to the
+// shared DB row so a tenant's other tasks converge on the next refresh. The DB
+// write is best-effort (the file write already made it locally effective).
+async function writeOverrides(overrides: SettingsMap): Promise<void> {
+  writeFileCache(overrides);
+  try {
+    const json = JSON.stringify(overrides);
+    await prisma.runtimeSettings.upsert({
+      where: { tenantId: PROCESS_TENANT },
+      update: { json },
+      create: { tenantId: PROCESS_TENANT, json },
+    });
+  } catch (err) {
+    console.error(`[settings] Failed to persist settings to DB: ${(err as Error).message}`);
+  }
+}
+
+// Refresh the local file cache from the shared DB row (call at startup and on a
+// periodic timer so changes made on other tasks propagate). On first run with a
+// legacy local file and no DB row, migrate the file into the DB.
+export async function loadSettingsFromDb(): Promise<void> {
+  try {
+    const row = await prisma.runtimeSettings.findUnique({ where: { tenantId: PROCESS_TENANT } });
+    if (row) {
+      writeFileCache(parseOverrides(row.json));
+    } else if (existsSync(SETTINGS_FILE)) {
+      await writeOverrides(readOverrides());
+    }
+  } catch (err) {
+    console.error(`[settings] Failed to load settings from DB: ${(err as Error).message}`);
+  }
 }
 
 export function getEffectiveSettings(): Record<EditableSettingKey, string> {
@@ -342,7 +386,7 @@ export function getCalibrationThresholds(): CalibrationThresholds {
   };
 }
 
-export function saveSettings(partial: Record<string, unknown>): Record<EditableSettingKey, string> {
+export async function saveSettings(partial: Record<string, unknown>): Promise<Record<EditableSettingKey, string>> {
   const current = readOverrides();
   const next = { ...current };
   
@@ -376,6 +420,6 @@ export function saveSettings(partial: Record<string, unknown>): Record<EditableS
     if (!value) delete next[key];
     else next[key] = value;
   }
-  writeOverrides(next);
+  await writeOverrides(next);
   return getEffectiveSettings();
 }

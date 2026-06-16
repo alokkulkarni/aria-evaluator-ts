@@ -24,6 +24,7 @@ import { runsRouter } from './routes/runs.js';
 import { reviewsRouter } from './routes/reviews.js';
 import { calibrationRouter } from './routes/calibration.js';
 import { seedPairwiseDatasetIfNeeded } from './lmsys-import.js';
+import { loadSettingsFromDb } from './runtime-settings.js';
 import { transcriptsRouter } from './routes/transcripts.js';
 import { reportsRouter } from './routes/reports.js';
 import { artifactRouter } from './routes/artifacts.js';
@@ -273,6 +274,11 @@ if (process.env['NODE_ENV'] !== 'test') {
       console.warn(`⚠ ${warning}`);
     }
     await initDb();
+    // Settings live in the DB (shared across a tenant's tasks); seed the local
+    // read cache from it, then refresh periodically so other tasks' changes
+    // propagate. Phase 4 (multi-instance state).
+    await loadSettingsFromDb();
+    setInterval(() => void loadSettingsFromDb(), 15_000).unref?.();
     await ensureDefaultAdminAccount();
     await startRunJobWorker();
     await startScheduleExecutor();

@@ -30,6 +30,16 @@ model Tenant {
   updatedAt  DateTime @default(now()) @updatedAt
 }
 
+// Shared runtime settings (UI-editable overrides), keyed by the deployment's
+// TENANT_ID env ("" for local/non-SaaS). The DB is the source of truth so a
+// tenant's autoscaled tasks converge; each task keeps a local file as a fast
+// synchronous read cache. Phase 4 of the multi-tenant migration.
+model RuntimeSettings {
+  tenantId  String   @id
+  json      String
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
 model User {
   id           String        @id @default(cuid())
   username     String        @unique
