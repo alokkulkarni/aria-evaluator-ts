@@ -4,7 +4,7 @@ import { Router } from 'express';
 
 import { prisma } from '../db/client.js';
 import { getCachedAuthSession, cacheAuthSession, invalidateCachedAuthSession } from '../lib/cache.js';
-import { runWithTenant } from '../lib/tenant-context.js';
+import { runAsSystem, runWithTenant } from '../lib/tenant-context.js';
 import { recordAuditEventSafe } from './audit-log.js';
 import { getWebsiteSignOutUrl } from './control-plane.js';
 import { checkUserQuota } from '../shared/quota-enforcement.js';
@@ -498,7 +498,10 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
     if (cached) {
       const ctx = cached as AuthContext;
       (req as AuthenticatedRequest).auth = ctx;
-      runWithTenant(ctx.tenantId ?? null, () => next());
+      // SSO users are scoped to their tenant; non-SSO (default-admin/platform)
+      // run as the system context (unrestricted). Phase 3 hardening.
+      if (ctx.ssoSubject) runWithTenant(ctx.tenantId ?? null, () => next());
+      else runAsSystem(() => next());
       return;
     }
 
@@ -558,7 +561,8 @@ export async function attachAuthContext(req: Request, res: Response, next: NextF
       });
     }
 
-    runWithTenant(authContext.tenantId, () => next());
+    if (authContext.ssoSubject) runWithTenant(authContext.tenantId, () => next());
+    else runAsSystem(() => next());
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

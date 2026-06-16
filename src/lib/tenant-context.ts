@@ -15,6 +15,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface TenantContext {
   tenantId: string | null;
+  /** Explicit platform/system context — unrestricted by the tenant guard. */
+  system?: boolean;
 }
 
 const storage = new AsyncLocalStorage<TenantContext>();
@@ -22,6 +24,16 @@ const storage = new AsyncLocalStorage<TenantContext>();
 /** Run `fn` with the given tenant bound to the async context. */
 export function runWithTenant<T>(tenantId: string | null, fn: () => T): T {
   return storage.run({ tenantId }, fn);
+}
+
+/**
+ * Run `fn` as the platform system context — unrestricted by the tenant guard.
+ * Use for genuinely cross-tenant work: non-SSO/default-admin (platform) surfaces
+ * and system services. Distinct from runWithTenant(null), which scopes to
+ * null-tenant rows under enforce.
+ */
+export function runAsSystem<T>(fn: () => T): T {
+  return storage.run({ tenantId: null, system: true }, fn);
 }
 
 /** The tenant id bound to the current async context, or null if none/unbound. */
@@ -32,4 +44,9 @@ export function getCurrentTenantId(): string | null {
 /** True when a tenant context has been established for the current async flow. */
 export function hasTenantContext(): boolean {
   return storage.getStore() !== undefined;
+}
+
+/** True when the current context is the explicit platform system context. */
+export function isSystemContext(): boolean {
+  return storage.getStore()?.system === true;
 }
