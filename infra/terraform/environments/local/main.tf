@@ -60,7 +60,10 @@ module "docker_local" {
   container_port = 3001
   host_port      = var.host_port
 
-  extra_environment_vars = concat(var.extra_environment_vars, local.phase1_environment_vars, local.limit_environment_vars, local.judge_environment_vars)
+  extra_environment_vars = concat(
+    [{ name = "TENANT_SCOPING_MODE", value = var.tenant_scoping_mode }],
+    var.extra_environment_vars, local.phase1_environment_vars, local.limit_environment_vars, local.judge_environment_vars,
+  )
 
   # ── External Bedrock proxy ───────────────────────────────────────────────────
   # The Bedrock proxy now runs as a completely standalone service deployed with:
