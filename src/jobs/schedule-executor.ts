@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { addMinutes, addHours, addDays, addMonths } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { checkRunQuota } from '../shared/quota-enforcement.js';
+import { tryAcquireTickLock } from '../lib/cache.js';
+import { runWithTenant } from '../lib/tenant-context.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -77,6 +79,13 @@ function computeNextRunAt(
 // ── Main Executor ──────────────────────────────────────────────────────────────
 
 async function pollSchedules(): Promise<void> {
+  // Multi-instance safety: only one instance polls per interval so scheduled runs
+  // aren't fired multiple times across autoscaled tasks. Fails open if Redis is
+  // down (executeSchedule should remain idempotent). Phase 4.
+  const lockTtl = Math.max(5_000, scheduleContext.pollIntervalMs - 5_000);
+  if (!(await tryAcquireTickLock('schedule-executor:poll', lockTtl))) {
+    return;
+  }
   try {
     const now = new Date();
 
@@ -95,7 +104,10 @@ async function pollSchedules(): Promise<void> {
 
     for (const schedule of schedules) {
       try {
-        await executeSchedule(schedule, now);
+        // Bind the schedule's tenant so the run it creates is tenant-stamped and
+        // the quota check counts per-tenant under enforce (the poll loop itself
+        // runs as unscoped system work). Phase 4.
+        await runWithTenant(schedule.tenantId, () => executeSchedule(schedule, now));
       } catch (err) {
         console.error(`[schedule-executor] Error executing schedule ${schedule.id}:`, err);
       }

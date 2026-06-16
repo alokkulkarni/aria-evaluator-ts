@@ -3,6 +3,7 @@
 // Only active when CONTROL_PLANE_INTERNAL_URL and TENANT_ID are set (SaaS mode).
 
 import { prisma } from '../db/client.js';
+import { tryAcquireTickLock } from '../lib/cache.js';
 
 const INTERVAL_MS = Math.max(
   60_000,
@@ -36,6 +37,10 @@ async function collectMetrics(): Promise<{ runsThisMonth: number; scenariosUsed:
 
 async function sendHeartbeat(): Promise<void> {
   if (!CONTROL_PLANE_URL || !TENANT_ID) return;
+
+  // Multi-instance safety: only one task per tenant emits per interval (avoids
+  // duplicate usage reports across autoscaled tasks). Fails open if Redis is down.
+  if (!(await tryAcquireTickLock(`heartbeat:${TENANT_ID}`, INTERVAL_MS - 5_000))) return;
 
   try {
     const metrics = await collectMetrics();

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, BarChart3, Globe, Shield, Zap } from 'lucide-react'
+import { ArrowRight, BarChart3, Globe, Scale, ShieldCheck } from 'lucide-react'
 
 import { Features } from '@/components/marketing/Features'
 import { FeatureCard } from '@/components/marketing/FeatureCard'
@@ -21,10 +21,10 @@ const heroPills = [
 ] as const
 
 const quickFeatures = [
-  { icon: Shield, title: 'Adversarial Security Testing', description: 'Stress-test agents with prompt-injection, jailbreak, and social-engineering suites.' },
-  { icon: Zap, title: '15-Dimension LLM Judge', description: 'Score every conversation for quality, safety, compliance, and escalation handling.' },
-  { icon: Globe, title: 'Any Agent Platform', description: 'Amazon Connect, Lex, Azure, Copilot, OpenAPI, WebSocket — plug in and evaluate.' },
-  { icon: BarChart3, title: 'Real-time Observability', description: 'Monitor live runs, transcripts, and scenario outcomes from a single command center.' },
+  { icon: Scale, title: 'A panel, not a single opinion', description: 'Every conversation is scored by several independent AI judges, so one model’s blind spot can’t skew the result.' },
+  { icon: ShieldCheck, title: 'Scores you can trust', description: 'Judges are continually checked against human experts, so the numbers hold up — even to an auditor.' },
+  { icon: Globe, title: 'Plug into any agent', description: 'Amazon Connect, Lex, Azure, Copilot, or any custom chat or voice endpoint — no code changes.' },
+  { icon: BarChart3, title: 'See quality in real time', description: 'Watch every run live, read full conversations, and get alerted the moment quality starts to slip.' },
 ]
 
 const standards = ['OWASP LLM Top 10', 'NIST AI RMF', 'MITRE ATLAS', 'EU AI Act', 'FCA Consumer Duty', 'ISO 27001', 'SOC 2', 'HIPAA', 'GDPR', 'PCI DSS']
@@ -64,7 +64,7 @@ const steps = [
   { step: '01', title: 'Sign up', description: 'Create your ARIA account with secure onboarding for engineering and security teams.' },
   { step: '02', title: 'Choose region', description: 'Select the deployment region that matches your compliance and latency needs.' },
   { step: '03', title: 'Connect', description: 'Point an adapter at your agent — Connect, Lex, Azure, Copilot, or any HTTP endpoint.' },
-  { step: '04', title: 'Evaluate', description: 'Launch scenario runs, watch transcripts live, and review 15-dimension judge scores.' },
+  { step: '04', title: 'Evaluate', description: 'Launch your tests and watch results stream in live — each conversation scored by a panel of judges, with anything they disagree on sent to your team for the final call.' },
 ]
 
 export default function HomePage() {
@@ -95,8 +95,8 @@ export default function HomePage() {
 
             <Reveal delay={0.15}>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300/90">
-                Launch dedicated evaluation workspaces, run adversarial test suites, and track model
-                quality with observability built for enterprise AI teams.
+                Put every AI conversation in front of a panel of independent AI judges — with a person
+                making the call when they disagree — so you launch with quality scores you can stand behind.
               </p>
             </Reveal>
 
@@ -237,10 +237,10 @@ export default function HomePage() {
       {/* ── Stats band ───────────────────────────────────────────────────────── */}
       <Section className="py-10">
         <Reveal stagger={0.1} className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard value={15} label="Evaluation dimensions" />
-          <StatCard value={8} label="Global deployment regions" />
+          <StatCard value={3} label="Independent judges per score" />
+          <StatCard value={15} label="Quality & safety dimensions" />
           <StatCard value={8} suffix="+" label="Agent platforms supported" />
-          <StatCard value={99.9} decimals={1} suffix="%" label="Tenant isolation, by design" />
+          <StatCard value={8} label="Global regions" />
         </Reveal>
       </Section>
 
@@ -249,7 +249,7 @@ export default function HomePage() {
         <SectionHeading
           eyebrow="Platform showcase"
           title="See the main ARIA workspace before you sign up"
-          subtitle="Give buyers and engineering teams an immediate feel for the platform — scenario coverage, judge confidence, and region-aware deployment controls."
+          subtitle="Get a feel for the workspace before you sign up — coverage at a glance, how confident the judges are, and full control over where your data lives."
         />
 
         <div className="mt-12 grid gap-6 lg:grid-cols-2">
@@ -368,9 +368,9 @@ export default function HomePage() {
       {/* ── 15 dimensions ────────────────────────────────────────────────────── */}
       <Section>
         <SectionHeading
-          eyebrow="Evaluation engine"
+          eyebrow="How scoring works"
           title="Every conversation, scored across 15 dimensions"
-          subtitle="ARIA's LLM judge evaluates each transcript against a structured rubric — not a single pass/fail. Security scenarios are scored on guardrail compliance; quality scenarios on the full dimension set, with per-dimension justifications you can audit."
+          subtitle="A panel of independent AI judges reviews each conversation across 15 dimensions — quality, safety, compliance, and escalation. When they agree, you get a confident score; when they don't, it goes to a person to decide. Every result comes with the reasoning behind it."
         />
 
         <Reveal stagger={0.08} className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
