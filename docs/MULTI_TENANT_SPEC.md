@@ -216,9 +216,14 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   to their run/schedule tenant (`runWithTenant`), so background DB access scopes
   correctly under enforce. Per-tenant **quotas** then fall out of enforce (the
   guard auto-scopes `checkRunQuota`'s count queries to the bound tenant) plus
-  per-tenant ECS env limits — no separate quota engine needed. **Remaining:** make
-  Redis mandatory; runtime settings → Redis/DB; scenarios → object store; then
-  remove the whole-dir state sync.
+  per-tenant ECS env limits — no separate quota engine needed. ✅ Runtime settings
+  shared via a DB row (`RuntimeSettings`, synchronous file read cache +
+  write-through + periodic refresh). Redis is already effectively mandatory (SSE
+  uses Redis pub/sub for cross-instance delivery; the readiness probe gates on it).
+  **Remaining (focused refactor):** scenarios are still YAML-file-authoritative
+  (the DB augments metadata only) — inverting them to DB/object-store-authoritative
+  across the listing, run-creation, and create/edit/delete paths is what lets the
+  whole-dir state sync finally be removed. Until then the sync stays.
 - **Phase 5 — Per-tenant ECS + autoscaling infra.** Shared stack + per-tenant
   ECS service/target-group/ALB-rule; enable autoscaling; retire suspend/resume.
 - **Phase 6 — Control-plane.** Replace CodeBuild provisioning with
