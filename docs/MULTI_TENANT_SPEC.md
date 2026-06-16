@@ -265,8 +265,23 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   *Remaining wiring (mechanical, unapplied):* the control-plane environment Terraform
   must inject the platform outputs as the `PLATFORM_*` task env (see
   `tenant-provisioner.ts` `loadConfig()` for the contract) + `DATABASE_URL` secret.
-- **Phase 7 — Decommission.** Remove `tenant-module` full-stack provisioning,
-  CodeBuild project, and suspend/resume lambdas. (No data migration — greenfield.)
+- **Phase 7 — Decommission.** ✅ *Done (validated).* Deleted the now-unused
+  full-stack-per-tenant infra: the `tenant-module`, `provisioning-codebuild`,
+  `provisioning-lambda`, and `suspend-lambda` modules, the `environments/prod` root
+  that instantiated them, the `user_instances` DynamoDB table + CodeBuild IAM/env/
+  outputs in the control-plane envs, and the dead CodeBuild code in
+  `src/control-plane/server.ts` (the `@aws-sdk/client-codebuild` dep, the build-poll
+  branches in `/tenant/provision/status`, `/tenant/reprovision`,
+  `/account/delete/status`, now CodeBuild-free). `control-plane-dev` and
+  `control-plane-prod` `terraform validate` clean; lint + build pass. (No data
+  migration — greenfield.) The shared platform (`modules/platform` +
+  `modules/tenant-service`) + control-plane SDK provisioning are the whole story now.
+  *Follow-up (docs only):* a few READMEs still mention the removed modules.
+
+**Migration complete.** Phases 0–7 are done: a shared, pooled multi-tenant platform
+with row-level isolation, DB-authoritative scenarios, per-tenant scale-to-zero ECS,
+and control-plane SDK provisioning + data-purge — replacing the dedicated-stack-per-
+customer model.
 
 ---
 

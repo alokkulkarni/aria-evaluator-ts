@@ -221,13 +221,8 @@ module "ecs" {
       { name = "CONTROL_PLANE_STATE_DIR", value = "/app/state/control-plane" },
       # Internal URL is read from SSM at startup — injected as plain env var since it is not secret
       { name = "CONTROL_PLANE_INTERNAL_URL", value = aws_ssm_parameter.control_plane_internal_url.value },
-      { name = "CODEBUILD_AWS_REGION", value = var.aws_region },
-      # Pass secret ARN as plaintext — CodeBuild uses it to fetch the actual secret value
-      { name = "CONTROL_PLANE_SECRET_ARN", value = aws_secretsmanager_secret.control_plane_internal_secret.arn },
       { name = "CONTROL_PLANE_CORS_ORIGINS", value = join(",", var.allowed_origins) },
       { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = var.instance_base_url },
-      { name = "USER_INSTANCE_TABLE", value = aws_dynamodb_table.user_instances.name },
-      { name = "CODEBUILD_PROJECT_NAME", value = module.provisioning_codebuild.codebuild_project_name },
       # When set, control-plane persists state to DynamoDB with CAS instead of
       # local file. Required for prod (multi-task, survives restart).
       { name = "CONTROL_PLANE_STATE_TABLE", value = aws_dynamodb_table.control_plane_state.name },
@@ -277,52 +272,6 @@ module "cloudtrail" {
   s3_log_retention_days         = 365 # prod: 1 year retention
 
   alert_sns_topic_arn = var.cloudtrail_alert_sns_topic_arn
-
-  tags = local.common_tags
-}
-
-# ── DynamoDB for user instance tracking ────────────────────────────────────────
-
-resource "aws_dynamodb_table" "user_instances" {
-  name         = "${var.app_name}-user-instances"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "user_id"
-
-  attribute {
-    name = "user_id"
-    type = "S"
-  }
-
-  attribute {
-    name = "status"
-    type = "S"
-  }
-
-  global_secondary_index {
-    name            = "user_id-status-index"
-    hash_key        = "user_id"
-    range_key       = "status"
-    projection_type = "ALL"
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  ttl {
-    attribute_name = "expiration_time"
-    enabled        = true
-  }
-
-  # Enable encryption at rest
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.dynamodb.arn
-  }
-
-  # Enable streams for audit logging
-  stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   tags = local.common_tags
 }
@@ -449,31 +398,6 @@ resource "aws_iam_role_policy" "control_plane_ses_send" {
 #
 # Scoped to the single provisioner project ARN — no broad codebuild:* perms.
 
-data "aws_iam_policy_document" "control_plane_codebuild_access" {
-  statement {
-    sid    = "StartProvisioningBuilds"
-    effect = "Allow"
-    actions = [
-      "codebuild:StartBuild",
-      "codebuild:BatchGetBuilds",
-    ]
-    resources = [module.provisioning_codebuild.codebuild_project_arn]
-  }
-}
-
-resource "aws_iam_policy" "control_plane_codebuild_access" {
-  name        = "${var.app_name}-${var.environment}-control-plane-codebuild-access"
-  description = "Allow ECS task role to start and inspect tenant provisioning CodeBuild jobs"
-  policy      = data.aws_iam_policy_document.control_plane_codebuild_access.json
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "control_plane_codebuild_access" {
-  role       = module.iam.task_role_name
-  policy_arn = aws_iam_policy.control_plane_codebuild_access.arn
-}
-
 resource "aws_kms_alias" "dynamodb" {
   name          = "alias/${var.app_name}-dynamodb"
   target_key_id = aws_kms_key.dynamodb.key_id
@@ -515,60 +439,3 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail_logs" {
   restrict_public_buckets = true
 }
 
-# ── CodeBuild project for provisioning ────────────────────────────────────────
-
-module "provisioning_codebuild" {
-  source = "../../modules/provisioning-codebuild"
-
-  app_name                    = var.app_name
-  aws_region                  = data.aws_region.current.name
-  aws_account_id              = data.aws_caller_identity.current.account_id
-  terraform_state_bucket      = var.terraform_state_bucket
-  terraform_state_bucket_arn  = "arn:aws:s3:::${var.terraform_state_bucket}"
-  terraform_state_kms_key_arn = var.terraform_state_kms_key_arn
-  terraform_state_lock_table  = var.terraform_state_lock_table
-  user_instance_table_arn     = aws_dynamodb_table.user_instances.arn
-  user_instance_table_name    = aws_dynamodb_table.user_instances.name
-  ecr_repository_arn          = "arn:aws:ecr:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:repository/${var.app_name}"
-  github_repo_url             = var.github_repo_url
-  github_branch               = var.github_branch
-  alert_email                 = var.alert_email
-
-  tags = local.common_tags
-}
-
-# ── Lambda provisioning function ───────────────────────────────────────────────
-
-module "provisioning_lambda" {
-  source = "../../modules/provisioning-lambda"
-
-  app_name                 = var.app_name
-  environment              = var.environment
-  aws_region               = data.aws_region.current.name
-  codebuild_project_name   = module.provisioning_codebuild.codebuild_project_name
-  codebuild_project_arn    = module.provisioning_codebuild.codebuild_project_arn
-  user_instance_table_name = aws_dynamodb_table.user_instances.name
-  user_instance_table_arn  = aws_dynamodb_table.user_instances.arn
-  allowed_origins          = var.allowed_origins
-
-  # ── Security Configuration ────────────────────────────────────────────────
-  cognito_user_pool_id = var.cognito_user_pool_id
-  jwt_audience         = var.jwt_audience
-  dynamodb_kms_key_arn = aws_kms_key.dynamodb.arn
-  cloudtrail_s3_bucket = aws_s3_bucket.cloudtrail_logs.id
-  # Use the SNS topic created inside the module so Lambda alarms reach the same destination
-  alarm_sns_topic_arn = module.provisioning_codebuild.sns_topic_arn
-
-  # ── Cost Guardrails ───────────────────────────────────────────────────────
-  max_instances_per_user     = var.max_instances_per_user
-  max_monthly_spend_per_user = var.max_monthly_spend_per_user
-  cost_per_instance_hour     = var.cost_per_instance_hour
-
-  tags = local.common_tags
-
-  depends_on = [
-    aws_kms_key.dynamodb,
-    aws_s3_bucket.cloudtrail_logs,
-    module.provisioning_codebuild,
-  ]
-}

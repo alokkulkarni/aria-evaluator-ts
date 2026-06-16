@@ -8,7 +8,6 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { BatchGetBuildsCommand, CodeBuildClient, StartBuildCommand } from '@aws-sdk/client-codebuild';
 import {
   ConditionalCheckFailedException,
   DynamoDBClient,
@@ -81,17 +80,6 @@ interface ControlPlaneTenant {
   billingPeriod: BillingPeriod;
   status: InstanceStatus;
   instanceUrl: string;
-  // CodeBuild build id (e.g. "aria-control-plane-provisioner:abc-def…")
-  // captured when StartBuildCommand returns. Used by /tenant/provision/status
-  // to surface the live CodeBuild phase to the UI.
-  provisioningBuildId?: string;
-  provisioningStartedAt?: string;
-  // Same shape, for the teardown build kicked off by DELETE /account. The
-  // /account/delete/status endpoint polls CodeBuild with this id, surfaces
-  // phase, and finalises the deletion (removes user/sessions/tenant from
-  // state) when the destroy build reports SUCCEEDED.
-  destroyBuildId?: string;
-  destroyStartedAt?: string;
   // Phase 6: per-tenant ECS service refs (AWS-mode provisioning on the shared platform).
   host?: string;
   listenerRulePriority?: number;
@@ -207,33 +195,9 @@ const LOCAL_SEED_PLAN: PricingTier = 'individual';
 const LOCAL_SEED_REGION = 'eu-west-2';
 const LOCAL_SEED_BILLING_PERIOD: BillingPeriod = 'monthly';
 
-// ── CodeBuild provisioning config ────────────────────────────────────────────
-// When CODEBUILD_PROJECT_NAME is set, real AWS provisioning is triggered.
-// When unset (local / dev without AWS), provision falls back to immediate-running.
-const CODEBUILD_PROJECT_NAME = process.env['CODEBUILD_PROJECT_NAME']?.trim();
-const CODEBUILD_AWS_REGION = process.env['CODEBUILD_AWS_REGION']?.trim()
-  ?? process.env['AWS_REGION']?.trim()
-  ?? 'eu-west-2';
-const CONTROL_PLANE_CALLBACK_URL = process.env['CONTROL_PLANE_INTERNAL_URL']?.trim()
-  ?? `http://localhost:${process.env['CONTROL_PLANE_PORT']?.trim() ?? '3002'}`;
-
-// The Secrets Manager ARN for the internal secret.
-// Injected by Terraform via SSM parameter lookup — never the raw secret value.
-// CodeBuild uses this ARN to fetch the secret at runtime via AWS CLI.
-const CONTROL_PLANE_SECRET_ARN = process.env['CONTROL_PLANE_SECRET_ARN']?.trim() ?? '';
-
-// CONTROL_PLANE_INTERNAL_SECRET is still read for the heartbeat/callback receiver side.
+// CONTROL_PLANE_INTERNAL_SECRET is read for the heartbeat/callback receiver side.
 // It is injected via ECS secrets (Secrets Manager valueFrom) — not plaintext.
 const CONTROL_PLANE_INTERNAL_SECRET = process.env['CONTROL_PLANE_INTERNAL_SECRET']?.trim() ?? '';
-
-// Tier → CodeBuild tfvar mapping
-const TIER_PRICING_TRACK: Record<PricingTier, string> = {
-  free: 'individual',
-  individual: 'individual',
-  enterprise_starter: 'enterprise',
-  enterprise_pro: 'enterprise',
-  enterprise_unlimited: 'enterprise',
-};
 
 const PLAN_LIMITS: Record<PricingTier, { maxRuns: number; maxScenarios: number; maxModels: number; maxUsers: number; suspendHours: number }> = {
   free:                 { maxRuns: 5,    maxScenarios: 10,  maxModels: 1,  maxUsers: 1,  suspendHours: 1  },
@@ -1231,78 +1195,9 @@ app.get('/tenant/provision/status', async (req, res) => {
     }
   })();
 
-  // Best-effort live CodeBuild phase. If unavailable or errors out, the UI
-  // falls back to the coarse phase above plus its own time-based step animation.
-  let buildPhase: string | null = null;
-  let buildStatus: string | null = null;
-  let buildEndTime: string | null = null;
-  let failedPhaseType: string | null = null;
-  let failedPhaseMessage: string | null = null;
-  if (tenant.provisioningBuildId && tenant.status === 'provisioning' && CODEBUILD_PROJECT_NAME) {
-    try {
-      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
-      const result = await codebuild.send(new BatchGetBuildsCommand({ ids: [tenant.provisioningBuildId] }));
-      const build = result.builds?.[0];
-      if (build) {
-        buildPhase  = build.currentPhase ?? null;
-        buildStatus = build.buildStatus ?? null;
-        buildEndTime = build.endTime ? build.endTime.toISOString() : null;
-
-        // Scan the phases array for the FIRST phase that already failed.
-        // CodeBuild keeps the top-level buildStatus = IN_PROGRESS while
-        // POST_BUILD / UPLOAD_ARTIFACTS / FINALIZING run cleanup after a
-        // failed BUILD phase, so relying on buildStatus alone makes the UI
-        // appear "still running" for minutes after the real failure.
-        const failedPhase = build.phases?.find((p) => p.phaseStatus === 'FAILED' || p.phaseStatus === 'FAULT' || p.phaseStatus === 'TIMED_OUT' || p.phaseStatus === 'STOPPED');
-        if (failedPhase) {
-          failedPhaseType = failedPhase.phaseType ?? null;
-          failedPhaseMessage = failedPhase.contexts?.[0]?.message ?? null;
-        }
-
-        const isTerminalFailureStatus = buildStatus === 'FAILED' || buildStatus === 'STOPPED' || buildStatus === 'TIMED_OUT' || buildStatus === 'FAULT';
-        const hasPhaseFailure = failedPhase !== undefined;
-
-        // Discover the real instance URL from CodeBuild's exported variables.
-        // The buildspec exports TENANT_INSTANCE_URL after a successful apply.
-        // We can't rely on the buildspec's curl-to-control-plane fallback
-        // because the control-plane ALB is internal and not reachable from
-        // CodeBuild's AWS-managed VPC.
-        const exported = build.exportedEnvironmentVariables ?? [];
-        const exportedInstanceUrl = exported
-          .find((entry) => entry.name === 'TENANT_INSTANCE_URL')
-          ?.value
-          ?.trim();
-        const discoveredInstanceUrl = exportedInstanceUrl && exportedInstanceUrl.length > 0
-          ? exportedInstanceUrl
-          : null;
-
-        // If CodeBuild reports terminal success but tenant hasn't been flipped
-        // yet (rare race — buildspec mutates state at end), reflect that here.
-        if (buildStatus === 'SUCCEEDED' && tenant.status === 'provisioning') {
-          await mutateState((s) => {
-            const t = s.tenants.find((x) => x.id === tenant.id);
-            if (t && t.status === 'provisioning') {
-              t.status = 'running';
-              // Replace the placeholder instanceUrl (created at /tenant/provision
-              // time) with the real CloudFront URL discovered above. Falls back
-              // to the existing value when the build didn't surface one.
-              if (discoveredInstanceUrl) t.instanceUrl = discoveredInstanceUrl;
-              t.updatedAt = nowIso();
-            }
-          });
-        } else if ((isTerminalFailureStatus || hasPhaseFailure) && tenant.status === 'provisioning') {
-          await mutateState((s) => {
-            const t = s.tenants.find((x) => x.id === tenant.id);
-            if (t && t.status === 'provisioning') { t.status = 'error'; t.updatedAt = nowIso(); }
-          });
-        }
-      }
-    } catch (err) {
-      console.warn(`[provision/status] CodeBuild lookup failed for ${tenant.provisioningBuildId}: ${(err as Error).message}`);
-    }
-  }
-
-  // Re-load tenant in case we mutated it above so the response reflects the new state.
+  // Phase 6+ provisioning is synchronous (control-plane AWS SDK / local), so the
+  // tenant status is authoritative — no build to poll.
+  // Re-load tenant so the response reflects the latest state.
   const refreshedTenant = (await loadState()).tenants.find((t) => t.id === tenant.id) ?? tenant;
   const finalStatus = refreshedTenant.status;
   const finalPhase: string = (() => {
@@ -1320,17 +1215,7 @@ app.get('/tenant/provision/status', async (req, res) => {
     phase: finalPhase,
     instanceUrl: finalStatus === 'running' ? refreshedTenant.instanceUrl : null,
     updatedAt: refreshedTenant.updatedAt,
-    build: tenant.provisioningBuildId
-      ? {
-          id: tenant.provisioningBuildId,
-          phase: buildPhase,
-          status: buildStatus,
-          endTime: buildEndTime,
-          startedAt: tenant.provisioningStartedAt ?? null,
-          failedPhase: failedPhaseType,
-          failedPhaseMessage,
-        }
-      : null,
+    build: null,
   });
 });
 
@@ -1357,68 +1242,49 @@ app.post('/tenant/reprovision', async (req, res) => {
     return;
   }
 
-  if (tenant.status === 'provisioning' && tenant.provisioningBuildId && CODEBUILD_PROJECT_NAME) {
-    // A buildId was tracked — only allow retry if it has already terminated.
+  // Phase 6: re-run provisioning (control-plane AWS SDK) or mark running (local).
+  if (isPlatformProvisioningEnabled()) {
     try {
-      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
-      const result = await codebuild.send(new BatchGetBuildsCommand({ ids: [tenant.provisioningBuildId] }));
-      const liveStatus = result.builds?.[0]?.buildStatus ?? null;
-      if (liveStatus === 'IN_PROGRESS') {
-        res.status(409).json({ error: 'A provisioning build is already in progress. Wait for it to finish before retrying.' });
-        return;
-      }
+      const host = tenant.host ?? `${tenant.id}.${process.env['PLATFORM_DOMAIN']?.trim() ?? ''}`;
+      const priority = tenant.listenerRulePriority ?? await allocateListenerRulePriority();
+      const refs = await provisionTenantService({
+        tenantId: tenant.id,
+        host,
+        pricingTier: tenant.plan,
+        listenerRulePriority: priority,
+      });
+      await mutateState((s) => {
+        const t = s.tenants.find((x) => x.id === tenant.id);
+        if (t) {
+          t.status = 'running';
+          t.host = host;
+          t.listenerRulePriority = priority;
+          t.ecsServiceName = refs.ecsServiceName;
+          t.ecsServiceArn = refs.serviceArn;
+          t.targetGroupArn = refs.targetGroupArn;
+          t.listenerRuleArn = refs.listenerRuleArn;
+          t.taskDefinitionArn = refs.taskDefinitionArn;
+          t.updatedAt = nowIso();
+        }
+      });
+      res.json({ ok: true, tenantId: tenant.id, status: 'running' });
     } catch (err) {
-      console.warn(`[reprovision] CodeBuild lookup failed for ${tenant.provisioningBuildId}, allowing retry: ${(err as Error).message}`);
-      // If we can't reach CodeBuild, allow the retry — the worst case is a
-      // duplicate build, which terraform's state locking will serialise.
+      await mutateState((s) => {
+        const t = s.tenants.find((x) => x.id === tenant.id);
+        if (t) { t.status = 'error'; t.updatedAt = nowIso(); }
+      });
+      console.error(`[reprovision] AWS provisioning failed: ${(err as Error).message}`);
+      res.status(502).json({ error: 'Failed to reprovision tenant instance', detail: (err as Error).message });
     }
-  }
-
-  if (!CODEBUILD_PROJECT_NAME) {
-    // Local/dev — mark running immediately, matches /tenant/provision behaviour.
-    await mutateState((s) => {
-      const t = s.tenants.find((x) => x.id === tenant.id);
-      if (t) { t.status = 'running'; t.updatedAt = nowIso(); }
-    });
-    res.json({ ok: true, tenantId: tenant.id, status: 'running' });
     return;
   }
 
-  try {
-    const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
-    const startResponse = await codebuild.send(new StartBuildCommand({
-      projectName: CODEBUILD_PROJECT_NAME,
-      environmentVariablesOverride: [
-        { name: 'USER_ID',       value: tenant.id,                            type: 'PLAINTEXT' },
-        { name: 'PLAN_TYPE',     value: tenant.plan,                          type: 'PLAINTEXT' },
-        { name: 'PRICING_TRACK', value: TIER_PRICING_TRACK[tenant.plan],      type: 'PLAINTEXT' },
-        { name: 'TENANT_REGION', value: tenant.region,                        type: 'PLAINTEXT' },
-        { name: 'ENVIRONMENT',   value: process.env['ARIA_DEPLOY_ENV'] ?? 'prod', type: 'PLAINTEXT' },
-        { name: 'ADMIN_EMAIL',   value: user.email,                           type: 'PLAINTEXT' },
-        ...(CONTROL_PLANE_SECRET_ARN
-          ? [{ name: 'CONTROL_PLANE_SECRET_ARN', value: CONTROL_PLANE_SECRET_ARN, type: 'PLAINTEXT' as const }]
-          : []
-        ),
-      ],
-    }));
-
-    const buildId = startResponse.build?.id;
-    const startedAt = nowIso();
-    await mutateState((s) => {
-      const t = s.tenants.find((x) => x.id === tenant.id);
-      if (!t) return;
-      t.status = 'provisioning';
-      t.provisioningBuildId = buildId;
-      t.provisioningStartedAt = startedAt;
-      t.updatedAt = startedAt;
-    });
-
-    console.info(`[reprovision] CodeBuild restarted — tenant: ${tenant.id}, build: ${buildId ?? '<unknown>'}`);
-    res.json({ ok: true, tenantId: tenant.id, status: 'provisioning', buildId: buildId ?? null });
-  } catch (err) {
-    console.error(`[reprovision] CodeBuild start failed: ${(err as Error).message}`);
-    res.status(502).json({ error: 'Failed to restart provisioning job', detail: (err as Error).message });
-  }
+  // Local/dev — mark running immediately.
+  await mutateState((s) => {
+    const t = s.tenants.find((x) => x.id === tenant.id);
+    if (t) { t.status = 'running'; t.updatedAt = nowIso(); }
+  });
+  res.json({ ok: true, tenantId: tenant.id, status: 'running' });
 });
 
 app.post('/tenant/suspend', async (req, res) => {
@@ -2074,63 +1940,18 @@ app.get('/account/delete/status', async (req, res) => {
     return;
   }
 
-  let buildPhase: string | null = null;
-  let buildStatus: string | null = null;
-  let failedPhase: string | null = null;
-  let failedPhaseMessage: string | null = null;
-
-  if (tenant.destroyBuildId && CODEBUILD_PROJECT_NAME) {
-    try {
-      const codebuild = new CodeBuildClient({ region: CODEBUILD_AWS_REGION });
-      const result = await codebuild.send(new BatchGetBuildsCommand({ ids: [tenant.destroyBuildId] }));
-      const build = result.builds?.[0];
-      if (build) {
-        buildPhase = build.currentPhase ?? null;
-        buildStatus = build.buildStatus ?? null;
-        const failed = build.phases?.find((p) => p.phaseStatus === 'FAILED' || p.phaseStatus === 'FAULT' || p.phaseStatus === 'TIMED_OUT' || p.phaseStatus === 'STOPPED');
-        if (failed) {
-          failedPhase = failed.phaseType ?? null;
-          failedPhaseMessage = failed.contexts?.[0]?.message ?? null;
-        }
-
-        // Finalise on terminal success: remove user/sessions/tenant, send the
-        // confirmation email. We do this BEFORE responding so the client sees
-        // a single "completed" snapshot.
-        if (buildStatus === 'SUCCEEDED' && tenant.status === 'destroying') {
-          await finaliseAccountDeletion(user, tenant, null);
-          res.json({
-            status: 'completed',
-            phase: 'completed',
-            buildPhase,
-            buildStatus,
-            message: 'Workspace destroyed and account closed',
-          });
-          return;
-        }
-
-        const isTerminalFailure = buildStatus === 'FAILED' || buildStatus === 'STOPPED' || buildStatus === 'TIMED_OUT' || buildStatus === 'FAULT' || failed !== undefined;
-        if (isTerminalFailure && tenant.status === 'destroying') {
-          await mutateState((s) => {
-            const t = s.tenants.find((x) => x.id === tenant.id);
-            if (t && t.status === 'destroying') { t.status = 'error'; t.updatedAt = nowIso(); }
-          });
-        }
-      }
-    } catch (err) {
-      console.warn(`[account/status] CodeBuild lookup failed for ${tenant.destroyBuildId}: ${(err as Error).message}`);
-    }
-  }
-
+  // Phase 6: account deletion is synchronous (compute teardown + data-purge happen
+  // in DELETE /account), so there is no teardown build to poll — return status.
   const refreshed = (await loadState()).tenants.find((t) => t.id === tenant.id) ?? tenant;
   res.json({
     status: refreshed.status,
     phase: refreshed.status,
-    buildPhase,
-    buildStatus,
-    failedPhase,
-    failedPhaseMessage,
-    buildId: tenant.destroyBuildId ?? null,
-    startedAt: tenant.destroyStartedAt ?? null,
+    buildPhase: null,
+    buildStatus: null,
+    failedPhase: null,
+    failedPhaseMessage: null,
+    buildId: null,
+    startedAt: null,
   });
 });
 
