@@ -119,7 +119,13 @@ variable "alb_enable_deletion_protection" {
 
 # ── Control-plane wake hook ────────────────────────────────────────────────────
 variable "control_plane_role_name" {
-  description = "Name of the control-plane task role to grant ecs:UpdateService (wake tenants). Empty skips."
+  description = "Name of the control-plane task role to grant tenant provisioning + purge permissions (Phase 6). Empty skips."
+  type        = string
+  default     = ""
+}
+
+variable "control_plane_security_group_id" {
+  description = "Control-plane task security group, allowed Aurora ingress so it can purge tenant DB rows on delete. Empty skips."
   type        = string
   default     = ""
 }

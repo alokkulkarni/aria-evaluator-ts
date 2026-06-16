@@ -68,16 +68,20 @@ resource "aws_s3_bucket_public_access_block" "state" {
 module "aurora" {
   source = "../aurora"
 
-  environment                = var.environment
-  vpc_id                     = module.networking.vpc_id
-  subnet_ids                 = module.networking.private_subnet_ids
-  allowed_security_group_ids = [module.networking.ecs_service_security_group_id]
-  enable_proxy               = true
-  engine_version             = var.aurora_engine_version
-  min_acu                    = var.aurora_min_acu
-  max_acu                    = var.aurora_max_acu
-  deletion_protection        = var.aurora_deletion_protection
-  tags                       = var.tags
+  environment = var.environment
+  vpc_id      = module.networking.vpc_id
+  subnet_ids  = module.networking.private_subnet_ids
+  # Tenant tasks + (for purge-on-delete) the control-plane connect to Aurora.
+  allowed_security_group_ids = compact([
+    module.networking.ecs_service_security_group_id,
+    var.control_plane_security_group_id,
+  ])
+  enable_proxy        = true
+  engine_version      = var.aurora_engine_version
+  min_acu             = var.aurora_min_acu
+  max_acu             = var.aurora_max_acu
+  deletion_protection = var.aurora_deletion_protection
+  tags                = var.tags
 }
 
 # ── Shared IAM (reuse) — execution role can read the Aurora DATABASE_URL secret ─
@@ -209,28 +213,99 @@ resource "aws_route53_record" "wildcard" {
   }
 }
 
-# ── Control-plane wake permission (scale-to-zero) ──────────────────────────────
-# The control-plane wakes an idle tenant on login by setting desired_count=1; ALB
-# traffic alone can't scale a 0-task service. Phase 6 implements the login-wake.
-resource "aws_iam_policy" "control_plane_wake" {
+# ── Control-plane provisioning permission (Phase 6) ────────────────────────────
+# The control-plane creates/wakes/suspends/tears down per-tenant ECS services via
+# the AWS SDK (no CodeBuild), and purges tenant data (S3 prefix + DB secret) on
+# delete. ALB traffic alone can't scale a 0-task service, so wake is control-plane
+# driven (UpdateService desired=1 on login).
+resource "aws_iam_policy" "control_plane_provisioning" {
   count       = var.control_plane_role_name != "" ? 1 : 0
-  name        = "${local.name}-cp-wake"
-  description = "Allow the control-plane to scale tenant ECS services (wake/suspend)."
+  name        = "${local.name}-cp-provisioning"
+  description = "Allow the control-plane to provision/wake/suspend/tear down per-tenant ECS services and purge tenant data."
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ecs:UpdateService", "ecs:DescribeServices"]
-      Resource = "arn:aws:ecs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/*"
-    }]
+    Statement = [
+      {
+        Sid    = "EcsProvisioning"
+        Effect = "Allow"
+        Action = [
+          "ecs:RegisterTaskDefinition",
+          "ecs:DeregisterTaskDefinition",
+          "ecs:DescribeTaskDefinition",
+          "ecs:CreateService",
+          "ecs:UpdateService",
+          "ecs:DeleteService",
+          "ecs:DescribeServices",
+          "ecs:ListTasks",
+          "ecs:DescribeTasks",
+          "ecs:TagResource",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ElbProvisioning"
+        Effect = "Allow"
+        Action = [
+          "elasticloadbalancing:CreateTargetGroup",
+          "elasticloadbalancing:DeleteTargetGroup",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:CreateRule",
+          "elasticloadbalancing:DeleteRule",
+          "elasticloadbalancing:ModifyRule",
+          "elasticloadbalancing:DescribeRules",
+          "elasticloadbalancing:AddTags",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "Autoscaling"
+        Effect = "Allow"
+        Action = [
+          "application-autoscaling:RegisterScalableTarget",
+          "application-autoscaling:DeregisterScalableTarget",
+          "application-autoscaling:PutScalingPolicy",
+          "application-autoscaling:DeleteScalingPolicy",
+          "application-autoscaling:DescribeScalableTargets",
+          "application-autoscaling:DescribeScalingPolicies",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "PassTaskRoles"
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = [module.iam.task_execution_role_arn, module.iam.task_role_arn]
+        Condition = {
+          StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" }
+        }
+      },
+      {
+        Sid      = "TenantBucketList"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.state.arn
+      },
+      {
+        Sid      = "TenantObjectPurge"
+        Effect   = "Allow"
+        Action   = ["s3:DeleteObject", "s3:GetObject"]
+        Resource = "${aws_s3_bucket.state.arn}/*"
+      },
+      {
+        Sid      = "ReadDbSecret"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = module.aurora.database_url_secret_arn
+      },
+    ]
   })
 
   tags = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "control_plane_wake" {
+resource "aws_iam_role_policy_attachment" "control_plane_provisioning" {
   count      = var.control_plane_role_name != "" ? 1 : 0
   role       = var.control_plane_role_name
-  policy_arn = aws_iam_policy.control_plane_wake[0].arn
+  policy_arn = aws_iam_policy.control_plane_provisioning[0].arn
 }
