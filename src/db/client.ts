@@ -1,6 +1,6 @@
 // src/db/client.ts
 import { PrismaClient } from '@prisma/client';
-import { getCurrentTenantId, hasTenantContext } from '../lib/tenant-context.js';
+import { getCurrentTenantId, hasTenantContext, isSystemContext } from '../lib/tenant-context.js';
 
 const parsedBusyTimeoutMs = Number.parseInt(process.env['SQLITE_BUSY_TIMEOUT_MS'] ?? '5000', 10);
 const busyTimeoutMs = Math.max(0, Number.isNaN(parsedBusyTimeoutMs) ? 5000 : parsedBusyTimeoutMs);
@@ -35,7 +35,7 @@ const FILTERABLE_OPS = new Set([
   'updateMany', 'deleteMany',
 ]);
 
-function scopeArgsToTenant(operation: string, args: any, tenantId: string): any {
+function scopeArgsToTenant(operation: string, args: any, tenantId: string | null): any {
   if (FILTERABLE_OPS.has(operation)) {
     return { ...args, where: { ...(args?.where ?? {}), tenantId } };
   }
@@ -68,9 +68,13 @@ export const prisma: PrismaClient =
                 }
                 return query(args);
               }
-              const tenantId = getCurrentTenantId();
-              if (tenantId == null) return query(args); // system/job/unauth — unrestricted
-              return query(scopeArgsToTenant(operation, args, tenantId));
+              // Unrestricted only for the explicit system context or genuinely
+              // unbound work (job claim loop, startup, services). An explicit
+              // runWithTenant scope is always applied — even to a null tenant,
+              // which scopes to null-tenant rows (a misconfigured tenant user
+              // sees only system data, never another tenant's).
+              if (isSystemContext() || !hasTenantContext()) return query(args);
+              return query(scopeArgsToTenant(operation, args, getCurrentTenantId()));
             },
           },
         },
