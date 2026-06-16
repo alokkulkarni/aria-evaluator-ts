@@ -22,7 +22,7 @@ import {
   sanitizeArtifactPathInLogLine,
 } from '../runtime/paths.js';
 import { getObjectStore } from '../runtime/object-store.js';
-import { runWithTenant } from '../lib/tenant-context.js';
+import { getCurrentTenantId, runWithTenant } from '../lib/tenant-context.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore, JudgeVote } from '../types/evaluation.js';
 import { parseRunJobPayload } from './run-job-payload.js';
@@ -370,19 +370,33 @@ async function ingestRunArtifacts(
   let reportJsonRef: string | null = null;
   let reportHtmlRef: string | null = null;
   const transcripts: Transcript[] = [];
+  const transcriptArtifacts: { ref: string; scenarioName: string; startedAt: Date | null }[] = [];
   for (const path of transcriptPaths) {
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Transcript;
       transcripts.push(parsed);
+      const ref = normalizeArtifactRef('transcripts', path);
+      if (ref) {
+        transcriptArtifacts.push({
+          ref,
+          scenarioName: parsed.scenarioName,
+          startedAt: parsed.startedAt ? new Date(parsed.startedAt) : null,
+        });
+        // Push the transcript to the object store immediately (no-op locally).
+        await uploadArtifactToStore(ref, path, 'application/json');
+      }
     } catch {
       // ignore malformed transcript
     }
   }
   transcripts.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
-  // Push transcripts to the object store immediately (no-op locally).
-  for (const path of transcriptPaths) {
-    await uploadArtifactToStore(normalizeArtifactRef('transcripts', path), path, 'application/json');
+  // Record per-transcript rows so the listing is DB-driven (idempotent on re-ingest).
+  await prisma.transcriptArtifact.deleteMany({ where: { runId } });
+  for (const t of transcriptArtifacts) {
+    await prisma.transcriptArtifact.create({
+      data: { runId, ref: t.ref, scenarioName: t.scenarioName, startedAt: t.startedAt, tenantId: getCurrentTenantId() },
+    });
   }
 
   let mergedTurnIndex = 0;

@@ -1,56 +1,29 @@
 // src/api/routes/transcripts.ts
 import { Router } from 'express';
-import { readdirSync, statSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { appPaths } from '../../runtime/paths.js';
+import { basename } from 'node:path';
 import { prisma } from '../../db/client.js';
 import { getObjectStore } from '../../runtime/object-store.js';
 
 export const transcriptsRouter = Router();
 
-const TRANSCRIPTS_DIR = appPaths.transcriptsDir;
-
+// DB-driven listing (no filesystem scan) + object-store serving, so any autoscaled
+// instance lists and serves transcripts produced by another instance. Phase 4 of
+// the multi-tenant migration. See docs/MULTI_TENANT_SPEC.md.
 transcriptsRouter.get('/', async (_req, res) => {
   try {
-    if (!existsSync(TRANSCRIPTS_DIR)) return res.json({ transcripts: [] });
-
-    const files = readdirSync(TRANSCRIPTS_DIR)
-      .filter((f) => f.endsWith('.json'))
-      .sort((a, b) => b.localeCompare(a));
-
-    // Extract runId from each transcript file (the `id` field IS the runId)
-    const fileInfos = files.map((f) => {
-      const filePath = join(TRANSCRIPTS_DIR, f);
-      const stat = statSync(filePath);
-      let runId: string | undefined;
-      try {
-        const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as { id?: string };
-        runId = raw.id;
-      } catch { /* skip unreadable files */ }
-      return { filename: f, size: stat.size, modifiedAt: stat.mtime.toISOString(), runId };
+    const rows = await prisma.transcriptArtifact.findMany({
+      include: { run: { select: { id: true, scenarioName: true, status: true, startedAt: true } } },
+      orderBy: { createdAt: 'desc' },
     });
-
-    // Batch-fetch run info from DB for all known runIds
-    const runIds = fileInfos.map((f) => f.runId).filter(Boolean) as string[];
-    const runs = runIds.length > 0
-      ? await prisma.run.findMany({
-          where: { id: { in: runIds } },
-          select: { id: true, scenarioName: true, status: true, startedAt: true },
-        })
-      : [];
-    const runMap = new Map(runs.map((r) => [r.id, r]));
-
-    const transcripts = fileInfos.map(({ runId, ...f }) => {
-      const run = runId ? runMap.get(runId) : undefined;
-      return {
-        ...f,
-        runId: runId ?? null,
-        runScenarioName: run?.scenarioName ?? null,
-        runStatus: run?.status ?? null,
-        runStartedAt: run?.startedAt?.toISOString() ?? null,
-      };
-    });
-
+    const transcripts = rows.map((t) => ({
+      filename: basename(t.ref),
+      size: 0,
+      modifiedAt: (t.startedAt ?? t.createdAt).toISOString(),
+      runId: t.run?.id ?? null,
+      runScenarioName: t.run?.scenarioName ?? t.scenarioName,
+      runStatus: t.run?.status ?? null,
+      runStartedAt: t.run?.startedAt?.toISOString() ?? null,
+    }));
     res.json({ transcripts });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -64,7 +37,7 @@ transcriptsRouter.get('/:filename', async (req, res) => {
   }
   try {
     // Serve from the object store so any instance can serve a transcript another
-    // instance produced (S3 in prod, local file otherwise). Phase 4.
+    // instance produced (S3 in prod, local file otherwise).
     const buf = await getObjectStore().get(`transcripts/${filename}`);
     if (!buf) return res.status(404).json({ error: 'Not found' });
     res.type('application/json').send(buf);
