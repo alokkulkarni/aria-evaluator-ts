@@ -13,14 +13,21 @@ function canonicalUrl(path: string): URL {
 
 export default auth((req) => {
   const isLoggedIn = !!req.auth
-  const isDashboard = req.nextUrl.pathname.startsWith('/dashboard')
+  const { pathname, searchParams } = req.nextUrl
+  const isDashboard = pathname.startsWith('/dashboard')
   const launchPath = '/api/launch-instance'
 
   if (isDashboard && !isLoggedIn) {
     return NextResponse.redirect(canonicalUrl('/sign-in?return=' + encodeURIComponent(launchPath)))
   }
 
-  if (isLoggedIn && (req.nextUrl.pathname === '/sign-in' || req.nextUrl.pathname === '/sign-up')) {
+  // Bounce logged-in users off the bare auth forms only. The post-login sign-up
+  // wizard steps (e.g. /sign-up?step=plan) are a legitimate destination that
+  // /api/launch-instance itself redirects into when a user has no tenant yet —
+  // bouncing those would create an infinite redirect loop.
+  const isAuthForm =
+    pathname === '/sign-in' || (pathname === '/sign-up' && !searchParams.has('step'))
+  if (isLoggedIn && isAuthForm) {
     return NextResponse.redirect(canonicalUrl(launchPath))
   }
 
