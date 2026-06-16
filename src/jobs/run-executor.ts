@@ -22,6 +22,7 @@ import {
   sanitizeArtifactPathInLogLine,
 } from '../runtime/paths.js';
 import { getObjectStore } from '../runtime/object-store.js';
+import { runWithTenant } from '../lib/tenant-context.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult, DimensionScore, JudgeVote } from '../types/evaluation.js';
 import { parseRunJobPayload } from './run-job-payload.js';
@@ -59,6 +60,15 @@ const parsedDoneGraceMs = Number.parseInt(process.env['RUN_DONE_GRACE_MS'] ?? '1
 const RUN_DONE_GRACE_MS = Number.isNaN(parsedDoneGraceMs) ? 12_000 : parsedDoneGraceMs;
 
 export async function executeRunJob(job: ClaimedRunJob): Promise<void> {
+  // Bind the run's tenant so the worker's DB access is correctly scoped under
+  // TENANT_SCOPING_MODE=enforce. Jobs run outside the request/ALS context, so
+  // without this they'd execute as unscoped system work. Phase 4 (the bridge to
+  // turning enforce on). A null tenantId (enforce off / non-tenant run) keeps the
+  // current unscoped behavior.
+  return runWithTenant(job.run.tenantId, () => executeRunJobScoped(job));
+}
+
+async function executeRunJobScoped(job: ClaimedRunJob): Promise<void> {
   const payload = parseRunJobPayload(job.payloadJson);
   const runId = job.runId;
   const startedAt = job.startedAt ?? new Date();
