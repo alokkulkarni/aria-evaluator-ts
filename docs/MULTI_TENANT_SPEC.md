@@ -255,3 +255,50 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   (`/t/<tenant>/`)?
 - Tenant context source for per-tenant ECS: **per-service `TENANT_ID` env**
   (assumed) vs per-request SSO claim.
+
+---
+
+## 9. Testing tenant isolation locally
+
+The local stack runs `TENANT_SCOPING_MODE=enforce` by default
+(`environments/local/variables.tf:tenant_scoping_mode`). The **default-admin login
+is non-SSO → the system context → unrestricted**, so to *see* isolation you need
+**tenant-bound (SSO) sessions**. Two ways:
+
+### Prerequisite — re-apply the local stack onto Postgres
+The pre-Postgres container won't work. Apply once to get the `aria-postgres-local`
+container, rebuild the app image (now multi-tenant + enforce), and switch the DB:
+```bash
+terraform -chdir=infra/terraform/environments/local apply
+```
+(Drops the old local SQLite data — greenfield, as agreed.) The app may restart
+once while Postgres boots.
+
+### Option 2 — dev harness (fastest, no control-plane)
+Mints two simulated SSO tenant users + session cookies directly in the DB:
+```bash
+DATABASE_URL='postgresql://aria:aria@localhost:5432/aria?schema=public' \
+  npx tsx scripts/dev-tenant-sessions.ts
+```
+It prints `aria_session=<token>` cookies + a curl per tenant. Each cookie sees only
+its own runs/scenarios/reports; create data as one and confirm the other can't see it.
+
+### Option 1 — real SSO flow (control-plane on :4000)
+The local control-plane (`aria-control-plane-local`, port 4000) provisions with no
+CodeBuild (status flips to `running`) and shares an **empty** internal secret with
+the evaluator (keep `control_plane_internal_secret = ""` on both — setting only one
+side causes a 401). Create two tenants and SSO in:
+```bash
+CP=http://localhost:4000
+for n in 1 2; do
+  T=$(curl -s -X POST $CP/auth/register -H 'Content-Type: application/json' \
+    -d "{\"name\":\"Tenant $n\",\"email\":\"t$n@aria.local\",\"password\":\"Passw0rd!\"}" | jq -r .token)
+  curl -s -X POST $CP/tenant/provision -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+    -d '{"plan":"individual","region":"eu-west-2","billingPeriod":"monthly"}' | jq '{tenantId,status}'
+  # then mint + open the SSO link (do each in a SEPARATE incognito window):
+  curl -s -X POST $CP/instance/sso-token -H "Authorization: Bearer $T" | jq -r .ssoUrl
+done
+```
+Open each `ssoUrl` (→ `http://localhost:3001/auth/sso?token=…`) in its own incognito
+window; the evaluator upserts a `User` with that tenant and scopes the session.
+Tokens are one-time + 15 min — re-mint per login.

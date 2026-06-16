@@ -105,6 +105,12 @@ variable "local_db_path" {
 
 # ── Control plane SSO ─────────────────────────────────────────────────────────
 
+variable "tenant_scoping_mode" {
+  description = "TENANT_SCOPING_MODE for the local evaluator: off | log | enforce. Default enforce so tenant isolation can be tested locally (non-SSO/default-admin stays unrestricted)."
+  type        = string
+  default     = "enforce"
+}
+
 variable "control_plane_internal_url" {
   description = "URL of the local control-plane container, e.g. http://host.docker.internal:4000"
   type        = string
