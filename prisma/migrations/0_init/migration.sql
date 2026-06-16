@@ -1,16 +1,32 @@
--- Squashed baseline of the full schema (replaces the earlier incremental
--- migrations, which had no initial create-tables migration and so were not
--- replayable from an empty database). Generated from prisma/schema.prisma.
+-- Squashed baseline for PostgreSQL (Aurora dev/prod + local Postgres).
+-- Generated from prisma/schema.prisma. Greenfield — no prior data.
+
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
 
 -- CreateTable
 CREATE TABLE "BootstrapState" (
-    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "id" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "BootstrapState_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Tenant" (
+    "id" TEXT NOT NULL,
+    "externalId" TEXT,
+    "name" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Tenant_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "User" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "username" TEXT NOT NULL,
     "email" TEXT,
     "ssoSubject" TEXT,
@@ -20,42 +36,49 @@ CREATE TABLE "User" (
     "microsoftSub" TEXT,
     "role" TEXT NOT NULL DEFAULT 'admin',
     "suspended" BOOLEAN NOT NULL DEFAULT false,
-    "suspendedAt" DATETIME,
-    "lastLoginAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "suspendedAt" TIMESTAMP(3),
+    "lastLoginAt" TIMESTAMP(3),
+    "tenantId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "AuthSession" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "tokenHash" TEXT NOT NULL,
     "ipAddress" TEXT,
     "userAgent" TEXT,
-    "expiresAt" DATETIME NOT NULL,
-    "lastSeenAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "AuthSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "lastSeenAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "tenantId" TEXT,
+
+    CONSTRAINT "AuthSession_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "AuditLog" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "userId" TEXT,
     "action" TEXT NOT NULL,
     "target" TEXT,
     "metadataJson" TEXT,
     "ipAddress" TEXT,
     "userAgent" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "tenantId" TEXT,
+
+    CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Scenario" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "filePath" TEXT NOT NULL,
     "sourceRef" TEXT,
     "name" TEXT NOT NULL,
@@ -65,84 +88,93 @@ CREATE TABLE "Scenario" (
     "owner" TEXT,
     "lifecycleStatus" TEXT NOT NULL DEFAULT 'active',
     "contentHash" TEXT,
-    "lastRevisionAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "lastRevisionAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "tenantId" TEXT,
+
+    CONSTRAINT "Scenario_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "ScenarioRevision" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "scenarioId" TEXT NOT NULL,
     "sourceRef" TEXT NOT NULL,
     "yamlContent" TEXT NOT NULL,
     "contentHash" TEXT NOT NULL,
     "source" TEXT NOT NULL,
     "changedBy" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "ScenarioRevision_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ScenarioRevision_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Run" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "scenarioId" TEXT,
     "scenarioName" TEXT NOT NULL,
     "channel" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'pending',
-    "startedAt" DATETIME,
-    "completedAt" DATETIME,
+    "startedAt" TIMESTAMP(3),
+    "completedAt" TIMESTAMP(3),
     "errorMessage" TEXT,
     "audioPath" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Run_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "tenantId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Run_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Job" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'queued',
     "payloadJson" TEXT NOT NULL,
     "attemptCount" INTEGER NOT NULL DEFAULT 0,
     "workerId" TEXT,
-    "claimedAt" DATETIME,
-    "startedAt" DATETIME,
-    "completedAt" DATETIME,
+    "claimedAt" TIMESTAMP(3),
+    "startedAt" TIMESTAMP(3),
+    "completedAt" TIMESTAMP(3),
     "errorMessage" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Job_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Job_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "RunEvent" (
-    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "id" SERIAL NOT NULL,
     "runId" TEXT NOT NULL,
     "eventType" TEXT NOT NULL,
     "payloadJson" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "RunEvent_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "RunEvent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Turn" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "index" INTEGER NOT NULL,
     "role" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "durationMs" INTEGER,
     "timestampMs" BIGINT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Turn_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Turn_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "EvalResult" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
-    "overallScore" REAL NOT NULL,
+    "overallScore" DOUBLE PRECISION NOT NULL,
     "passed" BOOLEAN NOT NULL,
     "dimensionScores" TEXT NOT NULL,
     "summary" TEXT NOT NULL,
@@ -152,44 +184,45 @@ CREATE TABLE "EvalResult" (
     "judgeTokenInputEstimate" INTEGER,
     "judgeTokenOutputEstimate" INTEGER,
     "judgeTokenTotalEstimate" INTEGER,
-    "judgeEstimatedCostUsd" REAL,
+    "judgeEstimatedCostUsd" DOUBLE PRECISION,
     "costPricingVersion" INTEGER,
-    "securityScore" REAL,
+    "securityScore" DOUBLE PRECISION,
     "judgeModels" TEXT,
-    "judgeAgreement" REAL,
+    "judgeAgreement" DOUBLE PRECISION,
     "requiresHumanReview" BOOLEAN,
     "judgeConfigHash" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "EvalResult_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "EvalResult_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Review" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "evalResultId" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'pending',
     "reviewedBy" TEXT,
-    "reviewedAt" DATETIME,
-    "scoreOverride" REAL,
+    "reviewedAt" TIMESTAMP(3),
+    "scoreOverride" DOUBLE PRECISION,
     "passedOverride" BOOLEAN,
     "notes" TEXT,
     "dimensionOverridesJson" TEXT,
-    "queuedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Review_evalResultId_fkey" FOREIGN KEY ("evalResultId") REFERENCES "EvalResult" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "Review_reviewedBy_fkey" FOREIGN KEY ("reviewedBy") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "queuedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Review_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Baseline" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "scenarioId" TEXT NOT NULL,
     "totalRuns" INTEGER NOT NULL,
-    "passRate" REAL NOT NULL,
-    "avgScore" REAL NOT NULL,
+    "passRate" DOUBLE PRECISION NOT NULL,
+    "avgScore" DOUBLE PRECISION NOT NULL,
     "avgLatencyMs" INTEGER NOT NULL,
     "dimensionIdsJson" TEXT NOT NULL,
     "dimensionMetricsJson" TEXT NOT NULL,
@@ -197,55 +230,57 @@ CREATE TABLE "Baseline" (
     "judgeVersion" INTEGER NOT NULL,
     "judgeConfigHash" TEXT,
     "thresholdOverridesJson" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdBy" TEXT,
     "notes" TEXT,
-    CONSTRAINT "Baseline_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "Baseline_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "tenantId" TEXT,
+
+    CONSTRAINT "Baseline_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Experiment" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "scenarioId" TEXT NOT NULL,
     "description" TEXT,
     "status" TEXT NOT NULL DEFAULT 'planning',
     "createdBy" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Experiment_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "Experiment_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "tenantId" TEXT,
+
+    CONSTRAINT "Experiment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "ExperimentLeg" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "experimentId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "configJson" TEXT NOT NULL,
     "description" TEXT,
     "targetRunCount" INTEGER,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "ExperimentLeg_experimentId_fkey" FOREIGN KEY ("experimentId") REFERENCES "Experiment" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ExperimentLeg_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "ExperimentRun" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "experimentId" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "legId" TEXT NOT NULL,
     "tagsJson" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "ExperimentRun_experimentId_fkey" FOREIGN KEY ("experimentId") REFERENCES "Experiment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "ExperimentRun_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "ExperimentRun_legId_fkey" FOREIGN KEY ("legId") REFERENCES "ExperimentLeg" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ExperimentRun_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "RunTelemetry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "provider" TEXT NOT NULL,
     "channel" TEXT NOT NULL,
@@ -257,46 +292,49 @@ CREATE TABLE "RunTelemetry" (
     "failureClass" TEXT,
     "estimatorVersion" INTEGER NOT NULL DEFAULT 1,
     "attackCategory" TEXT,
-    "completedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "RunTelemetry_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "completedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "RunTelemetry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "SecurityAttack" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "category" TEXT NOT NULL,
     "severity" TEXT NOT NULL,
-    "confidence" REAL NOT NULL DEFAULT 0.5,
+    "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0.5,
     "inferred" BOOLEAN NOT NULL DEFAULT true,
     "target" TEXT,
     "notes" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "SecurityAttack_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SecurityAttack_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Report" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "htmlPath" TEXT NOT NULL,
     "jsonPath" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Report_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Report_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Schedule" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
     "status" TEXT NOT NULL DEFAULT 'active',
     "createdBy" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "deletedAt" DATETIME,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deletedAt" TIMESTAMP(3),
     "frequency" TEXT NOT NULL,
     "cronExpression" TEXT,
     "dayOfWeek" INTEGER,
@@ -308,84 +346,92 @@ CREATE TABLE "Schedule" (
     "provider" TEXT NOT NULL DEFAULT 'connect',
     "channel" TEXT NOT NULL DEFAULT 'chat',
     "customMetadata" TEXT,
-    "lastRunAt" DATETIME,
-    "nextRunAt" DATETIME NOT NULL,
+    "lastRunAt" TIMESTAMP(3),
+    "nextRunAt" TIMESTAMP(3) NOT NULL,
     "lastStatus" TEXT,
     "failureCount" INTEGER NOT NULL DEFAULT 0,
     "maxFailures" INTEGER NOT NULL DEFAULT 5,
-    CONSTRAINT "Schedule_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "Schedule_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "tenantId" TEXT,
+
+    CONSTRAINT "Schedule_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "ScheduleRun" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "scheduleId" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
-    "triggeredAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "triggeredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "status" TEXT NOT NULL DEFAULT 'queued',
-    "completedAt" DATETIME,
+    "completedAt" TIMESTAMP(3),
     "errorMessage" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "ScheduleRun_scheduleId_fkey" FOREIGN KEY ("scheduleId") REFERENCES "Schedule" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "ScheduleRun_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ScheduleRun_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CalibrationDataset" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
     "source" TEXT NOT NULL DEFAULT 'manual',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdBy" TEXT
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdBy" TEXT,
+    "tenantId" TEXT,
+
+    CONSTRAINT "CalibrationDataset_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CalibrationLabel" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "datasetId" TEXT,
     "source" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "dimensionId" TEXT NOT NULL,
-    "humanScore" REAL NOT NULL,
+    "humanScore" DOUBLE PRECISION NOT NULL,
     "labeledBy" TEXT,
     "notes" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "CalibrationLabel_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "CalibrationDataset" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CalibrationLabel_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "JudgeCalibration" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "judgeProvider" TEXT NOT NULL,
     "judgeModelId" TEXT NOT NULL,
     "dimensionId" TEXT,
     "datasetId" TEXT,
     "sampleCount" INTEGER NOT NULL,
-    "weightedKappa" REAL NOT NULL,
-    "binaryKappa" REAL,
-    "withinOneRate" REAL NOT NULL,
-    "exactAgreement" REAL NOT NULL,
-    "meanAbsError" REAL NOT NULL,
+    "weightedKappa" DOUBLE PRECISION NOT NULL,
+    "binaryKappa" DOUBLE PRECISION,
+    "withinOneRate" DOUBLE PRECISION NOT NULL,
+    "exactAgreement" DOUBLE PRECISION NOT NULL,
+    "meanAbsError" DOUBLE PRECISION NOT NULL,
     "trust" TEXT NOT NULL,
-    "computedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "JudgeCalibration_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "CalibrationDataset" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    "computedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "JudgeCalibration_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "PairwiseDataset" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
     "source" TEXT NOT NULL DEFAULT 'import',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdBy" TEXT
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdBy" TEXT,
+
+    CONSTRAINT "PairwiseDataset_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "PairwiseItem" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "datasetId" TEXT NOT NULL,
     "prompt" TEXT NOT NULL,
     "responseA" TEXT NOT NULL,
@@ -394,35 +440,41 @@ CREATE TABLE "PairwiseItem" (
     "modelA" TEXT,
     "modelB" TEXT,
     "language" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "PairwiseItem_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "PairwiseDataset" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PairwiseItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "PairwiseVerdict" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "itemId" TEXT NOT NULL,
     "judgeProvider" TEXT NOT NULL,
     "judgeModelId" TEXT NOT NULL,
     "preferred" TEXT NOT NULL,
     "reason" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "PairwiseVerdict_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "PairwiseItem" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PairwiseVerdict_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "PairwiseCalibration" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "judgeProvider" TEXT NOT NULL,
     "judgeModelId" TEXT NOT NULL,
     "datasetId" TEXT NOT NULL,
     "sampleCount" INTEGER NOT NULL,
-    "agreementAccuracy" REAL NOT NULL,
-    "binaryKappa" REAL NOT NULL,
-    "tieRate" REAL NOT NULL,
-    "computedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "PairwiseCalibration_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "PairwiseDataset" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "agreementAccuracy" DOUBLE PRECISION NOT NULL,
+    "binaryKappa" DOUBLE PRECISION NOT NULL,
+    "tieRate" DOUBLE PRECISION NOT NULL,
+    "computedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PairwiseCalibration_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Tenant_externalId_key" ON "Tenant"("externalId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
@@ -443,6 +495,9 @@ CREATE UNIQUE INDEX "User_githubId_key" ON "User"("githubId");
 CREATE UNIQUE INDEX "User_microsoftSub_key" ON "User"("microsoftSub");
 
 -- CreateIndex
+CREATE INDEX "User_tenantId_idx" ON "User"("tenantId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "AuthSession_tokenHash_key" ON "AuthSession"("tokenHash");
 
 -- CreateIndex
@@ -452,10 +507,16 @@ CREATE INDEX "AuthSession_userId_idx" ON "AuthSession"("userId");
 CREATE INDEX "AuthSession_expiresAt_idx" ON "AuthSession"("expiresAt");
 
 -- CreateIndex
+CREATE INDEX "AuthSession_tenantId_idx" ON "AuthSession"("tenantId");
+
+-- CreateIndex
 CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 
 -- CreateIndex
 CREATE INDEX "AuditLog_action_createdAt_idx" ON "AuditLog"("action", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_tenantId_idx" ON "AuditLog"("tenantId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Scenario_filePath_key" ON "Scenario"("filePath");
@@ -465,6 +526,9 @@ CREATE INDEX "Scenario_sourceRef_idx" ON "Scenario"("sourceRef");
 
 -- CreateIndex
 CREATE INDEX "Scenario_lifecycleStatus_idx" ON "Scenario"("lifecycleStatus");
+
+-- CreateIndex
+CREATE INDEX "Scenario_tenantId_idx" ON "Scenario"("tenantId");
 
 -- CreateIndex
 CREATE INDEX "ScenarioRevision_scenarioId_createdAt_idx" ON "ScenarioRevision"("scenarioId", "createdAt");
@@ -480,6 +544,9 @@ CREATE INDEX "Run_scenarioId_idx" ON "Run"("scenarioId");
 
 -- CreateIndex
 CREATE INDEX "Run_createdAt_idx" ON "Run"("createdAt");
+
+-- CreateIndex
+CREATE INDEX "Run_tenantId_idx" ON "Run"("tenantId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Job_runId_key" ON "Job"("runId");
@@ -527,6 +594,9 @@ CREATE INDEX "Baseline_judgeModel_idx" ON "Baseline"("judgeModel");
 CREATE INDEX "Baseline_createdBy_idx" ON "Baseline"("createdBy");
 
 -- CreateIndex
+CREATE INDEX "Baseline_tenantId_idx" ON "Baseline"("tenantId");
+
+-- CreateIndex
 CREATE INDEX "Experiment_scenarioId_idx" ON "Experiment"("scenarioId");
 
 -- CreateIndex
@@ -534,6 +604,9 @@ CREATE INDEX "Experiment_status_idx" ON "Experiment"("status");
 
 -- CreateIndex
 CREATE INDEX "Experiment_createdBy_idx" ON "Experiment"("createdBy");
+
+-- CreateIndex
+CREATE INDEX "Experiment_tenantId_idx" ON "Experiment"("tenantId");
 
 -- CreateIndex
 CREATE INDEX "ExperimentLeg_experimentId_idx" ON "ExperimentLeg"("experimentId");
@@ -602,6 +675,9 @@ CREATE INDEX "Schedule_nextRunAt_status_idx" ON "Schedule"("nextRunAt", "status"
 CREATE INDEX "Schedule_status_idx" ON "Schedule"("status");
 
 -- CreateIndex
+CREATE INDEX "Schedule_tenantId_idx" ON "Schedule"("tenantId");
+
+-- CreateIndex
 CREATE INDEX "ScheduleRun_scheduleId_triggeredAt_idx" ON "ScheduleRun"("scheduleId", "triggeredAt");
 
 -- CreateIndex
@@ -609,6 +685,9 @@ CREATE INDEX "ScheduleRun_runId_idx" ON "ScheduleRun"("runId");
 
 -- CreateIndex
 CREATE INDEX "CalibrationDataset_createdAt_idx" ON "CalibrationDataset"("createdAt");
+
+-- CreateIndex
+CREATE INDEX "CalibrationDataset_tenantId_idx" ON "CalibrationDataset"("tenantId");
 
 -- CreateIndex
 CREATE INDEX "CalibrationLabel_datasetId_idx" ON "CalibrationLabel"("datasetId");
@@ -648,4 +727,94 @@ CREATE INDEX "PairwiseCalibration_judgeModelId_idx" ON "PairwiseCalibration"("ju
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PairwiseCalibration_judgeModelId_datasetId_key" ON "PairwiseCalibration"("judgeModelId", "datasetId");
+
+-- AddForeignKey
+ALTER TABLE "AuthSession" ADD CONSTRAINT "AuthSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ScenarioRevision" ADD CONSTRAINT "ScenarioRevision_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Run" ADD CONSTRAINT "Run_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Job" ADD CONSTRAINT "Job_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RunEvent" ADD CONSTRAINT "RunEvent_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Turn" ADD CONSTRAINT "Turn_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EvalResult" ADD CONSTRAINT "EvalResult_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Review" ADD CONSTRAINT "Review_evalResultId_fkey" FOREIGN KEY ("evalResultId") REFERENCES "EvalResult"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Review" ADD CONSTRAINT "Review_reviewedBy_fkey" FOREIGN KEY ("reviewedBy") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Baseline" ADD CONSTRAINT "Baseline_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Baseline" ADD CONSTRAINT "Baseline_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Experiment" ADD CONSTRAINT "Experiment_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Experiment" ADD CONSTRAINT "Experiment_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ExperimentLeg" ADD CONSTRAINT "ExperimentLeg_experimentId_fkey" FOREIGN KEY ("experimentId") REFERENCES "Experiment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ExperimentRun" ADD CONSTRAINT "ExperimentRun_experimentId_fkey" FOREIGN KEY ("experimentId") REFERENCES "Experiment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ExperimentRun" ADD CONSTRAINT "ExperimentRun_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ExperimentRun" ADD CONSTRAINT "ExperimentRun_legId_fkey" FOREIGN KEY ("legId") REFERENCES "ExperimentLeg"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RunTelemetry" ADD CONSTRAINT "RunTelemetry_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SecurityAttack" ADD CONSTRAINT "SecurityAttack_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Report" ADD CONSTRAINT "Report_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Schedule" ADD CONSTRAINT "Schedule_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Schedule" ADD CONSTRAINT "Schedule_scenarioId_fkey" FOREIGN KEY ("scenarioId") REFERENCES "Scenario"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ScheduleRun" ADD CONSTRAINT "ScheduleRun_scheduleId_fkey" FOREIGN KEY ("scheduleId") REFERENCES "Schedule"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ScheduleRun" ADD CONSTRAINT "ScheduleRun_runId_fkey" FOREIGN KEY ("runId") REFERENCES "Run"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CalibrationLabel" ADD CONSTRAINT "CalibrationLabel_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "CalibrationDataset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "JudgeCalibration" ADD CONSTRAINT "JudgeCalibration_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "CalibrationDataset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PairwiseItem" ADD CONSTRAINT "PairwiseItem_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "PairwiseDataset"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PairwiseVerdict" ADD CONSTRAINT "PairwiseVerdict_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "PairwiseItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PairwiseCalibration" ADD CONSTRAINT "PairwiseCalibration_datasetId_fkey" FOREIGN KEY ("datasetId") REFERENCES "PairwiseDataset"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

@@ -68,9 +68,12 @@ export async function initDb(): Promise<void> {
 
   initPromise = (async () => {
     await prisma.$connect();
-    // SQLite-specific pragmas (no-op on PostgreSQL — driver ignores unknown pragmas)
-    await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL');
-    await prisma.$queryRawUnsafe(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
+    // SQLite-specific pragmas. `PRAGMA` is a syntax error on PostgreSQL, so only
+    // run these when pointed at a SQLite file: URL (e.g. a one-off local fallback).
+    if ((process.env['DATABASE_URL'] ?? '').startsWith('file:')) {
+      await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL');
+      await prisma.$queryRawUnsafe(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
+    }
 
     if (replicaUrl) {
       await prismaRead.$connect();
