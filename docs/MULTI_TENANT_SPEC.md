@@ -220,10 +220,15 @@ reports, transcripts, audio, run logs, scenarios, `runtime-settings.json` →
   shared via a DB row (`RuntimeSettings`, synchronous file read cache +
   write-through + periodic refresh). Redis is already effectively mandatory (SSE
   uses Redis pub/sub for cross-instance delivery; the readiness probe gates on it).
+  ✅ Report and transcript **listings are DB-driven** (`Report` / `TranscriptArtifact`
+  rows; no FS scan) and artifacts are served from the object store. ✅ With those
+  done, the former **whole-directory state sync is narrowed to the `scenarios/`
+  prefix** — every other piece is now in Postgres or the object store.
   **Remaining (focused refactor):** scenarios are still YAML-file-authoritative
   (the DB augments metadata only) — inverting them to DB/object-store-authoritative
   across the listing, run-creation, and create/edit/delete paths is what lets the
-  whole-dir state sync finally be removed. Until then the sync stays.
+  scenario sync be dropped entirely too. Until then a minimal scenarios-only sync
+  remains.
 - **Phase 5 — Per-tenant ECS + autoscaling infra.** Shared stack + per-tenant
   ECS service/target-group/ALB-rule; enable autoscaling; retire suspend/resume.
 - **Phase 6 — Control-plane.** Replace CodeBuild provisioning with

@@ -13,19 +13,24 @@ mkdir -p \
   "${STATE_DIR}/transcripts/audio" \
   "${STATE_DIR}/scenarios"
 
+# Scenarios are the only remaining file-based shared state — everything else now
+# lives in Postgres (DB, runtime settings, report/transcript listings, run logs)
+# or the object store (reports/transcripts/audio, written + served directly). So
+# the former whole-directory state sync is narrowed to the scenarios/ prefix.
+# Phase 4 of the multi-tenant migration (docs/MULTI_TENANT_SPEC.md).
 restore_state() {
   if [[ -z "${STATE_BUCKET}" ]]; then
     return 0
   fi
-  echo "ℹ Restoring state from s3://${STATE_BUCKET}/${STATE_PREFIX}/"
-  aws s3 sync "s3://${STATE_BUCKET}/${STATE_PREFIX}/" "${STATE_DIR}/" --only-show-errors || true
+  echo "ℹ Restoring scenarios from s3://${STATE_BUCKET}/${STATE_PREFIX}/scenarios/"
+  aws s3 sync "s3://${STATE_BUCKET}/${STATE_PREFIX}/scenarios/" "${STATE_DIR}/scenarios/" --only-show-errors || true
 }
 
 sync_state() {
   if [[ -z "${STATE_BUCKET}" ]]; then
     return 0
   fi
-  aws s3 sync "${STATE_DIR}/" "s3://${STATE_BUCKET}/${STATE_PREFIX}/" --only-show-errors || true
+  aws s3 sync "${STATE_DIR}/scenarios/" "s3://${STATE_BUCKET}/${STATE_PREFIX}/scenarios/" --only-show-errors || true
 }
 
 wire_paths() {
