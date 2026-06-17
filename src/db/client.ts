@@ -33,11 +33,13 @@ const TENANT_SCOPED_MODELS = new Set<string>([
 // dimension scores from EvalResult, etc.) leak across tenants even though the Run
 // list itself is correctly isolated. Writes/unique-by-runId ops are left alone —
 // the parent Run is already tenant-scoped.
-const RUN_CHILD_MODELS = new Map<string, string>([
-  ['EvalResult', 'run'], ['RunTelemetry', 'run'], ['Report', 'run'],
-  ['RunEvent', 'run'], ['Turn', 'run'], ['SecurityAttack', 'run'],
-  ['Job', 'run'], ['ExperimentRun', 'run'], ['ScheduleRun', 'run'],
-  ['TranscriptArtifact', 'run'],
+// Value is the relation PATH from the child to the tenant-bearing Run. Most are a
+// direct `run` relation; Review reaches it via evalResult → run.
+const RUN_CHILD_MODELS = new Map<string, string[]>([
+  ['EvalResult', ['run']], ['RunTelemetry', ['run']], ['Report', ['run']],
+  ['RunEvent', ['run']], ['Turn', ['run']], ['SecurityAttack', ['run']],
+  ['Job', ['run']], ['ExperimentRun', ['run']], ['ScheduleRun', ['run']],
+  ['TranscriptArtifact', ['run']], ['Review', ['evalResult', 'run']],
 ]);
 const TENANT_SCOPING_MODE = process.env['TENANT_SCOPING_MODE'] ?? 'off';
 
@@ -54,10 +56,20 @@ const CHILD_READ_OPS = new Set([
   'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy',
 ]);
 
-function scopeChildToTenant(relation: string, operation: string, args: any, tenantId: string | null): any {
+function scopeChildToTenant(path: string[], operation: string, args: any, tenantId: string | null): any {
   if (!CHILD_READ_OPS.has(operation)) return args;
-  const existing = (args?.where?.[relation] ?? {}) as Record<string, unknown>;
-  return { ...args, where: { ...(args?.where ?? {}), [relation]: { ...existing, tenantId } } };
+  // Deep-merge tenantId into the relation path (e.g. ['evalResult','run'] →
+  // where.evalResult.run.tenantId), copying each level so existing filters on the
+  // same relations (like { run: { NOT: { status: 'deleted' } } }) are preserved.
+  const where: Record<string, any> = { ...(args?.where ?? {}) };
+  let node = where;
+  for (let i = 0; i < path.length - 1; i++) {
+    node[path[i]!] = { ...(node[path[i]!] ?? {}) };
+    node = node[path[i]!];
+  }
+  const leaf = path[path.length - 1]!;
+  node[leaf] = { ...(node[leaf] ?? {}), tenantId };
+  return { ...args, where };
 }
 
 function scopeArgsToTenant(operation: string, args: any, tenantId: string | null): any {
