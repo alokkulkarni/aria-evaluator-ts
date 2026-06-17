@@ -541,29 +541,26 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
               <div className="space-y-2">
                 <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-amber-600">Safety Dimensions (7d)</p>
                 <div className="space-y-1.5">
-                  {dimensions.slice(0, 5).map((d) => {
+                  {dimensions.map((d) => {
                     const score = d.avgScore ?? 0;
                     const tone = score >= 7 ? 'bg-emerald-500' : score >= 5 ? 'bg-amber-400' : 'bg-rose-500';
                     return (
                       <div key={d.dimension}>
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-slate-700 truncate max-w-[120px]" title={d.dimension}>
+                        <div className="flex items-start justify-between gap-2 text-[10px]">
+                          <span className="flex-1 text-slate-700">
                             {d.dimension.replace(/_/g, ' ')}
                           </span>
-                          <span className="font-semibold text-slate-900">
+                          <span className="flex-shrink-0 font-semibold text-slate-900">
                             {score.toFixed(1)} <span className="font-normal text-slate-400">({d.passRate?.toFixed(0)}%)</span>
                           </span>
                         </div>
-                        <div className="h-1 rounded-full bg-slate-100">
+                        <div className="mt-0.5 h-1 rounded-full bg-slate-100">
                           <div className={`h-1 rounded-full ${tone}`} style={{ width: `${(score / 10) * 100}%` }} />
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                {dimensions.length > 5 && (
-                  <p className="text-[10px] text-slate-400">+{dimensions.length - 5} more dimensions</p>
-                )}
               </div>
             )}
           </div>
