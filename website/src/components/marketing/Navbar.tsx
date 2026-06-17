@@ -158,11 +158,17 @@ export function Navbar() {
 
   const isResourcesActive = resourceItems.some((item) => pathname.startsWith(item.href.split('#')[0]) && item.href !== '/')
 
+  // The translucent nav is designed to float over the home page's dark hero.
+  // On other pages (sign-up/sign-in and the rest) the background is light, so a
+  // translucent dark bar reads as washed-out grey — use the solid dark theme
+  // there (and once the home page is scrolled past the hero).
+  const solid = scrolled || pathname !== '/'
+
   return (
     <header
       className={cn(
         'sticky top-0 z-40 transition-all duration-300',
-        scrolled
+        solid
           ? 'border-b border-white/10 bg-slate-950/80 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.8)] backdrop-blur-xl'
           : 'border-b border-transparent bg-slate-950/30 backdrop-blur-md',
       )}
@@ -171,7 +177,7 @@ export function Navbar() {
       <div
         className={cn(
           'pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent transition-opacity duration-300',
-          scrolled ? 'opacity-100' : 'opacity-0',
+          solid ? 'opacity-100' : 'opacity-0',
         )}
       />
       <div className="max-w-8xl mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
