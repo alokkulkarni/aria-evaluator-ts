@@ -44,8 +44,9 @@ export const DEFAULT_DISAGREEMENT_THRESHOLD = 2.0;
 export const DEFAULT_OPENAI_JUDGE_MODEL = 'gpt-4o';
 export const DEFAULT_NOVA_JUDGE_MODEL = 'amazon.nova-pro-v1:0';
 export const DEFAULT_ANTHROPIC_JUDGE_MODEL = 'claude-sonnet-4-5';
-// Gemini judge default — overridable via GEMINI_JUDGE_MODEL (use the latest 3.x).
-export const DEFAULT_GEMINI_JUDGE_MODEL = 'gemini-3.0-pro';
+// Gemini judge default — overridable via GEMINI_JUDGE_MODEL. `gemini-3.0-pro`
+// does not exist on the v1beta API (404); use a current GA model.
+export const DEFAULT_GEMINI_JUDGE_MODEL = 'gemini-2.0-flash';
 
 type Env = Record<string, string | undefined>;
 
@@ -161,12 +162,9 @@ export function buildDefaultCommittee(params: {
   // Amazon (via Bedrock — always available).
   judges.push({ id: 'bedrock-nova', provider: 'bedrock', modelId: DEFAULT_NOVA_JUDGE_MODEL, role: 'generalist' });
 
-  // Anthropic — prefer the direct API key; otherwise Claude via Bedrock.
-  if (ap.has('anthropic')) {
-    judges.push({ id: 'anthropic-claude', provider: 'anthropic', modelId: DEFAULT_ANTHROPIC_JUDGE_MODEL, role: 'generalist' });
-  } else {
-    judges.push({ id: 'bedrock-claude', provider: 'bedrock', modelId: params.bedrockModelId, role: 'generalist' });
-  }
+  // Anthropic Claude — always via Bedrock. The direct Anthropic API is never used
+  // for judging (Claude is available through Bedrock with the same AWS creds).
+  judges.push({ id: 'bedrock-claude', provider: 'bedrock', modelId: params.bedrockModelId, role: 'generalist' });
 
   // OpenAI (direct, or Azure OpenAI deployment if that's what's configured).
   if (ap.has('openai')) {
