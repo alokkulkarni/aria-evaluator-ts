@@ -29,6 +29,12 @@ export interface JudgeSpec {
   weight?: number;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Alternate model to try if this judge errors (e.g. a rate-limited Gemini key,
+   * a transient provider outage). Keeps the committee at full strength instead of
+   * silently dropping a vote. Bedrock is the natural fallback — always credentialed.
+   */
+  fallback?: { provider: JudgeProviderId; modelId: string };
 }
 
 export interface JudgeCommitteeConfig {
@@ -167,15 +173,18 @@ export function buildDefaultCommittee(params: {
   judges.push({ id: 'bedrock-claude', provider: 'bedrock', modelId: params.bedrockModelId, role: 'generalist' });
 
   // OpenAI (direct, or Azure OpenAI deployment if that's what's configured).
+  // External-vendor judges fall back to Claude-via-Bedrock if their key is
+  // rate-limited / the provider errors, so the committee keeps its vote count.
+  const bedrockFallback = { provider: 'bedrock' as JudgeProviderId, modelId: params.bedrockModelId };
   if (ap.has('openai')) {
-    judges.push({ id: 'openai-gpt', provider: 'openai', modelId: DEFAULT_OPENAI_JUDGE_MODEL, role: 'generalist' });
+    judges.push({ id: 'openai-gpt', provider: 'openai', modelId: DEFAULT_OPENAI_JUDGE_MODEL, role: 'generalist', fallback: bedrockFallback });
   } else if (ap.has('azure-openai')) {
-    judges.push({ id: 'azure-openai', provider: 'azure-openai', modelId: process.env['AZURE_OPENAI_JUDGE_DEPLOYMENT']?.trim() || DEFAULT_OPENAI_JUDGE_MODEL, role: 'generalist' });
+    judges.push({ id: 'azure-openai', provider: 'azure-openai', modelId: process.env['AZURE_OPENAI_JUDGE_DEPLOYMENT']?.trim() || DEFAULT_OPENAI_JUDGE_MODEL, role: 'generalist', fallback: bedrockFallback });
   }
 
   // Google.
   if (ap.has('gemini')) {
-    judges.push({ id: 'gemini', provider: 'gemini', modelId: process.env['GEMINI_JUDGE_MODEL']?.trim() || DEFAULT_GEMINI_JUDGE_MODEL, role: 'generalist' });
+    judges.push({ id: 'gemini', provider: 'gemini', modelId: process.env['GEMINI_JUDGE_MODEL']?.trim() || DEFAULT_GEMINI_JUDGE_MODEL, role: 'generalist', fallback: bedrockFallback });
   }
 
   return {

@@ -136,15 +136,7 @@ export class JudgePanel {
     let inputTokens = 0;
     let outputTokens = 0;
 
-    for (let i = 0; i < settled.length; i++) {
-      const s = settled[i]!;
-      const spec = specs[i]!;
-      if (s.status === 'rejected') {
-        const reason = s.reason instanceof Error ? s.reason.message : String(s.reason);
-        console.warn(`  ⚠  Judge ${spec.id}/${spec.provider} failed: ${reason}`);
-        continue;
-      }
-      const { result } = s.value;
+    const recordOutcome = (spec: JudgeSpec, result: Awaited<ReturnType<JudgeMember['evaluate']>>): void => {
       const inTok = result.judgeTokenInputEstimate ?? 0;
       const outTok = result.judgeTokenOutputEstimate ?? 0;
       inputTokens += inTok;
@@ -161,6 +153,31 @@ export class JudgePanel {
         costUsd: cost?.costUsd ?? null,
       });
       outcomes.push({ judge: judgeRef, dimensionScores: result.dimensionScores });
+    };
+
+    for (let i = 0; i < settled.length; i++) {
+      const s = settled[i]!;
+      const spec = specs[i]!;
+      if (s.status === 'fulfilled') {
+        recordOutcome(spec, s.value.result);
+        continue;
+      }
+      const reason = s.reason instanceof Error ? s.reason.message : String(s.reason);
+      console.warn(`  ⚠  Judge ${spec.id}/${spec.provider} failed: ${reason}`);
+      // Fallback: rerun this judge's slot on an alternate model (e.g. Claude via
+      // Bedrock) so a rate-limited / flaky provider doesn't cost a committee vote.
+      if (spec.fallback && this.available.has(spec.fallback.provider)) {
+        const fbSpec: JudgeSpec = { ...spec, provider: spec.fallback.provider, modelId: spec.fallback.modelId, fallback: undefined };
+        try {
+          const fbMember = new JudgeMember(fbSpec, this.createProvider(fbSpec.provider), shared);
+          const fbResult = await fbMember.evaluate(transcript, goal, scenario);
+          console.warn(`  ↳ ${spec.id} fell back to ${fbSpec.provider}:${fbSpec.modelId}`);
+          recordOutcome(fbSpec, fbResult);
+        } catch (err) {
+          const fbReason = err instanceof Error ? err.message : String(err);
+          console.warn(`  ↳ ${spec.id} fallback (${fbSpec.provider}:${fbSpec.modelId}) also failed: ${fbReason}`);
+        }
+      }
     }
 
     const judgeConfigHash = computeJudgeConfigHash(this.committee);

@@ -70,6 +70,7 @@ export class ReportGenerator {
       .join('');
 
     const dimTable = this.renderDimensionTable(results);
+    const committeeSection = this.renderJudgeConsensus(results);
     const transcriptCards = this.renderTranscriptCards(transcripts);
 
     return `<!doctype html>
@@ -117,6 +118,18 @@ export class ReportGenerator {
     .fill-fail { background: #e53e3e; }
     .score-pass { font-weight: 700; color: #38a169; }
     .score-fail { font-weight: 700; color: #e53e3e; }
+    .committee-intro { font-size: 13px; color: #718096; margin-bottom: 16px; }
+    .committee-block { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 16px; margin-bottom: 16px; }
+    .committee-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 12px; }
+    .committee-scenario { font-weight: 600; font-size: 14px; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .committee-consensus { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: #edf2f7; flex-shrink: 0; }
+    .committee-consensus.pass { color: #38a169; } .committee-consensus.fail { color: #e53e3e; }
+    .committee-table { width: 100%; border-collapse: collapse; background: white; border-radius: 6px; overflow: hidden; }
+    .committee-table th { font-size: 11px; padding: 6px 12px; }
+    .committee-table td { font-size: 13px; padding: 7px 12px; }
+    .judge-model { color: #718096; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .committee-summary-row td { border-top: 2px solid #e2e8f0; background: #f7fafc; }
+    .committee-disagree { font-size: 12px; color: #b7791f; margin-top: 8px; }
     .dim-table { width: 100%; border-collapse: collapse; }
     .dim-category { width: 160px; color: #718096; font-size: 13px; font-weight: 600; padding: 12px; border-bottom: 1px solid #edf2f7; vertical-align: top; }
     .dim-description { padding: 12px; border-bottom: 1px solid #edf2f7; }
@@ -187,6 +200,8 @@ export class ReportGenerator {
     ${dimTable}
   </section>
 
+  ${committeeSection}
+
   <section>
     <h2>Conversation Transcripts</h2>
     ${transcriptCards}
@@ -204,6 +219,68 @@ export class ReportGenerator {
     if (score >= 7.0) return 'Acceptable — meets the passing threshold but notable areas need improvement';
     if (score >= 6.0) return 'Borderline — passing, but significant weaknesses present';
     return 'Failing — critical issues detected';
+  }
+
+  /** Per-judge scores and the committee consensus, for multi-judge runs. */
+  private renderJudgeConsensus(results: EvalResult[]): string {
+    const committeeResults = results.filter((r) =>
+      Object.values(r.dimensionScores).some((d) => (d.judgeVotes?.length ?? 0) > 1),
+    );
+    if (committeeResults.length === 0) return '';
+
+    const blocks = committeeResults
+      .map((r) => {
+        // Each judge's mean score across the dimensions they voted on.
+        const perJudge = new Map<string, { provider: string; modelId: string; total: number; count: number }>();
+        for (const ds of Object.values(r.dimensionScores)) {
+          for (const v of ds.judgeVotes ?? []) {
+            const cur = perJudge.get(v.judgeId) ?? { provider: v.provider, modelId: v.modelId, total: 0, count: 0 };
+            cur.total += v.score;
+            cur.count += 1;
+            perJudge.set(v.judgeId, cur);
+          }
+        }
+        const judgeRows = [...perJudge.entries()]
+          .map(([id, j]) => {
+            const avg = j.count > 0 ? j.total / j.count : 0;
+            return `<tr>
+              <td><strong>${escapeHtml(id)}</strong></td>
+              <td class="judge-model">${escapeHtml(j.provider)}:${escapeHtml(j.modelId)}</td>
+              <td class="${avg >= 6 ? 'pass' : 'fail'}">${avg.toFixed(1)}/10</td>
+            </tr>`;
+          })
+          .join('');
+        const agreementPct = r.judgeAgreement != null ? `${Math.round(r.judgeAgreement * 100)}%` : '—';
+        const disagreedCount = Object.values(r.dimensionScores).filter((d) => d.disagreement).length;
+
+        return `
+      <div class="committee-block">
+        <div class="committee-head">
+          <span class="committee-scenario" title="${escapeHtml(r.scenarioName)}">${escapeHtml(r.scenarioName)}</span>
+          <span class="committee-consensus ${r.passed ? 'pass' : 'fail'}">Consensus ${r.overallScore.toFixed(1)}/10</span>
+        </div>
+        <table class="committee-table">
+          <thead><tr><th>Judge</th><th>Model</th><th>Avg score</th></tr></thead>
+          <tbody>
+            ${judgeRows}
+            <tr class="committee-summary-row">
+              <td><strong>Consensus (mean)</strong></td>
+              <td class="judge-model">agreement ${agreementPct}</td>
+              <td class="${r.passed ? 'pass' : 'fail'}"><strong>${r.overallScore.toFixed(1)}/10</strong></td>
+            </tr>
+          </tbody>
+        </table>
+        ${disagreedCount > 0 ? `<p class="committee-disagree">⚠ Judges disagreed beyond threshold on ${disagreedCount} dimension${disagreedCount === 1 ? '' : 's'}.</p>` : ''}
+      </div>`;
+      })
+      .join('');
+
+    return `
+  <section>
+    <h2>Judge Committee — per-judge scores &amp; consensus</h2>
+    <p class="committee-intro">Each committee member's mean score across dimensions, and the consensus those votes aggregated into.</p>
+    ${blocks}
+  </section>`;
   }
 
   private renderDimensionTable(results: EvalResult[]): string {
