@@ -346,6 +346,7 @@ export default function App() {
   const [page, setPage] = useState<Page>(getInitialPage);
   const [openRunModal, setOpenRunModal] = useState(false);
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [identity, setIdentity] = useState<{ plan: string | null; company: string | null; userName: string | null; userEmail: string | null } | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const initialTranscriptFile = typeof window !== 'undefined'
@@ -408,6 +409,21 @@ export default function App() {
     }
   }, [page, user]);
 
+  // Workspace identity for the nav (org/company + signed-in user), fetched from
+  // the control plane via /api/workspace. SSO users only; admins keep username.
+  useEffect(() => {
+    if (!user?.workspaceEligible) { setIdentity(null); return; }
+    let cancelled = false;
+    (apiFetch('/api/workspace') as Promise<{ workspace?: { plan?: string | null; company?: string | null; userName?: string | null; userEmail?: string | null } | null }>)
+      .then((r) => {
+        if (cancelled) return;
+        const w = r.workspace;
+        setIdentity(w ? { plan: w.plan ?? null, company: w.company ?? null, userName: w.userName ?? null, userEmail: w.userEmail ?? null } : null);
+      })
+      .catch(() => { if (!cancelled) setIdentity(null); });
+    return () => { cancelled = true; };
+  }, [user]);
+
   const closeTour = useCallback(() => {
     if (user) dismissTour(user.id);
     setTourOpen(false);
@@ -429,6 +445,18 @@ export default function App() {
   if (!user) {
     return <AuthPage onAuthenticated={handleAuthenticated} />;
   }
+
+  // Nav identity: Enterprise → company + user; Individual/Free → user's full name.
+  // Falls back to the username until /api/workspace resolves (or for admins).
+  const navIsEnterprise = (identity?.plan ?? '').startsWith('enterprise');
+  const navPrimary = identity
+    ? (navIsEnterprise
+        ? (identity.company ?? identity.userName ?? identity.userEmail ?? user.username)
+        : (identity.userName ?? identity.userEmail ?? user.username))
+    : user.username;
+  const navSecondary = identity
+    ? (navIsEnterprise ? (identity.userName ?? identity.userEmail) : identity.userEmail)
+    : user.role;
 
   return (
     <PlanGateProvider>
@@ -470,12 +498,12 @@ export default function App() {
             <div className="flex items-center gap-1.5">
               <span
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/25 text-xs font-semibold uppercase text-white ring-1 ring-white/10 select-none"
-                title={`${user.username} (${user.role})`}
+                title={`${navPrimary}${navSecondary ? ` · ${navSecondary}` : ''}`}
               >
-                {user.username.charAt(0)}
+                {(navPrimary || '?').charAt(0)}
               </span>
-              <span className="hidden max-w-[112px] truncate text-xs text-slate-300 lg:block" title={user.username}>
-                {user.username}
+              <span className="hidden max-w-[160px] truncate text-xs text-slate-300 lg:block" title={navPrimary}>
+                {navPrimary}
               </span>
             </div>
             <button

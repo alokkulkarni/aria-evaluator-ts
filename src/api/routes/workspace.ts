@@ -38,6 +38,9 @@ workspaceRouter.get('/', async (req, res) => {
           maxScenarios: number;
         };
         provisionedAt?: string;
+        company: string | null;
+        userName: string | null;
+        userEmail: string | null;
       }>('/internal/tenant-by-user', {
         method: 'POST',
         body: JSON.stringify({ userId: auth.ssoSubject }),

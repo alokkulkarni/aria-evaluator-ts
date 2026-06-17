@@ -47,7 +47,12 @@ resource "null_resource" "build_app_image" {
   triggers = {
     dockerfile_sha   = filesha1("${local.effective_build_context}/${var.app_dockerfile}")
     package_lock_sha = filesha1("${local.effective_build_context}/package-lock.json")
-    force_rebuild    = var.force_rebuild
+    # Rebuild when the TypeScript source changes (control-plane + shared modules),
+    # so `terraform apply` / `npm run local:up` reflect code edits.
+    source_sha = sha1(join("", [
+      for f in fileset(local.effective_build_context, "src/**") : filesha1("${local.effective_build_context}/${f}")
+    ]))
+    force_rebuild = var.force_rebuild
   }
 
   provisioner "local-exec" {
