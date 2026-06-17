@@ -6,7 +6,7 @@ import { prisma } from '../db/client.js';
 import { getCachedAuthSession, cacheAuthSession, invalidateCachedAuthSession } from '../lib/cache.js';
 import { runAsSystem, runWithTenant } from '../lib/tenant-context.js';
 import { recordAuditEventSafe } from './audit-log.js';
-import { getWebsiteSignOutUrl } from './control-plane.js';
+import { getWebsiteSignInUrl, getWebsiteSignOutUrl } from './control-plane.js';
 import { checkUserQuota } from '../shared/quota-enforcement.js';
 
 const SECURE_SESSION_COOKIE_NAME = '__Host-aria_session';
@@ -1254,14 +1254,14 @@ ssoRouter.get('/', async (req, res) => {
   const returnTo = isValidReturnPath(returnParam) ? returnParam! : '/';
 
   if (!token) {
-    res.redirect(`/sign-in?error=invalid_sso`);
+    res.redirect(getWebsiteSignInUrl('invalid_sso'));
     return;
   }
 
   const controlPlaneUrl = (process.env['CONTROL_PLANE_INTERNAL_URL'] ?? '').replace(/\/$/, '');
   if (!controlPlaneUrl) {
     console.error('[SSO] CONTROL_PLANE_INTERNAL_URL is not set — SSO login unavailable');
-    res.redirect('/sign-in?error=sso_unavailable');
+    res.redirect(getWebsiteSignInUrl('sso_unavailable'));
     return;
   }
 
@@ -1277,19 +1277,19 @@ ssoRouter.get('/', async (req, res) => {
       body: JSON.stringify({ token }),
     });
     if (!cpRes.ok) {
-      res.redirect('/sign-in?error=invalid_sso');
+      res.redirect(getWebsiteSignInUrl('invalid_sso'));
       return;
     }
     const payload = await cpRes.json() as { ok: boolean; user: ControlPlaneUserPayload };
     cpUser = payload.user;
   } catch (err) {
     console.error('[SSO] Control plane verify failed:', err);
-    res.redirect('/sign-in?error=sso_unavailable');
+    res.redirect(getWebsiteSignInUrl('sso_unavailable'));
     return;
   }
 
   if (!cpUser?.email) {
-    res.redirect('/sign-in?error=invalid_sso');
+    res.redirect(getWebsiteSignInUrl('invalid_sso'));
     return;
   }
 
@@ -1315,6 +1315,6 @@ ssoRouter.get('/', async (req, res) => {
     res.redirect(returnTo);
   } catch (err) {
     console.error('[SSO] Session creation failed:', err);
-    res.redirect('/sign-in?error=sso_error');
+    res.redirect(getWebsiteSignInUrl('sso_error'));
   }
 });

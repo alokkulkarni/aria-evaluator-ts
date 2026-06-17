@@ -64,3 +64,13 @@ export function getWebsiteBaseUrl(): string {
 export function getWebsiteSignOutUrl(): string {
   return `${getWebsiteBaseUrl()}/sign-out`;
 }
+
+/**
+ * Website (SaaS) sign-in URL. SSO landings that fail belong back on the website —
+ * not the evaluator's local admin login — so a transient hiccup or expired token
+ * degrades gracefully instead of looking like a broken/unauthorized instance.
+ */
+export function getWebsiteSignInUrl(error?: string): string {
+  const base = `${getWebsiteBaseUrl()}/sign-in`;
+  return error ? `${base}?error=${encodeURIComponent(error)}` : base;
+}
