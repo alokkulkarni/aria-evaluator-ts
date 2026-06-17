@@ -35,6 +35,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_PUBLIC_* vars are inlined at build time. `.env.production` (which sets
+# waitlist mode) is excluded by .dockerignore's `*.env*`, so bake the local
+# default here to match prod (paid plans show "Coming Soon"). Override with
+# --build-arg NEXT_PUBLIC_SIGNUP_MODE=open for full local plan testing.
+ARG NEXT_PUBLIC_SIGNUP_MODE=waitlist
+ENV NEXT_PUBLIC_SIGNUP_MODE=${NEXT_PUBLIC_SIGNUP_MODE}
 # Cache the .next/cache between builds so incremental compilation is fast.
 RUN --mount=type=cache,target=/app/.next/cache \
     npm run build
