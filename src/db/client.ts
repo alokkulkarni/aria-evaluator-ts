@@ -27,6 +27,18 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   'User', 'AuthSession', 'AuditLog', 'Scenario', 'Run',
   'Baseline', 'Experiment', 'Schedule', 'CalibrationDataset',
 ]);
+// Run-children with no tenantId column of their own — they belong to a Run via
+// the `run` relation, so reads are scoped through it (`where: { run: { tenantId } }`).
+// Without this, dashboard aggregates over these (latency/cost from RunTelemetry,
+// dimension scores from EvalResult, etc.) leak across tenants even though the Run
+// list itself is correctly isolated. Writes/unique-by-runId ops are left alone —
+// the parent Run is already tenant-scoped.
+const RUN_CHILD_MODELS = new Map<string, string>([
+  ['EvalResult', 'run'], ['RunTelemetry', 'run'], ['Report', 'run'],
+  ['RunEvent', 'run'], ['Turn', 'run'], ['SecurityAttack', 'run'],
+  ['Job', 'run'], ['ExperimentRun', 'run'], ['ScheduleRun', 'run'],
+  ['TranscriptArtifact', 'run'],
+]);
 const TENANT_SCOPING_MODE = process.env['TENANT_SCOPING_MODE'] ?? 'off';
 
 // Operations whose `where` accepts arbitrary filters (safe to inject tenantId).
@@ -34,6 +46,19 @@ const FILTERABLE_OPS = new Set([
   'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy',
   'updateMany', 'deleteMany',
 ]);
+
+// Read ops where a relation filter (`run: { tenantId }`) is valid Prisma — used to
+// scope run-children. updateMany/deleteMany are excluded (Prisma rejects relation
+// filters there); those stay keyed by runId and ride the parent Run's scope.
+const CHILD_READ_OPS = new Set([
+  'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy',
+]);
+
+function scopeChildToTenant(relation: string, operation: string, args: any, tenantId: string | null): any {
+  if (!CHILD_READ_OPS.has(operation)) return args;
+  const existing = (args?.where?.[relation] ?? {}) as Record<string, unknown>;
+  return { ...args, where: { ...(args?.where ?? {}), [relation]: { ...existing, tenantId } } };
+}
 
 function scopeArgsToTenant(operation: string, args: any, tenantId: string | null): any {
   if (FILTERABLE_OPS.has(operation)) {
@@ -61,7 +86,8 @@ export const prisma: PrismaClient =
         query: {
           $allModels: {
             async $allOperations({ model, operation, args, query }) {
-              if (!model || !TENANT_SCOPED_MODELS.has(model)) return query(args);
+              const childRelation = model ? RUN_CHILD_MODELS.get(model) : undefined;
+              if (!model || (!TENANT_SCOPED_MODELS.has(model) && !childRelation)) return query(args);
               if (TENANT_SCOPING_MODE === 'log') {
                 if (!hasTenantContext()) {
                   console.warn(`[tenant-scope] ${model}.${operation} ran without a tenant context`);
@@ -74,7 +100,11 @@ export const prisma: PrismaClient =
               // which scopes to null-tenant rows (a misconfigured tenant user
               // sees only system data, never another tenant's).
               if (isSystemContext() || !hasTenantContext()) return query(args);
-              return query(scopeArgsToTenant(operation, args, getCurrentTenantId()));
+              const tenantId = getCurrentTenantId();
+              const scopedArgs = childRelation
+                ? scopeChildToTenant(childRelation, operation, args, tenantId)
+                : scopeArgsToTenant(operation, args, tenantId);
+              return query(scopedArgs);
             },
           },
         },
