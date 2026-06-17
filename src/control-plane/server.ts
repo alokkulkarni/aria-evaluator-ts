@@ -159,6 +159,11 @@ interface TenantSummaryResponse {
     maxScenarios: number;
   };
   provisionedAt?: string;
+  // Identity for the workspace nav: the org/company name (enterprise) and the
+  // signed-in user's name/email.
+  company: string | null;
+  userName: string | null;
+  userEmail: string | null;
 }
 
 interface RegisterBody {
@@ -697,6 +702,15 @@ async function allocateListenerRulePriority(): Promise<number> {
 
 function buildTenantSummary(user: ControlPlaneUser, state: ControlPlaneState): TenantSummaryResponse {
   const tenant = user.tenantId ? state.tenants.find((entry) => entry.id === user.tenantId) : undefined;
+  // Company/org name: prefer the tenant owner's company (so invited members see
+  // the org, not their own blank field), falling back to the signed-in user's.
+  const owner = tenant ? state.users.find((entry) => entry.id === tenant.userId) : undefined;
+  const identity = {
+    company: (owner?.company ?? user.company ?? '').trim() || null,
+    userName: user.name?.trim() || null,
+    userEmail: user.email ?? null,
+  };
+
   if (!tenant) {
     return {
       tenantId: null,
@@ -706,6 +720,7 @@ function buildTenantSummary(user: ControlPlaneUser, state: ControlPlaneState): T
       billingPeriod: null,
       instanceUrl: null,
       usage: { runsThisMonth: 0, maxRuns: 0, scenariosUsed: 0, maxScenarios: 0 },
+      ...identity,
     };
   }
 
@@ -718,6 +733,7 @@ function buildTenantSummary(user: ControlPlaneUser, state: ControlPlaneState): T
     instanceUrl: tenant.instanceUrl,
     usage: tenant.usage,
     provisionedAt: tenant.updatedAt,
+    ...identity,
   };
 }
 
