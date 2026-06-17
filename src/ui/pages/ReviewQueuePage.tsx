@@ -277,6 +277,9 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
   const [scoreDraft, setScoreDraft] = useState<string>('');
   const [passDraft, setPassDraft] = useState<string>('');
   const [notesDraft, setNotesDraft] = useState<string>('');
+  // Per-dimension human overrides (dimId → score string). Stored alongside the AI
+  // scores via Review.dimensionOverridesJson; the EvalResult is never mutated.
+  const [dimOverrides, setDimOverrides] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void (async () => {
@@ -290,6 +293,12 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
         setScoreDraft(r.scoreOverride !== null ? String(r.scoreOverride) : '');
         setPassDraft(r.passedOverride !== null ? (r.passedOverride ? 'pass' : 'fail') : '');
         setNotesDraft(r.notes ?? '');
+        try {
+          const parsed = r.dimensionOverridesJson ? JSON.parse(r.dimensionOverridesJson) as Record<string, { score?: number }> : {};
+          const init: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed)) if (typeof v?.score === 'number') init[k] = String(v.score);
+          setDimOverrides(init);
+        } catch { /* ignore malformed overrides */ }
         // Start all dimension cards expanded
         try {
           const dims = JSON.parse(r.evalResult.dimensionScores) as Record<string, unknown>;
@@ -331,6 +340,17 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
         setSaving(false);
         return;
       }
+      const dimOverridePayload: Record<string, { score: number }> = {};
+      for (const [k, v] of Object.entries(dimOverrides)) {
+        if (v == null || v.trim() === '') continue;
+        const n = parseFloat(v);
+        if (isNaN(n) || n < 0 || n > 10) {
+          setSaveError(`Override for "${k.replace(/_/g, ' ')}" must be a number between 0 and 10`);
+          setSaving(false);
+          return;
+        }
+        dimOverridePayload[k] = { score: n };
+      }
       await apiFetch(`/api/reviews/${review.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -339,6 +359,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
           scoreOverride: scoreNum,
           passedOverride: passDraft === 'pass' ? true : passDraft === 'fail' ? false : null,
           notes: notesDraft.trim() || null,
+          dimensionOverridesJson: Object.keys(dimOverridePayload).length > 0 ? JSON.stringify(dimOverridePayload) : null,
         }),
       });
       onUpdated();
@@ -390,7 +411,8 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
   }
 
   const aiScore = review.evalResult.overallScore;
-  type DimScore = { score: number; justification: string; evidence?: string };
+  type JudgeVote = { judgeId: string; provider: string; modelId: string; score: number; justification?: string };
+  type DimScore = { score: number; justification: string; evidence?: string; judgeVotes?: JudgeVote[]; spread?: number; disagreement?: boolean };
   const dimScores: Record<string, DimScore> = (() => {
     try { return JSON.parse(review.evalResult.dimensionScores) as Record<string, DimScore>; }
     catch { return {}; }
@@ -533,6 +555,43 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                             <div className="space-y-2 px-3 py-2.5">
                               {ds.justification && (
                                 <p className="text-xs leading-relaxed text-slate-700">{ds.justification}</p>
+                              )}
+                              {(ds.judgeVotes?.length ?? 0) > 0 && (
+                                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-2.5 py-2">
+                                  <div className="mb-1.5 flex items-center justify-between">
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Judge votes</span>
+                                    {ds.disagreement && <span className="text-[11px] font-semibold text-amber-600">⚠ disagreement</span>}
+                                  </div>
+                                  <div className="space-y-1">
+                                    {ds.judgeVotes!.map((v) => (
+                                      <button
+                                        key={v.judgeId}
+                                        type="button"
+                                        onClick={() => setDimOverrides((o) => ({ ...o, [dimId]: v.score.toFixed(1) }))}
+                                        title={v.justification ?? `Use ${v.judgeId}'s score (${v.score.toFixed(1)}) as the override`}
+                                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs transition-colors hover:bg-white ${dimOverrides[dimId] === v.score.toFixed(1) ? 'bg-white ring-1 ring-blue-300' : ''}`}
+                                      >
+                                        <span className="font-medium text-slate-700">{v.judgeId}</span>
+                                        <span className="flex-1 truncate font-mono text-[10px] text-slate-400">{v.provider}:{v.modelId}</span>
+                                        <span className={`font-mono font-semibold ${v.score >= 6 ? 'text-emerald-600' : 'text-red-600'}`}>{v.score.toFixed(1)}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className="mt-2 flex items-center gap-2 border-t border-slate-200/70 pt-2 text-xs text-slate-600">
+                                    <span className="font-medium">Override</span>
+                                    <input
+                                      type="number" min={0} max={10} step={0.1}
+                                      value={dimOverrides[dimId] ?? ''}
+                                      onChange={(e) => setDimOverrides((o) => ({ ...o, [dimId]: e.target.value }))}
+                                      placeholder={`AI ${ds.score.toFixed(1)}`}
+                                      className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                                    />
+                                    <span className="text-slate-400">click a judge above to use its score</span>
+                                    {dimOverrides[dimId] != null && dimOverrides[dimId] !== '' && (
+                                      <button type="button" className="ml-auto text-slate-400 hover:text-slate-600" onClick={() => setDimOverrides((o) => { const n = { ...o }; delete n[dimId]; return n; })}>clear</button>
+                                    )}
+                                  </div>
+                                </div>
                               )}
                               {ds.evidence && (
                                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-2">
