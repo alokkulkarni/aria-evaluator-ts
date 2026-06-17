@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
-import { ApiError, apiFetch, createTenant, registerUser } from '@/lib/api'
+import { ApiError, apiFetch, createTenant, createSSOToken, registerUser } from '@/lib/api'
 import { signInWithSocialProvider, type SocialProvider } from '@/lib/social-auth'
 import { hashPasswordForTransit } from '@/lib/crypto'
 import { getPlanById, PLANS } from '@/lib/plans'
@@ -258,18 +258,25 @@ export function SignUpWizard() {
       }
 
       setProvisioning(true)
-      const provision = await createTenant({
+      await createTenant({
         plan: state.selectedPlan,
         region: state.selectedRegion,
         billingPeriod: state.billingPeriod,
       }, authToken)
 
-      // CodeBuild was just kicked off — the workspace itself won't exist for
-      // ~10 minutes. Redirect the user to a live status page that polls
-      // /tenant/provision/status and forwards them to the workspace (via SSO)
-      // when it's actually ready, instead of dumping them on a 404'ing URL.
-      const tenantQuery = provision.tenantId ? `?tenantId=${encodeURIComponent(provision.tenantId)}` : ''
-      router.push(`/sign-up/provisioning${tenantQuery}`)
+      // Pooled multi-tenant: the ARIA Evaluator instance is already running and
+      // shared — provisioning just registers the tenant (status `running`
+      // immediately). Mint a one-time SSO token with the token we already hold
+      // and redirect straight to the tenant's instance. No per-customer
+      // infrastructure build, no polling page.
+      const launch = await createSSOToken(authToken)
+      const target = launch.ssoUrl ?? launch.instanceUrl
+      if (target) {
+        window.location.assign(target)
+        return
+      }
+      // SSO unavailable — fall back to the dashboard, which can retry the launch.
+      router.push('/dashboard')
     } catch (error) {
       setProvisioning(false)
       if (error instanceof ApiError) {
