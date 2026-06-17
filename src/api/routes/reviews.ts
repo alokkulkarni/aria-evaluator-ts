@@ -145,7 +145,13 @@ reviewsRouter.get('/:id', async (req, res) => {
       include: { turns: { orderBy: { index: 'asc' } } },
     });
 
-    res.json({ review, run });
+    // Phase 2: per-scenario evals so the reviewer can inspect/override each one.
+    const scenarioEvals = await prisma.scenarioEval.findMany({
+      where: { runId: review.runId },
+      orderBy: { scenarioIndex: 'asc' },
+    });
+
+    res.json({ review, run, scenarioEvals });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -217,6 +223,7 @@ reviewsRouter.patch('/:id', async (req, res) => {
       passedOverride?: boolean | null;
       notes?: string | null;
       dimensionOverridesJson?: string | null;
+      scenarioOverridesJson?: string | null;
     };
 
     // Validate status transition
@@ -255,6 +262,24 @@ reviewsRouter.patch('/:id', async (req, res) => {
       }
     }
 
+    // Validate scenarioOverridesJson — a JSON object keyed by scenario name.
+    let scenarioOverridesJson: string | null | undefined = undefined;
+    if (body.scenarioOverridesJson !== undefined) {
+      if (body.scenarioOverridesJson === null || body.scenarioOverridesJson === '') {
+        scenarioOverridesJson = null;
+      } else {
+        try {
+          const parsed = JSON.parse(body.scenarioOverridesJson);
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            throw new Error('scenarioOverridesJson must be a JSON object');
+          }
+          scenarioOverridesJson = JSON.stringify(parsed);
+        } catch (validationErr) {
+          return res.status(400).json({ error: (validationErr as Error).message });
+        }
+      }
+    }
+
     const newStatus = body.status ?? existing.status;
     const isTerminal = newStatus === 'approved' || newStatus === 'overridden' || newStatus === 'rejected';
 
@@ -266,6 +291,7 @@ reviewsRouter.patch('/:id', async (req, res) => {
         ...(body.passedOverride !== undefined && { passedOverride: body.passedOverride }),
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(dimensionOverridesJson !== undefined && { dimensionOverridesJson }),
+        ...(scenarioOverridesJson !== undefined && { scenarioOverridesJson }),
         ...(isTerminal && existing.reviewedAt == null && {
           reviewedBy: auth?.userId ?? null,
           reviewedAt: new Date(),

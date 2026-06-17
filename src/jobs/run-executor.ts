@@ -525,6 +525,32 @@ async function ingestRunArtifacts(
         create: { runId, ...evalData },
       });
 
+      // Phase 2: persist each scenario's result (score, dimensions, judge votes)
+      // so reviewers can inspect/override them individually — the aggregate
+      // EvalResult above loses per-scenario granularity. Idempotent for re-runs.
+      try {
+        await prisma.scenarioEval.deleteMany({ where: { runId } });
+        if (report.results.length > 0) {
+          await prisma.scenarioEval.createMany({
+            data: report.results.map((result, i) => ({
+              runId,
+              scenarioIndex: i,
+              scenarioName: result.scenarioName ?? `Scenario ${i + 1}`,
+              scenarioType: result.scenarioType ?? null,
+              overallScore: result.overallScore,
+              passed: result.passed,
+              summary: result.summary ?? null,
+              dimensionScores: JSON.stringify(result.dimensionScores ?? {}),
+              judgeModels: result.judgeModels ? JSON.stringify(result.judgeModels) : null,
+              judgeAgreement: result.judgeAgreement ?? null,
+              requiresHumanReview: result.requiresHumanReview ?? false,
+            })),
+          });
+        }
+      } catch (scenErr) {
+        appendRunLogLine(runId, `⚠ Could not save per-scenario evals: ${(scenErr as Error).message}`);
+      }
+
       // Phase 2: route judge disagreements to the human review queue. Idempotent
       // (Review.evalResultId is unique) and never fatal to the run.
       if (requiresHumanReview) {

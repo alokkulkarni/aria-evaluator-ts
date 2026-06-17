@@ -40,6 +40,7 @@ const RUN_CHILD_MODELS = new Map<string, string[]>([
   ['RunEvent', ['run']], ['Turn', ['run']], ['SecurityAttack', ['run']],
   ['Job', ['run']], ['ExperimentRun', ['run']], ['ScheduleRun', ['run']],
   ['TranscriptArtifact', ['run']], ['Review', ['evalResult', 'run']],
+  ['ScenarioEval', ['run']],
 ]);
 const TENANT_SCOPING_MODE = process.env['TENANT_SCOPING_MODE'] ?? 'off';
 
