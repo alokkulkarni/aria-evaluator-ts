@@ -46,12 +46,25 @@ interface Review {
   passedOverride: boolean | null;
   notes: string | null;
   dimensionOverridesJson: string | null;
+  scenarioOverridesJson: string | null;
   queuedAt: string;
   run?: RunSummary | null;
 }
 
 interface ReviewDetail extends Review {
   run?: (RunSummary & { turns?: Turn[] }) | null;
+}
+
+interface ScenarioEval {
+  id: string;
+  scenarioIndex: number;
+  scenarioName: string;
+  scenarioType?: string | null;
+  overallScore: number;
+  passed: boolean;
+  judgeAgreement?: number | null;
+  requiresHumanReview?: boolean;
+  dimensionScores: string; // JSON string (incl. judgeVotes)
 }
 
 interface CalibrationSummary {
@@ -280,6 +293,10 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
   // Per-dimension human overrides (dimId → score string). Stored alongside the AI
   // scores via Review.dimensionOverridesJson; the EvalResult is never mutated.
   const [dimOverrides, setDimOverrides] = useState<Record<string, string>>({});
+  // Per-scenario (Phase 2): each scenario's eval + a per-scenario score override.
+  const [scenarioEvals, setScenarioEvals] = useState<ScenarioEval[]>([]);
+  const [scenOverrides, setScenOverrides] = useState<Record<string, string>>({});
+  const [expandedScenarios, setExpandedScenarios] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     void (async () => {
@@ -287,12 +304,20 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
         const data = await apiFetch(`/api/reviews/${reviewId}`) as {
           review: ReviewDetail;
           run?: RunSummary & { turns?: Turn[] };
+          scenarioEvals?: ScenarioEval[];
         };
         const r = { ...data.review, run: data.run ?? data.review.run };
         setReview(r);
+        setScenarioEvals(data.scenarioEvals ?? []);
         setScoreDraft(r.scoreOverride !== null ? String(r.scoreOverride) : '');
         setPassDraft(r.passedOverride !== null ? (r.passedOverride ? 'pass' : 'fail') : '');
         setNotesDraft(r.notes ?? '');
+        try {
+          const sp = r.scenarioOverridesJson ? JSON.parse(r.scenarioOverridesJson) as Record<string, { score?: number }> : {};
+          const si: Record<string, string> = {};
+          for (const [k, v] of Object.entries(sp)) if (typeof v?.score === 'number') si[k] = String(v.score);
+          setScenOverrides(si);
+        } catch { /* ignore malformed scenario overrides */ }
         try {
           const parsed = r.dimensionOverridesJson ? JSON.parse(r.dimensionOverridesJson) as Record<string, { score?: number }> : {};
           const init: Record<string, string> = {};
@@ -351,6 +376,17 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
         }
         dimOverridePayload[k] = { score: n };
       }
+      const scenOverridePayload: Record<string, { score: number }> = {};
+      for (const [name, v] of Object.entries(scenOverrides)) {
+        if (v == null || v.trim() === '') continue;
+        const n = parseFloat(v);
+        if (isNaN(n) || n < 0 || n > 10) {
+          setSaveError(`Scenario override for "${name}" must be a number between 0 and 10`);
+          setSaving(false);
+          return;
+        }
+        scenOverridePayload[name] = { score: n };
+      }
       await apiFetch(`/api/reviews/${review.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -360,6 +396,7 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
           passedOverride: passDraft === 'pass' ? true : passDraft === 'fail' ? false : null,
           notes: notesDraft.trim() || null,
           dimensionOverridesJson: Object.keys(dimOverridePayload).length > 0 ? JSON.stringify(dimOverridePayload) : null,
+          scenarioOverridesJson: Object.keys(scenOverridePayload).length > 0 ? JSON.stringify(scenOverridePayload) : null,
         }),
       });
       onUpdated();
@@ -599,6 +636,72 @@ function ReviewDetailPanel({ reviewId, onClose, onUpdated }: ReviewDetailPanelPr
                                   <p className="whitespace-pre-wrap text-xs leading-relaxed italic text-slate-600">{ds.evidence}</p>
                                 </div>
                               )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {scenarioEvals.length > 1 && (
+                <div className="mt-4">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Per-Scenario Scores ({scenarioEvals.length})
+                  </div>
+                  <div className="space-y-2">
+                    {scenarioEvals.map((se) => {
+                      let dims: Record<string, DimScore> = {};
+                      try { dims = JSON.parse(se.dimensionScores) as Record<string, DimScore>; } catch { /* ignore */ }
+                      const open = expandedScenarios.has(se.scenarioIndex);
+                      return (
+                        <div key={se.id} className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedScenarios((s) => { const n = new Set(s); if (n.has(se.scenarioIndex)) n.delete(se.scenarioIndex); else n.add(se.scenarioIndex); return n; })}
+                            className="flex w-full items-center gap-2 border-b border-slate-100/80 bg-slate-50/80 px-3 py-2.5 text-left hover:bg-slate-100/80"
+                          >
+                            <span className="text-xs">{open ? '▾' : '▸'}</span>
+                            <span className="flex-1 truncate text-sm font-medium text-slate-800">{se.scenarioName}</span>
+                            {se.requiresHumanReview && <span className="text-[11px] font-semibold text-amber-600">⚠</span>}
+                            <span className={`text-xs font-bold ${se.passed ? 'text-emerald-600' : 'text-red-600'}`}>{se.overallScore.toFixed(1)}/10</span>
+                          </button>
+                          <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600">
+                            <span className="font-medium">Override</span>
+                            <input
+                              type="number" min={0} max={10} step={0.1}
+                              value={scenOverrides[se.scenarioName] ?? ''}
+                              onChange={(e) => setScenOverrides((o) => ({ ...o, [se.scenarioName]: e.target.value }))}
+                              placeholder={`AI ${se.overallScore.toFixed(1)}`}
+                              className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                            />
+                            {se.judgeAgreement != null && <span className="text-slate-400">agreement {Math.round(se.judgeAgreement * 100)}%</span>}
+                            {scenOverrides[se.scenarioName] != null && scenOverrides[se.scenarioName] !== '' && (
+                              <button type="button" className="ml-auto text-slate-400 hover:text-slate-600" onClick={() => setScenOverrides((o) => { const n = { ...o }; delete n[se.scenarioName]; return n; })}>clear</button>
+                            )}
+                          </div>
+                          {open && (
+                            <div className="space-y-1.5 border-t border-slate-100 px-3 py-2.5">
+                              {Object.entries(dims).map(([dimId, ds]) => (
+                                <div key={dimId} className="rounded-xl border border-slate-200/70 bg-slate-50/60 px-2.5 py-2">
+                                  <div className="mb-1 flex items-center justify-between text-xs">
+                                    <span className="font-medium capitalize text-slate-700">{dimId.replace(/_/g, ' ')}</span>
+                                    <span className={`font-mono font-semibold ${ds.score >= 6 ? 'text-emerald-600' : 'text-red-600'}`}>{ds.score.toFixed(1)}</span>
+                                  </div>
+                                  {(ds.judgeVotes?.length ?? 0) > 0 && (
+                                    <div className="space-y-0.5">
+                                      {ds.judgeVotes!.map((v) => (
+                                        <div key={v.judgeId} className="flex items-center gap-2 text-[11px]">
+                                          <span className="font-medium text-slate-600">{v.judgeId}</span>
+                                          <span className="flex-1 truncate font-mono text-[10px] text-slate-400">{v.provider}:{v.modelId}</span>
+                                          <span className={`font-mono font-semibold ${v.score >= 6 ? 'text-emerald-600' : 'text-red-600'}`}>{v.score.toFixed(1)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>

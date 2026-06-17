@@ -167,6 +167,7 @@ model Run {
   telemetry    RunTelemetry?
   securityAttack SecurityAttack?
   transcripts  TranscriptArtifact[]
+  scenarioEvals ScenarioEval[]
   tenantId     String?
   createdAt    DateTime  @default(now())
 
@@ -269,6 +270,29 @@ model EvalResult {
   @@index([overallScore])
 }
 
+// Per-scenario evaluation within a run. The aggregate EvalResult (one per run)
+// drives dashboards; this preserves each scenario's score, dimensions and judge
+// votes so a reviewer can inspect/override them individually. Phase 2.
+model ScenarioEval {
+  id                  String   @id @default(cuid())
+  runId               String
+  run                 Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  scenarioIndex       Int
+  scenarioName        String
+  scenarioType        String?  // 'security' | 'quality'
+  overallScore        Float
+  passed              Boolean
+  summary             String?
+  dimensionScores     String   // JSON: Record<string, DimensionScore> (incl. judgeVotes)
+  judgeModels         String?
+  judgeAgreement      Float?
+  requiresHumanReview Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  @@unique([runId, scenarioIndex])
+  @@index([runId])
+}
+
 // ─── Review ───────────────────────────────────────────────────────────────────
 model Review {
   id                     String      @id @default(cuid())
@@ -283,6 +307,7 @@ model Review {
   passedOverride         Boolean?                // null = use AI passed
   notes                  String?
   dimensionOverridesJson String?                 // JSON: Record<string, {score: number, notes: string}>
+  scenarioOverridesJson  String?                 // JSON: Record<scenarioName, {score?: number, passed?: boolean, dimensions?: Record<string,{score:number}>}>
   queuedAt               DateTime    @default(now())
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @default(now()) @updatedAt
