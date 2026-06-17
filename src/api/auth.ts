@@ -100,6 +100,11 @@ function cookieSameSite(): 'Lax' | 'None' {
 
 function cookieSecure(): boolean {
   if (cookieSameSite() === 'None') return true;
+  // The local stack is served over plain HTTP (http://localhost). A Secure /
+  // `__Host-` cookie is silently dropped by stricter browsers (Safari, esp.
+  // Private mode) over HTTP, so the SSO session never persists and the app
+  // bounces to its login. Only require Secure off-local (dev/prod are HTTPS).
+  if (process.env['ARIA_DEPLOY_ENV']?.trim().toLowerCase() === 'local') return false;
   return process.env['NODE_ENV'] === 'production';
 }
 
