@@ -289,12 +289,12 @@ async function claimSpecificRunJob(runId: string): Promise<ClaimedRunJob | null>
     const updated = await tx.$executeRawUnsafe(
       `UPDATE "Job"
        SET "status" = 'running',
-           "workerId" = ?,
-           "claimedAt" = ?,
-           "startedAt" = ?,
+           "workerId" = $1,
+           "claimedAt" = $2::timestamp,
+           "startedAt" = $3::timestamp,
            "attemptCount" = "attemptCount" + 1,
-           "updatedAt" = ?
-       WHERE "runId" = ?
+           "updatedAt" = $4::timestamp
+       WHERE "runId" = $5
          AND "status" = 'queued'`,
       workerId,
       claimedAtIso,
@@ -347,11 +347,11 @@ async function claimNextQueuedRunJob(): Promise<ClaimedRunJob | null> {
     const updated = await tx.$executeRawUnsafe(
       `UPDATE "Job"
        SET "status" = 'running',
-           "workerId" = ?,
-           "claimedAt" = ?,
-           "startedAt" = ?,
+           "workerId" = $1,
+           "claimedAt" = $2::timestamp,
+           "startedAt" = $3::timestamp,
            "attemptCount" = "attemptCount" + 1,
-           "updatedAt" = ?
+           "updatedAt" = $4::timestamp
        WHERE "id" = (
          SELECT j."id"
          FROM "Job" j
