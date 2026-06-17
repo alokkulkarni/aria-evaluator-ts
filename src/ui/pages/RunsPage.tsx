@@ -43,6 +43,7 @@ interface Run {
     passed: boolean;
     summary: string;
     scenarioType?: string;
+    requiresHumanReview?: boolean | null;
     judgeTokenInputEstimate?: number | null;
     judgeTokenOutputEstimate?: number | null;
     judgeTokenTotalEstimate?: number | null;
@@ -1467,6 +1468,14 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                       {r.evalResult && (
                         <span className={r.evalResult.passed ? 'text-green-700 font-bold text-xs' : 'text-red-600 font-bold text-xs'}>
                           {r.evalResult.overallScore.toFixed(1)}/10
+                        </span>
+                      )}
+                      {r.evalResult?.requiresHumanReview && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold bg-amber-100 text-amber-700"
+                          title="Committee judges disagreed — queued for human review"
+                        >
+                          ⚠ Needs review
                         </span>
                       )}
                     </div>
