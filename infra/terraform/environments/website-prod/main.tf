@@ -156,6 +156,44 @@ module "auth_backend" {
   tags = local.common_tags
 }
 
+# ── Google OAuth credentials (for the Cognito IdP) — from Secrets Manager ─────
+# The Google client id/secret are NOT stored in tfvars (plaintext on disk + state).
+# This secret is seeded once with placeholders, then populated out-of-band:
+#   aws secretsmanager put-secret-value --secret-id /aria/website/prod/google-oauth \
+#     --secret-string '{"client_id":"...","client_secret":"..."}'
+# (or via infra/scripts/bootstrap-oauth-secrets.sh). lifecycle.ignore_changes keeps
+# the bootstrap-populated value from being reverted on subsequent applies.
+resource "aws_secretsmanager_secret" "google_oauth" {
+  count                   = var.enable_cognito ? 1 : 0
+  name                    = "/aria/website/prod/google-oauth"
+  description             = "Google OAuth client id/secret for the Cognito identity provider"
+  recovery_window_in_days = 7
+  tags                    = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "google_oauth" {
+  count     = var.enable_cognito ? 1 : 0
+  secret_id = aws_secretsmanager_secret.google_oauth[0].id
+  secret_string = jsonencode({
+    client_id     = "PENDING_BOOTSTRAP"
+    client_secret = "PENDING_BOOTSTRAP"
+  })
+  lifecycle {
+    ignore_changes = [secret_string] # real values populated out-of-band; don't revert
+  }
+}
+
+data "aws_secretsmanager_secret_version" "google_oauth" {
+  count     = var.enable_cognito ? 1 : 0
+  secret_id = aws_secretsmanager_secret.google_oauth[0].id
+  # Read the latest (bootstrap-populated) value, not the seeded placeholder version.
+  depends_on = [aws_secretsmanager_secret_version.google_oauth]
+}
+
+locals {
+  google_oauth = var.enable_cognito ? jsondecode(data.aws_secretsmanager_secret_version.google_oauth[0].secret_string) : { client_id = "", client_secret = "" }
+}
+
 module "cognito" {
   count  = var.enable_cognito ? 1 : 0
   source = "../../modules/cognito"
@@ -164,8 +202,8 @@ module "cognito" {
   environment = "prod"
   domain_name = var.domain_name
 
-  google_client_id     = var.google_client_id
-  google_client_secret = var.google_client_secret
+  google_client_id     = local.google_oauth.client_id
+  google_client_secret = local.google_oauth.client_secret
   apple_client_id      = var.apple_client_id
   apple_team_id        = var.apple_team_id
   apple_key_id         = var.apple_key_id

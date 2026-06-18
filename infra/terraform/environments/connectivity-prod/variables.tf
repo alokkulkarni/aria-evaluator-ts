@@ -22,6 +22,12 @@ variable "control_plane_state_key" {
   default     = "control-plane/prod/terraform.tfstate"
 }
 
+variable "evaluator_state_key" {
+  description = "Remote state key for the evaluator-prod stack"
+  type        = string
+  default     = "evaluator/prod/terraform.tfstate"
+}
+
 # Backend-config inputs (consumed by init-backend.sh, not by resources).
 variable "terraform_state_kms_key_arn" {
   description = "KMS key ARN encrypting the Terraform state bucket"
