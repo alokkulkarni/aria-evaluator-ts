@@ -224,6 +224,9 @@ case "$ENV_NAME" in
   control-plane-prod)
     STATE_KEY="control-plane/prod/terraform.tfstate"
     ;;
+  evaluator-prod)
+    STATE_KEY="evaluator/prod/terraform.tfstate"
+    ;;
   website-prod)
     STATE_KEY="website/prod/terraform.tfstate"
     ;;

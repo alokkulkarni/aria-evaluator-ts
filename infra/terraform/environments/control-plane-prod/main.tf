@@ -50,6 +50,14 @@ locals {
       "aria:pricing_tier" = var.pricing_tier
     },
   )
+
+  # The shared evaluator publishes its public URL to this SSM parameter
+  # (evaluator-prod). We reference it by CONSTRUCTED ARN (not a data source) so
+  # there is no Terraform plan-time dependency cycle: evaluator-prod reads THIS
+  # stack's secret/url SSM params, and this stack reads the evaluator's instance
+  # URL at container start via ECS secret resolution. The param must exist when
+  # control-plane tasks start (evaluator-prod applied after this stack).
+  evaluator_instance_url_param_arn = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/aria/evaluator/${var.environment}/instance-url"
 }
 
 # ── Build & push control-plane Docker image to ECR ────────────────────────────
@@ -148,6 +156,26 @@ module "alb" {
   tags                       = local.common_tags
 }
 
+# ── IAM: let the ECS execution role read the evaluator instance-url SSM param ──
+# Required because the task def injects CONTROL_PLANE_INSTANCE_BASE_URL via the
+# `secrets` array from that SSM parameter (resolved at container start).
+resource "aws_iam_role_policy" "execution_read_evaluator_url" {
+  name = "${var.app_name}-${var.environment}-read-evaluator-url"
+  role = module.iam.task_execution_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadEvaluatorInstanceUrlParam"
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameters", "ssm:GetParameter"]
+        Resource = local.evaluator_instance_url_param_arn
+      },
+    ]
+  })
+}
+
 # ── SSM: publish internal URL so CodeBuild and other services can discover it ──
 resource "aws_ssm_parameter" "control_plane_internal_url" {
   name  = "/aria/control-plane/${var.environment}/internal-url"
@@ -222,7 +250,6 @@ module "ecs" {
       # Internal URL is read from SSM at startup — injected as plain env var since it is not secret
       { name = "CONTROL_PLANE_INTERNAL_URL", value = aws_ssm_parameter.control_plane_internal_url.value },
       { name = "CONTROL_PLANE_CORS_ORIGINS", value = join(",", var.allowed_origins) },
-      { name = "CONTROL_PLANE_INSTANCE_BASE_URL", value = var.instance_base_url },
       # When set, control-plane persists state to DynamoDB with CAS instead of
       # local file. Required for prod (multi-task, survives restart).
       { name = "CONTROL_PLANE_STATE_TABLE", value = aws_dynamodb_table.control_plane_state.name },
@@ -232,11 +259,17 @@ module "ecs" {
     # by sendAccountClosedEmail when the address isn't set.
     var.ses_from_address != "" ? [{ name = "SES_FROM_ADDRESS", value = var.ses_from_address }] : [],
   )
-  # Internal secret injected via ECS secrets (Secrets Manager valueFrom) — never plaintext
+  # Internal secret injected via ECS secrets (Secrets Manager valueFrom) — never plaintext.
+  # The tenant SSO redirect base URL is the shared evaluator's public URL, resolved
+  # at container start from the evaluator's SSM parameter (auto-discovered, no manual config).
   extra_secrets = [
     {
       name      = "CONTROL_PLANE_INTERNAL_SECRET"
       valueFrom = aws_secretsmanager_secret.control_plane_internal_secret.arn
+    },
+    {
+      name      = "CONTROL_PLANE_INSTANCE_BASE_URL"
+      valueFrom = local.evaluator_instance_url_param_arn
     },
   ]
   saas_mode    = false

@@ -679,14 +679,18 @@ function makeTenantInstanceUrl(tenantId: string): string {
     const base = process.env['CONTROL_PLANE_INSTANCE_BASE_URL']?.trim() || 'http://localhost:3001';
     return base.replace(/\/$/, '');
   }
-  // Phase 6: host-based — each tenant gets its own subdomain on the shared platform ALB.
+  // Per-tenant-ECS topology: each tenant gets its own subdomain on the shared
+  // platform ALB. Only used when PLATFORM_DOMAIN is configured.
   const domain = process.env['PLATFORM_DOMAIN']?.trim();
   if (domain) {
     return `https://${tenantId}.${domain}`;
   }
-  // Fallback when no platform domain is configured: legacy path-based URL.
+  // Pooled single-evaluator topology (no PLATFORM_DOMAIN): every tenant is served
+  // by ONE shared evaluator, isolated by row-level tenantId. Return the bare base
+  // URL so SSO lands at ${base}/auth/sso — the evaluator mounts the SSO router at
+  // /auth/sso, so a /workspace/<id>/auth/sso path would 404.
   const base = process.env['CONTROL_PLANE_INSTANCE_BASE_URL']?.trim() || 'https://ariaeval.io';
-  return `${base.replace(/\/$/, '')}/workspace/${tenantId}`;
+  return base.replace(/\/$/, '');
 }
 
 /** Allocate a unique ALB listener-rule priority for a new tenant (monotonic). */
