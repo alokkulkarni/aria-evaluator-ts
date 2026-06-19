@@ -626,6 +626,8 @@ runsRouter.post('/', async (req, res) => {
         scenarioCount: selectedScenarios.length,
         yamlContent,
       },
+      // Stored so "Re-run" reuses the exact selection (UI runs always submit refs).
+      ...(normalizedRefs.length > 0 ? { scenarioRefs: [...new Set(normalizedRefs)] } : {}),
     });
     res.status(202).json({ runId, scenarioName: runLabel });
   } catch (err) {
