@@ -23,6 +23,7 @@ import {
 import { estimateCost } from '../lib/model-pricing.js';
 import { JudgeMember } from './llm-judge.js';
 import { aggregateMemberScores, computeOverallAndPass, type MemberOutcome } from './aggregate.js';
+import { SECURITY_CORE_DIMENSIONS } from './dimensions.js';
 import { availableProviders, createJudgeProvider } from './providers/factory.js';
 import type { JudgeProvider } from './providers/types.js';
 
@@ -220,10 +221,17 @@ export class JudgePanel {
       console.log(`  ⚖️  Calibrated weighting active: ${judges.map((j) => `${j.modelId}=${idWeights[j.id] ?? 1}`).join(', ')}`);
     }
 
+    // Security verdicts score on the core dims only; measure agreement over the same
+    // set so a unanimous-on-what-matters committee doesn't read as <100% because of
+    // spread on non-scoring dimensions.
+    const scoringDimIds = isSecurity
+      ? new Set(SECURITY_CORE_DIMENSIONS.map((d) => d.id))
+      : undefined;
     const { dimensionScores, judgeAgreement, requiresHumanReview } = aggregateMemberScores(
       outcomes,
       this.committee.disagreementThreshold,
       weightingActive ? idWeights : undefined,
+      scoringDimIds,
     );
     const { overallScore, passed } = computeOverallAndPass(dimensionScores, isSecurity);
 

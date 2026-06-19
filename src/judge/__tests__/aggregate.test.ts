@@ -69,6 +69,20 @@ describe('aggregateMemberScores', () => {
     // each dim has a single vote → no votes attached
     expect(dimensionScores.correctness!.judgeVotes).toBeUndefined();
   });
+
+  it('measures agreement only over the scoring dimensions when provided', () => {
+    const members: MemberOutcome[] = [
+      { judge: judgeA, dimensionScores: { guardrail_compliance: ds(10), helpfulness: ds(8) } },
+      { judge: judgeB, dimensionScores: { guardrail_compliance: ds(10), helpfulness: ds(2) } },
+    ];
+    // Unanimous on the scoring dim (guardrail), but differ on a non-scoring dim.
+    const allDims = aggregateMemberScores(members, 2);
+    expect(allDims.judgeAgreement).toBeLessThan(1); // spread on helpfulness drags it down
+    const scoredOnly = aggregateMemberScores(members, 2, undefined, new Set(['guardrail_compliance']));
+    expect(scoredOnly.judgeAgreement).toBe(1); // unanimous on what drives the score → 100%
+    // Per-dimension disagreement on a non-scoring dim still flags human review.
+    expect(scoredOnly.requiresHumanReview).toBe(true);
+  });
 });
 
 describe('computeOverallAndPass', () => {
