@@ -49,6 +49,7 @@ interface Run {
     judgeTokenTotalEstimate?: number | null;
   } | null;
   report?: { htmlPath: string; jsonPath: string } | null;
+  scenarioRefsJson?: string | null;
   telemetry?: {
     provider?: string;
     tokenInputEstimate?: number | null;
@@ -864,15 +865,24 @@ function ArtifactPreviewModal({
 function NewRunModal({
   onClose,
   onStarted,
+  initialScenarioRefs,
+  initialProvider,
+  initialChannel,
 }: {
   onClose: () => void;
   onStarted: (runId: string) => void;
+  initialScenarioRefs?: string[];
+  initialProvider?: string;
+  initialChannel?: 'chat' | 'voice';
 }) {
+  const seededProvider = initialProvider && ALL_PROVIDERS.has(initialProvider.toLowerCase())
+    ? (initialProvider.toLowerCase() as Provider)
+    : undefined;
   const [options, setOptions] = useState<ScenarioOption[]>([]);
   const [search, setSearch] = useState('');
-  const [selectedScenarioRefs, setSelectedScenarioRefs] = useState<string[]>([]);
-  const [channel, setChannel] = useState<'chat' | 'voice'>('chat');
-  const [provider, setProvider] = useState<Provider>('connect');
+  const [selectedScenarioRefs, setSelectedScenarioRefs] = useState<string[]>(initialScenarioRefs ?? []);
+  const [channel, setChannel] = useState<'chat' | 'voice'>(initialChannel ?? 'chat');
+  const [provider, setProvider] = useState<Provider>(seededProvider ?? 'connect');
   const [providerSettings, setProviderSettings] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -905,9 +915,12 @@ function NewRunModal({
           : a.filePath.localeCompare(b.filePath));
         setOptions(list);
         setProviderSettings(settingsMap);
-        const defaultProvider = (settingsMap['EVAL_PROVIDER_DEFAULT'] ?? 'connect').toLowerCase();
-        if (ALL_PROVIDERS.has(defaultProvider)) {
-          setProvider(defaultProvider);
+        // Don't override a re-run's seeded provider with the global default.
+        if (!seededProvider) {
+          const defaultProvider = (settingsMap['EVAL_PROVIDER_DEFAULT'] ?? 'connect').toLowerCase();
+          if (ALL_PROVIDERS.has(defaultProvider)) {
+            setProvider(defaultProvider);
+          }
         }
       })
       .catch(() => {});
@@ -1223,6 +1236,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
   const [loading, setLoading] = useState(true);
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [rerunSeed, setRerunSeed] = useState<{ refs: string[]; provider?: string; channel?: 'chat' | 'voice' } | null>(null);
   const [artifactModal, setArtifactModal] = useState<ArtifactModalState | null>(null);
   const [queueingRunId, setQueueingRunId] = useState<string | null>(null);
   const [queueMessage, setQueueMessage] = useState<{ runId: string; text: string; ok: boolean } | null>(null);
@@ -1277,6 +1291,21 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
 
   function openNewRun(): void {
     if (isBlocked('run')) { showUpgradeNudge('run'); return; }
+    setRerunSeed(null);
+    setShowModal(true);
+  }
+
+  // Re-run: reopen the run modal pre-filled with the original run's scenarios,
+  // provider and channel, so the user just confirms instead of re-selecting.
+  function rerunFrom(run: Run): void {
+    if (isBlocked('run')) { showUpgradeNudge('run'); return; }
+    let refs: string[] = [];
+    try { refs = run.scenarioRefsJson ? JSON.parse(run.scenarioRefsJson) as string[] : []; } catch { refs = []; }
+    setRerunSeed({
+      refs,
+      provider: run.telemetry?.provider,
+      channel: run.channel === 'voice' ? 'voice' : 'chat',
+    });
     setShowModal(true);
   }
 
@@ -1392,8 +1421,11 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
     <>
       {showModal && (
         <NewRunModal
-          onClose={() => setShowModal(false)}
+          onClose={() => { setShowModal(false); setRerunSeed(null); }}
           onStarted={handleRunStarted}
+          initialScenarioRefs={rerunSeed?.refs}
+          initialProvider={rerunSeed?.provider}
+          initialChannel={rerunSeed?.channel}
         />
       )}
 
@@ -1515,7 +1547,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={selected.status} />
-                    <button onClick={() => openNewRun()} className="btn-primary text-xs py-1 px-3">
+                    <button onClick={() => rerunFrom(selected)} className="btn-primary text-xs py-1 px-3">
                       <span className="inline-flex items-center gap-1">
                         <RunRunningIcon className="h-3.5 w-3.5" aria-hidden="true" />
                         Re-run

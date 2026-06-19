@@ -29,6 +29,8 @@ export async function createQueuedRun(params: {
   scenarioName: string;
   channel: 'chat' | 'voice';
   payload: RunJobPayload;
+  /** Scenario refs (path#index) that produced this run — stored so "Re-run" can reuse the selection. */
+  scenarioRefs?: string[];
 }): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await tx.run.create({
@@ -37,6 +39,9 @@ export async function createQueuedRun(params: {
         scenarioName: params.scenarioName,
         channel: params.channel,
         status: 'pending',
+        ...(params.scenarioRefs && params.scenarioRefs.length > 0
+          ? { scenarioRefsJson: JSON.stringify(params.scenarioRefs) }
+          : {}),
       },
     });
     await tx.job.create({
