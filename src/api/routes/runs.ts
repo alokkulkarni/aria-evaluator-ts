@@ -357,7 +357,14 @@ runsRouter.get('/:id', async (req, res) => {
   try {
     const run = await prisma.run.findFirst({
       where: { id: req.params['id']!, NOT: { status: 'deleted' } },
-      include: { turns: { orderBy: { index: 'asc' } }, evalResult: true, report: true },
+      include: {
+        turns: { orderBy: { index: 'asc' } },
+        evalResult: true,
+        report: true,
+        // Per-scenario names — lets "Re-run" recover the selection for runs created
+        // before scenarioRefsJson existed (best-effort name → ref match in the UI).
+        transcripts: { select: { scenarioName: true }, orderBy: { createdAt: 'asc' } },
+      },
     });
     if (!run) return res.status(404).json({ error: 'Not found' });
     res.json({

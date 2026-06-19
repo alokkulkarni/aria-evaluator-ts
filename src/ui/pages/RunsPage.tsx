@@ -57,6 +57,7 @@ interface Run {
     tokenTotalEstimate?: number | null;
   } | null;
   turns?: Array<{ index: number; role: string; content: string }>;
+  transcripts?: Array<{ scenarioName: string }>;
 }
 
 interface ScenarioSummary {
@@ -866,12 +867,14 @@ function NewRunModal({
   onClose,
   onStarted,
   initialScenarioRefs,
+  initialScenarioNames,
   initialProvider,
   initialChannel,
 }: {
   onClose: () => void;
   onStarted: (runId: string) => void;
   initialScenarioRefs?: string[];
+  initialScenarioNames?: string[];
   initialProvider?: string;
   initialChannel?: 'chat' | 'voice';
 }) {
@@ -914,6 +917,17 @@ function NewRunModal({
           ? a.name.localeCompare(b.name)
           : a.filePath.localeCompare(b.filePath));
         setOptions(list);
+        // Re-run fallback for runs without stored refs: resolve the original run's
+        // scenario names to refs against the freshly-loaded catalog (best-effort —
+        // unmatched names, e.g. renamed/deleted scenarios, are simply skipped).
+        if ((initialScenarioRefs?.length ?? 0) === 0 && (initialScenarioNames?.length ?? 0) > 0) {
+          const nameToRef = new Map<string, string>();
+          for (const o of list) if (!nameToRef.has(o.name)) nameToRef.set(o.name, o.ref);
+          const recovered = (initialScenarioNames ?? [])
+            .map((n) => nameToRef.get(n))
+            .filter((ref): ref is string => !!ref);
+          if (recovered.length > 0) setSelectedScenarioRefs([...new Set(recovered)]);
+        }
         setProviderSettings(settingsMap);
         // Don't override a re-run's seeded provider with the global default.
         if (!seededProvider) {
@@ -1236,7 +1250,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
   const [loading, setLoading] = useState(true);
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [rerunSeed, setRerunSeed] = useState<{ refs: string[]; provider?: string; channel?: 'chat' | 'voice' } | null>(null);
+  const [rerunSeed, setRerunSeed] = useState<{ refs: string[]; names?: string[]; provider?: string; channel?: 'chat' | 'voice' } | null>(null);
   const [artifactModal, setArtifactModal] = useState<ArtifactModalState | null>(null);
   const [queueingRunId, setQueueingRunId] = useState<string | null>(null);
   const [queueMessage, setQueueMessage] = useState<{ runId: string; text: string; ok: boolean } | null>(null);
@@ -1301,8 +1315,14 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
     if (isBlocked('run')) { showUpgradeNudge('run'); return; }
     let refs: string[] = [];
     try { refs = run.scenarioRefsJson ? JSON.parse(run.scenarioRefsJson) as string[] : []; } catch { refs = []; }
+    // Older runs predate scenarioRefsJson — fall back to recovering the selection by
+    // matching the run's per-scenario names against the catalog (best-effort).
+    const names = refs.length === 0
+      ? [...new Set((run.transcripts ?? []).map((t) => t.scenarioName).filter(Boolean))]
+      : undefined;
     setRerunSeed({
       refs,
+      names,
       provider: run.telemetry?.provider,
       channel: run.channel === 'voice' ? 'voice' : 'chat',
     });
@@ -1424,6 +1444,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
           onClose={() => { setShowModal(false); setRerunSeed(null); }}
           onStarted={handleRunStarted}
           initialScenarioRefs={rerunSeed?.refs}
+          initialScenarioNames={rerunSeed?.names}
           initialProvider={rerunSeed?.provider}
           initialChannel={rerunSeed?.channel}
         />
