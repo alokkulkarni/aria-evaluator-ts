@@ -51,6 +51,14 @@ export function aggregateMemberScores(
   disagreementThreshold: number,
   /** Optional per-judge weights keyed by judgeId. Missing/undefined → weight 1. */
   weights?: Record<string, number>,
+  /**
+   * Dimensions that actually determine the verdict (e.g. security scenarios score
+   * on the core dims only). When provided, judgeAgreement is measured over just
+   * these dims so it stays consistent with the consensus score — judges unanimous
+   * on what drives the score read as 100% even if they differ on non-scoring dims.
+   * Undefined → all dimensions count (quality scenarios).
+   */
+  scoringDimIds?: ReadonlySet<string>,
 ): AggregateResult {
   // Union of dimension ids, preserving first-seen order.
   const dimIds: string[] = [];
@@ -99,8 +107,12 @@ export function aggregateMemberScores(
     const spread = Math.max(...scores) - Math.min(...scores);
     const disagreement = votes.length > 1 && spread > disagreementThreshold;
     if (disagreement) requiresHumanReview = true;
-    spreadSum += spread;
-    spreadCount += 1;
+    // Agreement is measured over the dimensions that drive the score (so it lines
+    // up with the consensus); per-dimension disagreement still flags review above.
+    if (!scoringDimIds || scoringDimIds.has(id)) {
+      spreadSum += spread;
+      spreadCount += 1;
+    }
 
     // Representative member = whose score is closest to the mean (for evidence/gap text).
     const target = closestScore(scores, mean);

@@ -130,6 +130,17 @@ export class ReportGenerator {
     .judge-model { color: #718096; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
     .committee-summary-row td { border-top: 2px solid #e2e8f0; background: #f7fafc; }
     .committee-disagree { font-size: 12px; color: #b7791f; margin-top: 8px; }
+    .committee-why { margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+    .committee-why > summary { font-size: 12px; font-weight: 600; color: #4a6fa5; cursor: pointer; user-select: none; }
+    .committee-why > summary:hover { text-decoration: underline; }
+    .committee-why-body { margin-top: 10px; }
+    .why-dim { margin-bottom: 12px; }
+    .why-dim-head { font-size: 13px; color: #2d3748; text-transform: capitalize; margin-bottom: 4px; }
+    .why-disagree { color: #b7791f; font-weight: 600; font-size: 11px; text-transform: none; margin-left: 4px; }
+    .why-votes { list-style: none; margin: 0; padding: 0; }
+    .why-votes li { font-size: 12px; line-height: 1.5; color: #4a5568; padding: 3px 0 3px 10px; border-left: 2px solid #e2e8f0; margin-bottom: 3px; }
+    .why-judge { font-weight: 600; color: #2d3748; }
+    .why-vote { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; margin: 0 4px; }
     .dim-table { width: 100%; border-collapse: collapse; }
     .dim-category { width: 160px; color: #718096; font-size: 13px; font-weight: 600; padding: 12px; border-bottom: 1px solid #edf2f7; vertical-align: top; }
     .dim-description { padding: 12px; border-bottom: 1px solid #edf2f7; }
@@ -253,6 +264,24 @@ export class ReportGenerator {
         const agreementPct = r.judgeAgreement != null ? `${Math.round(r.judgeAgreement * 100)}%` : '—';
         const disagreedCount = Object.values(r.dimensionScores).filter((d) => d.disagreement).length;
 
+        // "Why these scores" — each judge's reasoning per dimension (the data the
+        // per-judge averages summarise). Collapsed by default to keep the table scannable.
+        const whyDims = Object.entries(r.dimensionScores)
+          .filter(([, ds]) => (ds.judgeVotes?.length ?? 0) > 1)
+          .map(([dimId, ds]) => {
+            const voteItems = (ds.judgeVotes ?? [])
+              .map((v) => `<li><span class="why-judge">${escapeHtml(v.judgeId)}</span> <span class="why-vote ${v.score >= 6 ? 'pass' : 'fail'}">${v.score.toFixed(1)}/10</span>${v.justification ? ` — ${escapeHtml(v.justification)}` : ''}</li>`)
+              .join('');
+            return `<div class="why-dim">
+              <div class="why-dim-head"><strong>${escapeHtml(dimId.replace(/_/g, ' '))}</strong> · consensus ${ds.score.toFixed(1)}/10${ds.disagreement ? ' <span class="why-disagree">⚠ judges disagreed</span>' : ''}</div>
+              <ul class="why-votes">${voteItems}</ul>
+            </div>`;
+          })
+          .join('');
+        const whyBlock = whyDims
+          ? `<details class="committee-why"><summary>Why these scores — each judge's reasoning per dimension</summary><div class="committee-why-body">${whyDims}</div></details>`
+          : '';
+
         return `
       <div class="committee-block">
         <div class="committee-head">
@@ -265,12 +294,13 @@ export class ReportGenerator {
             ${judgeRows}
             <tr class="committee-summary-row">
               <td><strong>Consensus (mean)</strong></td>
-              <td class="judge-model">agreement ${agreementPct}</td>
+              <td class="judge-model" title="How closely the judges' scores matched on the dimensions that drive the verdict — independent of the score itself.">agreement ${agreementPct}</td>
               <td class="${r.passed ? 'pass' : 'fail'}"><strong>${r.overallScore.toFixed(1)}/10</strong></td>
             </tr>
           </tbody>
         </table>
         ${disagreedCount > 0 ? `<p class="committee-disagree">⚠ Judges disagreed beyond threshold on ${disagreedCount} dimension${disagreedCount === 1 ? '' : 's'}.</p>` : ''}
+        ${whyBlock}
       </div>`;
       })
       .join('');
@@ -278,7 +308,7 @@ export class ReportGenerator {
     return `
   <section>
     <h2>Judge Committee — per-judge scores &amp; consensus</h2>
-    <p class="committee-intro">Each committee member's mean score across dimensions, and the consensus those votes aggregated into.</p>
+    <p class="committee-intro">Each committee member's mean score across dimensions, and the consensus those votes aggregated into. <strong>Agreement</strong> is how closely the judges' scores matched on the dimensions that drive the verdict (for security scenarios, the guardrail / prompt-injection / bias core) — it's separate from the score, so a unanimous 10/10 reads as 100% agreement. Expand <em>Why these scores</em> under a scenario for each judge's reasoning.</p>
     ${blocks}
   </section>`;
   }
