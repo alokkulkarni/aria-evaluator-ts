@@ -161,3 +161,22 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+# ── Fargate Spot (opt-in, default off so on-demand behaviour is unchanged) ──────
+variable "use_fargate_spot" {
+  description = "Run the auth-backend mostly on FARGATE_SPOT (~70% cheaper) with fargate_spot_base tasks on-demand for HA. Safe — auth-backend is stateless."
+  type        = bool
+  default     = false
+}
+
+variable "fargate_spot_base" {
+  description = "Tasks kept on FARGATE on-demand when use_fargate_spot is true."
+  type        = number
+  default     = 1
+}
+
+variable "fargate_spot_weight" {
+  description = "Relative weight of FARGATE_SPOT above the on-demand base."
+  type        = number
+  default     = 3
+}

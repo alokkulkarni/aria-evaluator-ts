@@ -79,12 +79,14 @@ variable "container_port" {
 
 variable "cpu" {
   type    = number
-  default = 512
+  # 0.25 vCPU — the control-plane is a light Express API over a single DynamoDB
+  # state blob; 0.5 vCPU was over-provisioned. Override in tfvars if load grows.
+  default = 256
 }
 
 variable "memory" {
   type    = number
-  default = 1024
+  default = 512
 }
 
 variable "desired_count" {

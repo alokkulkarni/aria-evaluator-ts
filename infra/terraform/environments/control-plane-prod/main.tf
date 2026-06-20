@@ -275,7 +275,10 @@ module "ecs" {
   saas_mode    = false
   tenant_id    = var.tenant_id
   pricing_tier = var.pricing_tier
-  tags         = local.common_tags
+  # Cost: control-plane is stateless (state lives in DynamoDB with CAS), so run it
+  # mostly on Fargate Spot, keeping 1 task on-demand for HA.
+  use_fargate_spot = true
+  tags             = local.common_tags
 }
 
 # ── CloudTrail ────────────────────────────────────────────────────────────────

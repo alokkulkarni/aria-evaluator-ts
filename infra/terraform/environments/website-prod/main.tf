@@ -135,8 +135,11 @@ module "auth_backend" {
   cpu           = 256
   memory        = 512
   desired_count = 2
-  image_tag     = local.effective_auth_image_tag
-  image_uri     = local.use_prebuilt_auth ? var.auth_backend_image_uri : ""
+  # Cost: auth-backend is stateless (NextAuth JWT) — run mostly on Fargate Spot,
+  # keeping 1 task on-demand for HA.
+  use_fargate_spot = true
+  image_tag        = local.effective_auth_image_tag
+  image_uri        = local.use_prebuilt_auth ? var.auth_backend_image_uri : ""
 
   # OAuth credentials are NOT passed through Terraform.
   # Run: infra/scripts/bootstrap-oauth-secrets.sh prod

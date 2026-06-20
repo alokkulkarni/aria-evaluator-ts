@@ -13,17 +13,23 @@ locals {
     var.pricing_tier != "" ? { "aria:pricing_tier" = var.pricing_tier } : {},
   )
 
-  interface_endpoint_services = {
-    ecr_api        = "com.amazonaws.${data.aws_region.current.region}.ecr.api"
-    ecr_dkr        = "com.amazonaws.${data.aws_region.current.region}.ecr.dkr"
-    logs           = "com.amazonaws.${data.aws_region.current.region}.logs"
-    sts            = "com.amazonaws.${data.aws_region.current.region}.sts"
-    secretsmanager = "com.amazonaws.${data.aws_region.current.region}.secretsmanager"
-    # CodeBuild needed by the control-plane to call StartBuildCommand for
-    # tenant provisioning. Without it the SDK call times out at ~30s (no NAT
-    # in private subnets) → CloudFront returns 504 to the browser.
-    codebuild = "com.amazonaws.${data.aws_region.current.region}.codebuild"
-  }
+  interface_endpoint_services = merge(
+    {
+      ecr_api        = "com.amazonaws.${data.aws_region.current.region}.ecr.api"
+      ecr_dkr        = "com.amazonaws.${data.aws_region.current.region}.ecr.dkr"
+      logs           = "com.amazonaws.${data.aws_region.current.region}.logs"
+      secretsmanager = "com.amazonaws.${data.aws_region.current.region}.secretsmanager"
+      # CodeBuild needed by the control-plane to call StartBuildCommand for
+      # tenant provisioning. Without it the SDK call times out at ~30s (no NAT
+      # in private subnets) → CloudFront returns 504 to the browser.
+      codebuild = "com.amazonaws.${data.aws_region.current.region}.codebuild"
+    },
+    # STS is unused with ECS task-role credentials (the ECS agent vends them via the
+    # container-credentials endpoint, not STS), so it's OFF by default — saving
+    # ~$0.01/hr/AZ (~$14.6/mo at 2 AZs). Set enable_sts_endpoint=true only if VPC
+    # flow logs show STS traffic that would time out in the no-NAT private subnets.
+    var.enable_sts_endpoint ? { sts = "com.amazonaws.${data.aws_region.current.region}.sts" } : {},
+  )
 }
 
 data "aws_region" "current" {}

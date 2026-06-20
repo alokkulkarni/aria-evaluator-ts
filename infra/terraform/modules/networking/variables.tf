@@ -65,3 +65,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_sts_endpoint" {
+  description = "Create the STS interface VPC endpoint. Default false — ECS task-role creds are vended by the ECS agent (container-credentials endpoint), not STS, so it's normally unused; omitting it saves ~$14.6/mo (2 AZs). Set true if VPC flow logs show STS traffic that would otherwise time out in the no-NAT private subnets."
+  type        = bool
+  default     = false
+}
