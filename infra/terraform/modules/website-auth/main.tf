@@ -699,6 +699,9 @@ resource "aws_ecs_service" "auth" {
   launch_type                       = var.use_fargate_spot ? null : "FARGATE"
   platform_version                  = "LATEST"
   health_check_grace_period_seconds = 60
+  # AWS requires force_new_deployment when the capacity_provider_strategy changes
+  # on an existing service (e.g. switching an already-deployed FARGATE service to Spot).
+  force_new_deployment = var.use_fargate_spot
 
   dynamic "capacity_provider_strategy" {
     for_each = var.use_fargate_spot ? [1] : []
