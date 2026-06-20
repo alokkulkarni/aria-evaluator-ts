@@ -24,10 +24,10 @@ locals {
       # in private subnets) → CloudFront returns 504 to the browser.
       codebuild = "com.amazonaws.${data.aws_region.current.region}.codebuild"
     },
-    # STS is usually unused with ECS task-role credentials (the ECS agent vends them
-    # via the container-credentials endpoint, not STS). Kept ON by default so nothing
-    # breaks; set enable_sts_endpoint=false to save ~$0.01/hr/AZ (~$14.6/mo at 2 AZs)
-    # AFTER confirming via VPC flow logs that the STS endpoint ENI sees no traffic.
+    # STS is unused with ECS task-role credentials (the ECS agent vends them via the
+    # container-credentials endpoint, not STS), so it's OFF by default — saving
+    # ~$0.01/hr/AZ (~$14.6/mo at 2 AZs). Set enable_sts_endpoint=true only if VPC
+    # flow logs show STS traffic that would time out in the no-NAT private subnets.
     var.enable_sts_endpoint ? { sts = "com.amazonaws.${data.aws_region.current.region}.sts" } : {},
   )
 }
