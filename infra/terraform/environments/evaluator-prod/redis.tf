@@ -1,16 +1,17 @@
-# infra/terraform/environments/dev/redis.tf
-# Dev environment Redis configuration (AWS ElastiCache)
+# infra/terraform/environments/evaluator-prod/redis.tf
+# Pooled evaluator Redis (AWS ElastiCache) — BullMQ job queue + cross-task SSE.
 
-# Subnet group for Redis across private subnets
+# Subnet group. evaluator-prod runs in PUBLIC subnets (no private subnets); the
+# node is not publicly accessible — its SG only allows the ECS task SG on 6379.
 resource "aws_elasticache_subnet_group" "redis" {
-  name           = "aria-dev-redis-subnet-group"
-  subnet_ids     = module.networking.private_subnet_ids
-  tags           = local.common_tags
+  name       = "${var.app_name}-${var.environment}-redis-subnet-group"
+  subnet_ids = module.networking.public_subnet_ids
+  tags       = local.common_tags
 }
 
 # Security group for Redis
 resource "aws_security_group" "redis" {
-  name_prefix = "aria-dev-redis-"
+  name_prefix = "${var.app_name}-${var.environment}-redis-"
   description = "Security group for Redis"
   vpc_id      = module.networking.vpc_id
 
@@ -30,16 +31,17 @@ resource "aws_security_group" "redis" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, { Name = "aria-dev-redis-sg" })
+  tags = merge(local.common_tags, { Name = "${var.app_name}-${var.environment}-redis-sg" })
 }
 
 # Redis module
 module "redis" {
   source = "../../modules/redis"
 
-  environment                = "dev"
+  environment                = var.environment
   engine_version           = "7.0"
-  node_type                = var.redis_node_type != null ? var.redis_node_type : "cache.t4g.small"
+  # Cost-optimized: t4g.micro (0.5 GB) is ample for a BullMQ queue + SSE pub/sub.
+  node_type                = var.redis_node_type != null ? var.redis_node_type : "cache.t4g.micro"
   num_cache_nodes          = var.redis_num_cache_nodes != null ? var.redis_num_cache_nodes : 1
   automatic_failover_enabled = false
   at_rest_encryption_enabled = true

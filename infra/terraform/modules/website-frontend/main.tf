@@ -192,6 +192,9 @@ resource "aws_cloudfront_distribution" "main" {
   comment             = "ARIA Evaluator ${var.environment} frontend"
   aliases             = local.cf_aliases
   web_acl_id          = aws_wafv2_web_acl.frontend.arn
+  # Cost: US/EU/Israel edges (vs the default PriceClass_All). Cheaper per-request
+  # and per-GB; CloudFront still serves all viewers, just routed via nearer edges.
+  price_class = "PriceClass_100"
 
   # ── Origin 1: S3 (static pages) ──
   origin {
