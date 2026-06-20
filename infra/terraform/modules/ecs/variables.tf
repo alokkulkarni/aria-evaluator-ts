@@ -273,3 +273,22 @@ variable "database_url" {
   type        = string
   default     = "file:/app/state/data/aria-evaluator.db"
 }
+
+# ── Fargate Spot (opt-in, default off so on-demand behaviour is unchanged) ──────
+variable "use_fargate_spot" {
+  description = "Run the service mostly on FARGATE_SPOT (~70% cheaper) with fargate_spot_base tasks kept on-demand for HA. Only for stateless, interruption-tolerant services."
+  type        = bool
+  default     = false
+}
+
+variable "fargate_spot_base" {
+  description = "Number of tasks guaranteed on FARGATE on-demand when use_fargate_spot is true (the rest run on FARGATE_SPOT)."
+  type        = number
+  default     = 1
+}
+
+variable "fargate_spot_weight" {
+  description = "Relative weight of FARGATE_SPOT above the on-demand base."
+  type        = number
+  default     = 3
+}

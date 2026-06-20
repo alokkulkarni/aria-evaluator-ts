@@ -124,6 +124,21 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[0].id
 }
 
+# ── S3 Gateway endpoint (FREE) ────────────────────────────────────────────────
+# ECR stores image layers in S3, so without this every image pull from the
+# private subnets traverses (and is billed by) the NAT gateway. A gateway
+# endpoint routes S3 traffic privately at no hourly/ENI cost.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = concat([aws_route_table.public.id], aws_route_table.private[*].id)
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-s3-endpoint"
+  })
+}
+
 # ── Security Groups ───────────────────────────────────────────────────────────
 
 resource "aws_security_group" "alb" {
@@ -386,6 +401,18 @@ resource "aws_ecs_cluster" "main" {
   }
 
   tags = local.common_tags
+}
+
+# Register both providers so the service can use FARGATE_SPOT when opted in.
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name       = aws_ecs_cluster.main.name
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
+
+  default_capacity_provider_strategy {
+    capacity_provider = "FARGATE"
+    weight            = 1
+    base              = 1
+  }
 }
 
 # ── CloudWatch Log Group (encrypted at rest) ─────────────────────────────────
@@ -662,13 +689,32 @@ resource "aws_ecs_task_definition" "auth" {
 # ── ECS Service ────────────────────────────────────────────────────────────────
 
 resource "aws_ecs_service" "auth" {
-  name                              = "${local.name_prefix}-service"
-  cluster                           = aws_ecs_cluster.main.id
-  task_definition                   = aws_ecs_task_definition.auth.arn
-  desired_count                     = var.desired_count
-  launch_type                       = "FARGATE"
+  name            = "${local.name_prefix}-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.auth.arn
+  desired_count   = var.desired_count
+  # FARGATE on-demand by default. With use_fargate_spot, run mostly on FARGATE_SPOT
+  # (~70% cheaper) keeping fargate_spot_base on-demand for HA. auth-backend is
+  # stateless (NextAuth JWT), so Spot interruption is safe behind the ALB.
+  launch_type                       = var.use_fargate_spot ? null : "FARGATE"
   platform_version                  = "LATEST"
   health_check_grace_period_seconds = 60
+
+  dynamic "capacity_provider_strategy" {
+    for_each = var.use_fargate_spot ? [1] : []
+    content {
+      capacity_provider = "FARGATE"
+      weight            = 1
+      base              = var.fargate_spot_base
+    }
+  }
+  dynamic "capacity_provider_strategy" {
+    for_each = var.use_fargate_spot ? [1] : []
+    content {
+      capacity_provider = "FARGATE_SPOT"
+      weight            = var.fargate_spot_weight
+    }
+  }
 
   network_configuration {
     subnets          = local.private_enabled ? aws_subnet.private[*].id : aws_subnet.public[*].id

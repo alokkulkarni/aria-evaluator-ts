@@ -166,8 +166,27 @@ resource "aws_ecs_service" "app" {
   name            = "${local.name_prefix}-svc"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  launch_type     = "FARGATE"
-  desired_count   = var.desired_count
+  # FARGATE on-demand by default. With use_fargate_spot, run mostly on FARGATE_SPOT
+  # (~70% cheaper) while keeping `fargate_spot_base` tasks on-demand for HA.
+  # launch_type and capacity_provider_strategy are mutually exclusive.
+  launch_type   = var.use_fargate_spot ? null : "FARGATE"
+  desired_count = var.desired_count
+
+  dynamic "capacity_provider_strategy" {
+    for_each = var.use_fargate_spot ? [1] : []
+    content {
+      capacity_provider = "FARGATE"
+      weight            = 1
+      base              = var.fargate_spot_base
+    }
+  }
+  dynamic "capacity_provider_strategy" {
+    for_each = var.use_fargate_spot ? [1] : []
+    content {
+      capacity_provider = "FARGATE_SPOT"
+      weight            = var.fargate_spot_weight
+    }
+  }
 
   deployment_minimum_healthy_percent = var.deployment_minimum_healthy_percent
   deployment_maximum_percent         = var.deployment_maximum_percent

@@ -65,3 +65,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_sts_endpoint" {
+  description = "Create the STS interface VPC endpoint. Default true (no change). Set false to save ~$14.6/mo once VPC flow logs confirm the STS endpoint ENI is unused (ECS task-role creds normally don't call STS)."
+  type        = bool
+  default     = true
+}
