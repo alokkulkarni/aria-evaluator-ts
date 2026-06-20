@@ -121,10 +121,14 @@ module "auth_backend" {
   environment = "prod"
   public_url  = local.public_url
 
-  # Separate VPC for auth backend — ALB in public subnets, Fargate tasks in private
+  # Separate VPC for the auth backend. Cost: tasks run in PUBLIC subnets with a
+  # public IP (egress for Google/Apple OAuth) instead of a NAT gateway (~$28/mo
+  # saved). Empty private_subnet_cidrs ⇒ no private subnets, no NAT/EIP. The tasks
+  # are still SG-locked to ingress from the ALB only, so they aren't internet-
+  # reachable. Set private_subnet_cidrs back to restore the fully-private posture.
   vpc_cidr             = "10.61.0.0/16"
   public_subnet_cidrs  = ["10.61.1.0/24", "10.61.2.0/24", "10.61.3.0/24"]
-  private_subnet_cidrs = ["10.61.11.0/24", "10.61.12.0/24", "10.61.13.0/24"]
+  private_subnet_cidrs = []
   availability_zones   = local.availability_zones
 
   # End-to-end TLS: regional ACM cert + :443 listener on a custom origin domain
