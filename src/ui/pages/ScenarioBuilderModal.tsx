@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ApiError, apiFetch } from '../lib/api.js';
 import type { Scenario } from '../../types/scenario.js';
+import { DOMAINS } from '../../shared/domains.js';
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -59,12 +60,12 @@ const TYPE_DEFAULTS: Record<ScenarioType, Partial<FormState>> = {
   scripted: {
     mode: 'script', authenticated: true, attack_type: '', expected_escalation: false,
     max_turns: 8, default_timeout_seconds: 120, turn_delay_seconds: 2,
-    turns: [{ id: '1', send: '', timeout_seconds: 120 }], category: 'escalation',
+    turns: [{ id: '1', send: '', timeout_seconds: 120 }], category: 'banking',
   },
   adversarial: {
     mode: 'script', authenticated: false, attack_type: 'prompt_injection', expected_escalation: false,
     max_turns: 6, default_timeout_seconds: 120, turn_delay_seconds: 1,
-    turns: [{ id: '1', send: '', timeout_seconds: 120 }], category: 'adversarial',
+    turns: [{ id: '1', send: '', timeout_seconds: 120 }], category: 'banking',
   },
 };
 
@@ -128,6 +129,9 @@ function buildScenarioYaml(f: FormState): string {
   lines.push(`scenario_id: ${q(f.scenario_id)}`);
   lines.push(`name: ${q(f.name)}`);
   if (f.attack_type) lines.push(`attack_type: ${q(f.attack_type)}`);
+  // Business domain — also drives committee 'domain' judge routing.
+  const domainVal = (f.category === '__custom__' ? f.customCategory : f.category)?.trim();
+  if (domainVal) lines.push(`domain: ${q(domainVal)}`);
   if (f.description) {
     const d = f.description.trim();
     lines.push(`description: ${d.includes('\n') || d.length > 80 ? blockGt(d) : q(d)}`);
@@ -303,9 +307,12 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
 
   const yamlPreview = form.name ? buildScenarioYaml(form) : '# Fill in the scenario name to see a YAML preview';
 
-  const category = form.category === '__custom__' ? form.customCategory : form.category;
+  // Domain-first layout: scenarios are saved under <domain>/<type>/<file>.yaml,
+  // where type is adversarial (attack scenarios) or functional (everything else).
+  const domain = form.category === '__custom__' ? form.customCategory : form.category;
+  const scenFolderType = form.scenarioType === 'adversarial' ? 'adversarial' : 'functional';
   const targetPath = mode === 'create'
-    ? `${category}/${form.filename || 'scenario'}.yaml`
+    ? `${domain}/${scenFolderType}/${form.filename || 'scenario'}.yaml`
     : (scenario?.filePath?.split('#')[0] ?? '');
   const fileExists = mode === 'create' && existingFiles.some((f) => f === targetPath);
 
@@ -746,20 +753,20 @@ export function ScenarioBuilderModal({ mode, scenario, existingFiles, onClose, o
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label hint="The sub-folder that groups related scenarios.">Category / folder</Label>
+                    <Label hint="Business domain. Saved under <domain>/<adversarial|functional>/. Type is set by the scenario kind above.">Domain</Label>
                     <select
                       value={form.category}
                       onChange={(e) => set('category', e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      {folders.map((f) => <option key={f} value={f}>{f}</option>)}
-                      <option value="__custom__">Custom…</option>
+                      {DOMAINS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                      <option value="__custom__">Add custom domain…</option>
                     </select>
                     {form.category === '__custom__' && (
                       <TextInput
                         value={form.customCategory}
                         onChange={(v) => set('customCategory', v.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))}
-                        placeholder="my_category"
+                        placeholder="e.g. retail, telecom"
                         className="mt-2"
                       />
                     )}
