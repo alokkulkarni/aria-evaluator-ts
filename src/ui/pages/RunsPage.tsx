@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
 import { usePlanGate } from '../lib/plan-gate.js';
 import { formatTokenCount } from '../lib/format.js';
+import { parseScenarioRef, domainLabel } from '../../shared/domains.js';
 import { StatusBadge } from './Dashboard.js';
 import {
   ChevronDownIcon,
@@ -887,6 +888,8 @@ function NewRunModal({
   const [channel, setChannel] = useState<'chat' | 'voice'>(initialChannel ?? 'chat');
   const [provider, setProvider] = useState<Provider>(seededProvider ?? 'connect');
   const [providerSettings, setProviderSettings] = useState<Record<string, string>>({});
+  // Domain-first selection: one domain per run.
+  const [selectedDomain, setSelectedDomain] = useState<string>('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsedModalCategories, setCollapsedModalCategories] = useState<Set<string>>(new Set());
@@ -955,6 +958,14 @@ function NewRunModal({
     ),
   );
 
+  // Domains present in the catalog (from the `<domain>/<type>/<file>` ref shape).
+  const availableDomains = [...new Set(
+    options.map((o) => parseScenarioRef(o.ref)?.domain).filter((d): d is string => !!d),
+  )].sort();
+  const activeDomain = availableDomains.includes(selectedDomain)
+    ? selectedDomain
+    : (availableDomains[0] ?? '');
+
   function toggleScenario(ref: string): void {
     setSelectedScenarioRefs((prev) =>
       prev.includes(ref) ? prev.filter((p) => p !== ref) : [...prev, ref],
@@ -1017,31 +1028,51 @@ function NewRunModal({
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <p className="text-xs text-slate-500 mt-2">
-            Select one or more scenarios. Voice runs selected scenarios in a single WebRTC session.
+            Pick a domain, then its scenarios. Voice runs selected scenarios in a single WebRTC session.
           </p>
         </div>
+
+        {availableDomains.length > 0 && (
+          <div className="px-6 pt-1 pb-2 flex items-center gap-2 flex-wrap border-b border-slate-100">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mr-1">Domain</span>
+            {availableDomains.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => { if (d !== activeDomain) { setSelectedDomain(d); setSelectedScenarioRefs([]); } }}
+                className={`text-sm px-3 py-1 rounded-full font-medium transition-colors ${
+                  d === activeDomain ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {domainLabel(d)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="px-6 overflow-y-auto flex-1 py-2 space-y-2">
           {filtered.length === 0 ? (
             <p className="text-slate-400 text-sm py-4 text-center">No scenarios match.</p>
           ) : (() => {
-            // Build two-level grouping: category → subCategory → ScenarioOptions
+            // Within the active domain, group by type (adversarial/functional) → file.
+            // Scenarios outside the `<domain>/<type>/<file>` layout are ignored.
             const grouped = new Map<string, Map<string, ScenarioOption[]>>();
             for (const o of filtered) {
-              const raw = (o.filePath ?? '').replace(/\\/g, '/');
-              const parts = raw.split('/').filter(Boolean);
-              const cat = parts.length >= 2 ? (parts[0] ?? 'general') : 'general';
-              const sub = (parts.length >= 2 ? parts[1] : parts[0] ?? 'other')!.replace(/\.(ya?ml)$/i, '');
+              const parsed = parseScenarioRef((o.ref ?? o.filePath ?? '').replace(/\\/g, '/'));
+              if (!parsed || parsed.domain !== activeDomain) continue;
+              const cat = parsed.type; // 'adversarial' | 'functional'
+              const sub = parsed.file.replace(/\.(ya?ml)$/i, '');
               if (!grouped.has(cat)) grouped.set(cat, new Map());
               const subMap = grouped.get(cat)!;
               if (!subMap.has(sub)) subMap.set(sub, []);
               subMap.get(sub)!.push(o);
             }
+            if (grouped.size === 0) {
+              return <p className="text-slate-400 text-sm py-4 text-center">No scenarios in this domain{search ? ' match your search' : ''}.</p>;
+            }
             const catMeta: Record<string, { icon: React.ComponentType<{ className?: string }>; hdr: string }> = {
               adversarial: { icon: ScenarioAdversarialIcon, hdr: 'bg-red-50 text-red-800 border-red-200' },
-              banking:     { icon: CategoryBankingIcon, hdr: 'bg-blue-50 text-blue-800 border-blue-200' },
-              edge_cases:  { icon: CategoryEdgeCasesIcon, hdr: 'bg-purple-50 text-purple-800 border-purple-200' },
-              escalation:  { icon: CategoryEscalationIcon, hdr: 'bg-amber-50 text-amber-800 border-amber-200' },
+              functional:  { icon: CategoryBankingIcon, hdr: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
               general:     { icon: CategoryGeneralIcon, hdr: 'bg-slate-50 text-slate-700 border-slate-200' },
             };
 

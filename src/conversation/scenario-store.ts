@@ -125,7 +125,11 @@ function dedupePreferOwn(
 export async function listScenariosFromDb(): Promise<Scenario[]> {
   const { callerTenantId, where } = visibilityWhere();
   const rows = (await runAsSystem(async () =>
-    prisma.scenario.findMany({ where, select: SCENARIO_ROW_SELECT }),
+    prisma.scenario.findMany({
+      // Hide deprecated scenarios (e.g. pre-reorg orphans) from the catalog/pickers.
+      where: { AND: [where, { lifecycleStatus: { not: 'deprecated' } }] },
+      select: SCENARIO_ROW_SELECT,
+    }),
   )) as ScenarioRow[];
 
   return dedupePreferOwn(rows, (r) => r.filePath, callerTenantId)
@@ -445,6 +449,26 @@ export async function importScenariosFromDir(
       const result = await upsertScenarioState(normalized.doc, sourceRef, 'sync', null);
       if (result === 'created') created++;
       else if (result === 'updated') updated++;
+    }
+
+    // Prune: disk-synced scenarios (tenantId null) whose source file no longer
+    // exists — e.g. moved during the domain reorg — are marked deprecated so they
+    // drop out of the pickers. Not deleted, so historical runs keep their link.
+    const validRefs = new Set(
+      fileScenarios
+        .map((s) => (s as unknown as { filePath?: string }).filePath)
+        .filter((r): r is string => !!r),
+    );
+    if (validRefs.size > 0) {
+      await prisma.scenario.updateMany({
+        where: {
+          tenantId: null,
+          sourceRef: { not: null },
+          lifecycleStatus: { not: 'deprecated' },
+          NOT: { sourceRef: { in: [...validRefs] } },
+        },
+        data: { lifecycleStatus: 'deprecated' },
+      });
     }
   });
 
