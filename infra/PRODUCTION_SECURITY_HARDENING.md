@@ -582,6 +582,7 @@ terraform output jwt_authorizer_function_arn
 8. **Advanced Threat Detection**: GuardDuty integration for ML-based detection
 9. **Automated Response**: Lambda-based auto-remediation for security findings
 10. **Security Hub**: Centralized security findings aggregation
+11. **Centralized egress (Option C)** — _pending; chosen future direction over per-VPC NAT (Option B)._ Route all app-VPC outbound through a single **egress VPC + Transit Gateway + shared NAT** so the evaluator can drop its public IPs (`assign_public_ip = false`) and gain one outbound choke point to allowlist LLM-provider domains + AWS and add egress inspection. Closes the residual R2 (uncontainable exfil) and R4 (`ECS.2` public-IP) gaps that the current cheap hardening can't. Full decision record, options table, and task checklist: **[docs/ARCHITECTURE.md → Evaluator egress architecture](../docs/ARCHITECTURE.md#evaluator-egress-architecture--current-posture-hardening--roadmap)**.
 
 ---
 

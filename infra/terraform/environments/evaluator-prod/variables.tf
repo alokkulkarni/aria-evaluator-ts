@@ -392,11 +392,9 @@ variable "aurora_max_acu" {
   default     = 8
 }
 
-variable "waf_web_acl_arn" {
-  description = "Optional WAF web ACL ARN for the public CloudFront distribution. Empty disables WAF."
-  type        = string
-  default     = ""
-}
+# NOTE: The CloudFront WAF web ACL is now created in-stack by `module.waf`
+# (us-east-1) and wired straight into `module.cloudfront`, so there is no
+# `waf_web_acl_arn` override variable here — prod always gets WAF.
 
 variable "cloudtrail_alert_sns_topic_arn" {
   description = "Optional SNS topic ARN for CloudTrail CIS alarm notifications. Empty disables alarms."

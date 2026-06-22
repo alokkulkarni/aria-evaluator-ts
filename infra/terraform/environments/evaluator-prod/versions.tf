@@ -26,3 +26,17 @@ provider "aws" {
     }
   }
 }
+
+# Required for CloudFront WAF (CLOUDFRONT-scope web ACLs are always us-east-1).
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      Project     = "aria-evaluator"
+      Environment = "dev"
+      ManagedBy   = "terraform"
+    }
+  }
+}
