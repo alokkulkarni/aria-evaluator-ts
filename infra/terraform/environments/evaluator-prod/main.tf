@@ -90,6 +90,27 @@ module "networking" {
   tags                = local.common_tags
 }
 
+# ── S3 Gateway VPC Endpoint (free egress hardening) ───────────────────────────
+# Routes the VPC's S3 traffic — which includes ECR image-layer blob downloads,
+# since ECR stores layers in S3 — through a private gateway endpoint instead of
+# the Fargate task's public IP + IGW. Gateway endpoints are free and shrink the
+# public-internet egress surface even while tasks stay in public subnets
+# (Option A). The genuinely-external LLM traffic (OpenAI/Anthropic/Gemini) and
+# the ECR API / Secrets Manager / Bedrock interface endpoints are the *paid*
+# next step, deferred to Option B/C (see docs/ARCHITECTURE.md → egress roadmap).
+# Defined here (not via the networking module's private-subnet endpoints) so it
+# applies without flipping the env to private subnets / NAT.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = module.networking.vpc_id
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [module.networking.public_route_table_id]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.app_name}-${var.environment}-s3-endpoint"
+  })
+}
+
 # ── Aurora Serverless v2 (PostgreSQL) ─────────────────────────────────────────
 # Shared pooled DB — row-level tenantId isolation is the multi-tenant model.
 module "aurora" {
@@ -297,6 +318,27 @@ module "bedrock_lambda" {
   tags         = local.common_tags
 }
 
+# ── WAF (CloudFront scope, us-east-1) ─────────────────────────────────────────
+# WAFv2 web ACL for the public CloudFront distribution: AWS managed rule groups
+# (IP reputation, OWASP common set, known-bad-inputs) + a per-IP rate limit.
+# CLOUDFRONT-scope web ACLs must live in us-east-1, so the module is fed the
+# aliased provider. Prod hardening: the evaluator's public edge previously had no
+# WAF.
+module "waf" {
+  source = "../../modules/waf"
+
+  providers = {
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  app_name           = var.app_name
+  environment        = var.environment
+  tenant_id          = var.tenant_id
+  pricing_tier       = var.pricing_tier
+  log_retention_days = var.log_retention_days
+  tags               = local.common_tags
+}
+
 # ── CloudFront ────────────────────────────────────────────────────────────────
 # Public HTTPS entry for the evaluator (default *.cloudfront.net cert — no custom
 # domain/ACM/Route53 required). WAF + origin-secret lock are enabled for prod.
@@ -310,7 +352,7 @@ module "cloudfront" {
   price_class              = var.cloudfront_price_class
   acm_certificate_arn      = var.acm_certificate_arn
   aliases                  = var.cloudfront_aliases
-  waf_web_acl_arn          = var.waf_web_acl_arn
+  waf_web_acl_arn          = module.waf.web_acl_arn
   cloudfront_origin_secret = random_password.cloudfront_origin_secret.result
   tenant_id                = var.tenant_id
   pricing_tier             = var.pricing_tier

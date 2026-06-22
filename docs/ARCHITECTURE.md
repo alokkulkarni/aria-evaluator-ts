@@ -167,6 +167,39 @@ What is and isn't encrypted, per hop:
 
 > This reflects the IaC after the website-prod hardening (`modules/website-auth`: ALB `:443` + regional ACM + private subnets/NAT, gated on a custom domain; `modules/website-frontend`: CloudFront origin `https-only`). It takes effect on the next `terraform apply` of website-prod; `website-dev` (no custom domain) stays on `:80`/public.
 
+### Evaluator egress architecture — current posture, hardening & roadmap
+
+**Current state (Option A).** The pooled `evaluator-prod` ECS tasks (and the `website-auth` ALB) run **in public subnets with public IPv4s** (`assign_public_ip = true`) and egress to the internet directly via the IGW. There is **no active inbound exposure** — the task security group only allows ingress from the ALB SG, and the public ALB is itself origin-locked to CloudFront via the `X-CF-Origin-Secret` header + WAF — so the public IP is used purely for *outbound*. The evaluator **must** reach non-AWS endpoints (OpenAI, Anthropic, Google Gemini) that VPC endpoints can't cover, so unlike the private `control-plane-prod`, it can't go endpoint-only; it needs either a public IP (today) or a NAT.
+
+The residual risks of Option A are defense-in-depth, not an open door: **R1** — the SG is the single thing between a routable public IP and the internet, so one bad `0.0.0.0/0` rule = instant exposure; **R2** — no egress choke point, so a compromised PII-handling container has unrestricted outbound (exfil/C2); **R4** — it trips standard audit controls (AWS FSBP `[ECS.2]`, CIS/PCI "no public IPs on compute").
+
+**Cheap hardening applied (no NAT, ~$0/mo)** — `feat/network-hardening-evaluator-prod`:
+
+1. **Free S3 gateway VPC endpoint** on the evaluator VPC (`aws_vpc_endpoint.s3`, Gateway type, on the public route table) — routes S3 traffic, including **ECR image-layer blob pulls**, off the public IP. Shrinks R3's scan/egress surface at zero cost.
+2. **AWS Config drift rules + SNS alerts** (account-level, in `modules/guardduty` → enabled by `saas-platform`, since a Config recorder is an account/region singleton): a managed rule flags any SG opening a port other than the ALB's `80/443` to `0.0.0.0/0` (catches **R1** drift), and `ECS_SERVICE_ASSIGN_PUBLIC_IP_DISABLED` flags auto-assigned public IPs (**R4**). Both page the security alerts topic via EventBridge. This also lights up the previously-dormant Security Hub FSBP/CIS controls (they need Config to evaluate).
+3. **WAFv2 on the evaluator's public CloudFront** (`module.waf`, us-east-1/CLOUDFRONT scope) — the evaluator edge previously had no WAF; now it has IP-reputation, OWASP common-set, known-bad-inputs, and per-IP rate-limit rules.
+
+What cheap hardening **can't** fix: it doesn't remove the public IPs (R4 stays partly open) and can't add an **egress allowlist** (R2) — those require a NAT/proxy choke point.
+
+**Roadmap — future direction is Option C (centralized egress), chosen over Option B.**
+
+| Option | Posture | Cost delta (3 VPCs) | Effort |
+|---|---|---|---|
+| **A. Public + public IP** (current, now hardened) | OK while SGs stay tight; no egress containment | $0 baseline | done |
+| **B. Per-VPC private subnets + NAT** | No public IPs on tasks; per-VPC egress only | **+~$33/mo per VPC** (+data) | low — flip `private_subnets_enabled`, module already supports it |
+| **C. Centralized egress: Transit Gateway + egress VPC + 1 shared NAT, app VPCs stay public/private** | Best — no public IPs **and** one place to allowlist/inspect all outbound | **+~$140/mo** at 3 VPCs (TGW attachments + processing + 1 NAT) | high — new TGW, attachments, routes, egress VPC |
+
+> **Decision:** when the evaluator moves off public IPs, target **Option C, not Option B**. Per-VPC NATs (B) solve R4/R1 but leave egress control fragmented across VPCs and still can't enforce a single outbound allowlist; centralized egress (C) keeps the app VPCs on the public/private split, routes all outbound through **one egress VPC** behind a TGW, and gives a **single choke point** to allowlist the LLM-provider domains + AWS and add outbound inspection — the control a regulated/PII workload ultimately needs (closes **R2**). The premium over B (~$140 vs ~$33/mo per added VPC) buys that central control and scales better as VPCs/accounts grow. Revisit timing when compliance (R2/R4) becomes a hard requirement or VPC count grows.
+
+**Pending TODO — Option C (centralized egress), not yet implemented:**
+
+- [ ] Add a dedicated **egress VPC** + an `aws-network`/`connectivity` Terraform stack (extends `connectivity-prod`).
+- [ ] Provision a **Transit Gateway**; attach the evaluator, website, and control-plane VPCs.
+- [ ] Place a **single NAT gateway** (+ optional egress firewall / proxy for the allowlist) in the egress VPC; default-route app private subnets to the TGW.
+- [ ] Flip `evaluator-prod` (and re-add `website-auth`) to **private subnets, `assign_public_ip = false`**; remove per-task public IPs.
+- [ ] Enforce an **outbound allowlist** at the egress choke point: LLM-provider domains (OpenAI/Anthropic/Gemini) + AWS service ranges only.
+- [ ] Confirm the `ECS_SERVICE_ASSIGN_PUBLIC_IP_DISABLED` Config rule and FSBP `[ECS.2]` flip to **COMPLIANT** post-migration.
+
 ### PROD — Tenant provisioning & per-tenant instance
 
 ```mermaid

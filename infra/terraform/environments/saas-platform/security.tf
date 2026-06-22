@@ -35,5 +35,12 @@ module "platform_security" {
   enable_securityhub_fsbp = true
   enable_securityhub_cis  = true
 
+  # AWS Config (account/region singleton) lives here, the account-level security
+  # stack. It powers the Security Hub FSBP/CIS controls (which cannot evaluate
+  # without it) and adds explicit drift rules + SNS alerts for 0.0.0.0/0 SG
+  # ingress and auto-assigned ECS public IPs — covering evaluator-prod and every
+  # other stack in this account+region.
+  enable_aws_config = true
+
   tags = local.common_tags
 }
