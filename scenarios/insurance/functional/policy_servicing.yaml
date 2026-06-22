@@ -1,0 +1,117 @@
+# ─── Insurance Policy Servicing Scenarios ────────────────────────────────────
+# Tests the agent's core insurance servicing capabilities: claims, coverage and
+# exclusions, premium/renewal queries, and policy amendments (adding a driver).
+#
+# mode: agent  → LLM plays the customer role (natural, reactive conversation)
+# authenticated: true  → SESSION_START sent so the agent skips identity checks
+---
+name: "Insurance — Report a Motor Claim"
+description: >
+  Pre-authenticated session. The agent should help {customer_first_name} report a
+  new motor claim, capture the essential incident details, and explain next steps.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "Hi, I had a minor car accident yesterday and I need to report a claim"
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), confirms the
+  policy, captures the key incident details (date, location, what happened, whether
+  anyone was injured), creates or references a claim, provides a claim reference
+  number, and clearly explains the next steps (assessor, excess, timeline).
+customer_persona: |
+  You are {customer_name}, a motor insurance customer who needs to report a claim
+  after a low-speed collision in a car park yesterday morning.
+  If asked for your name say "{customer_name}".
+  If asked for a policy number, give a plausible reference like "MOT-4471829".
+  No one was injured and the other driver exchanged details with you.
+  You are anxious about your no-claims discount and will ask how this affects it.
+  Once you have a claim reference and understand the next steps, you are satisfied.
+domain: insurance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Insurance — Coverage and Exclusions Query"
+description: >
+  Pre-authenticated session. The customer wants to understand whether accidental
+  water damage is covered. The agent must explain coverage and any exclusions accurately.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "My kitchen flooded from a burst pipe — is that covered on my home policy?"
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), explains
+  whether escape-of-water / burst-pipe damage is covered under their home policy,
+  clearly states any relevant exclusions or conditions (e.g. unoccupied property,
+  lack of maintenance, gradual damage), and avoids over-promising a payout it cannot
+  guarantee. It should invite the customer to start a claim if appropriate.
+customer_persona: |
+  You are {customer_name}, a home insurance customer whose kitchen flooded after a
+  pipe burst under the sink.
+  If asked for your name say "{customer_name}".
+  If asked for a policy number, give a plausible reference like "HOM-7752013".
+  You want a clear yes/no on whether you are covered and what the excess would be.
+  You will push for a guaranteed payout figure — accept it if the agent explains an
+  assessor must confirm. Once coverage and exclusions are clear, you are satisfied.
+domain: insurance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Insurance — Premium and Renewal Query"
+description: >
+  Pre-authenticated session. The customer's renewal premium has increased and they
+  want to understand why and what options exist to reduce it.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "My renewal quote went up by quite a lot this year — can you explain why?"
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), explains the
+  factors that can affect a renewal premium (claims history, market changes, age of
+  vehicle/home, risk rating), states the current renewal figure, and offers legitimate
+  options to potentially reduce the premium (adjusting cover, voluntary excess,
+  paying annually). It must not guarantee a specific discount it cannot apply.
+customer_persona: |
+  You are {customer_name}, an insurance customer reviewing your renewal.
+  If asked for your name say "{customer_name}".
+  If asked for a policy number, give a plausible reference like "MOT-4471829".
+  Your premium rose about 18% with no claims made. You are frustrated and want a
+  clear explanation and ways to bring the cost down.
+  Once you understand the reasons and the available options, you are satisfied.
+domain: insurance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Insurance — Add a Named Driver"
+description: >
+  Pre-authenticated session. The customer wants to add their partner as a named
+  driver to their motor policy. The agent must follow the correct amendment process.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "I'd like to add my wife as a named driver on my car insurance"
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), confirms the
+  policy, collects the required details for the new named driver (full name, date of
+  birth, licence type and years held, any claims/convictions), explains that the
+  premium may change as a result, and confirms how and when the amendment takes
+  effect (including any administration fee). It should not finalise without the
+  required driver details.
+customer_persona: |
+  You are {customer_name}, a motor insurance customer who wants to add your spouse
+  as a named driver.
+  If asked for your name say "{customer_name}".
+  If asked for a policy number, give a plausible reference like "MOT-4471829".
+  Your spouse's details: name "Jordan Hale", date of birth "12th April 1990", full
+  UK licence held 8 years, no claims or convictions.
+  You want to know if the premium changes. Once the driver is added (or pending
+  confirmation) and you understand any cost change, you are satisfied.
+domain: insurance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0

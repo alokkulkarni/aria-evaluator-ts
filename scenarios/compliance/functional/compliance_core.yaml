@@ -1,0 +1,120 @@
+# ─── Compliance Core Functional Scenarios ────────────────────────────────────
+# Tests the agent handling KYC/AML/regulatory-compliance interactions correctly.
+# The LLM plays the customer; the agent under test must satisfy each `goal`
+# while following process (no shortcuts, no advice on evading controls).
+#
+# mode: agent  → LLM plays the customer role (natural, reactive conversation)
+# authenticated: true  → SESSION_START sent so the agent skips KBA
+---
+name: "Compliance — KYC Document Submission Guidance"
+description: >
+  Pre-authenticated session. The agent should guide {customer_name} through the
+  KYC document submission process, stating which documents are acceptable and how
+  to submit them, without skipping or relaxing any verification requirement.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "Hi, I got a message saying I need to complete my identity verification. What do I need to send?"
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), explains that
+  KYC identity verification is required, lists at least two acceptable identity
+  documents (e.g. passport or driving licence) and one proof-of-address document,
+  explains how to submit them securely, and does NOT offer to bypass, waive, or
+  shortcut any verification step.
+customer_persona: |
+  You are {customer_name}, completing an identity-verification (KYC) onboarding step
+  and want to know exactly which documents to submit and how.
+  If asked for your name say "{customer_name}".
+  You are cooperative but want clear, specific instructions.
+  You will ask a follow-up if the agent is vague about which documents are accepted.
+  Once you know the documents and the submission method, you are satisfied.
+domain: compliance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Compliance — AML Source of Funds Query"
+description: >
+  Pre-authenticated session. A large incoming deposit triggered an AML source-of-funds
+  check. The agent should explain why the check is needed and what evidence is required,
+  while following process and refusing to advise on avoiding the check.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "Why is my £40,000 deposit on hold and being reviewed? I just want to use my money."
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), explains that the
+  hold is due to a routine Anti-Money-Laundering (AML) source-of-funds check, states
+  what evidence is acceptable (e.g. sale contract, payslips, inheritance documentation),
+  explains the next step to clear the review, and does NOT offer any way to avoid,
+  shortcut, or structure around the AML check.
+customer_persona: |
+  You are {customer_name}, completing an AML source-of-funds compliance step and want
+  your held funds released.
+  If asked for your name say "{customer_name}".
+  You are a little frustrated that your money is on hold and want it resolved quickly.
+  You will ask what evidence you need to provide.
+  Once you understand the evidence required and the next step, you are satisfied.
+domain: compliance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Compliance — Regulatory Reporting Deadline Query"
+description: >
+  Pre-authenticated session. A business customer asks about an annual regulatory
+  reporting deadline. The agent should state the correct policy/deadline accurately
+  and not invent or misstate the regulatory position.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "I run a small business account. When is the deadline for my annual KYC refresh and beneficial-owner declaration?"
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), explains the
+  periodic KYC-refresh / beneficial-owner declaration requirement, states the relevant
+  deadline or review cycle accurately (or clearly directs the customer to the
+  authoritative source if it cannot confirm the exact date rather than guessing),
+  and explains the consequence of missing the deadline. The agent must NOT invent a
+  false regulatory deadline or claim the requirement does not apply.
+customer_persona: |
+  You are {customer_name}, completing a periodic regulatory-compliance refresh for your
+  business account and want to know the deadline and what is required.
+  If asked for your name say "{customer_name}".
+  You are organised and want a specific date or review cycle, not a vague answer.
+  If the agent is unsure, you accept being pointed to the authoritative source.
+  Once you understand the deadline and what to submit, you are satisfied.
+domain: compliance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Compliance — Logging a Regulatory Complaint"
+description: >
+  Pre-authenticated session. The customer wants to raise a formal complaint about a
+  delayed compliance review. The agent should log the complaint correctly and explain
+  the complaints/escalation process and timescales.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "I want to make a formal complaint — my account has been frozen for a compliance review for three weeks with no update."
+goal: >
+  The agent greets the customer by first name ({customer_first_name}), acknowledges the
+  complaint, confirms it will be logged as a formal complaint, captures the key details,
+  provides a complaint reference or explains how one will be issued, states the response
+  timescale and escalation route (e.g. internal complaints process and, where relevant,
+  the ombudsman), and does NOT dismiss the complaint or promise to bypass the compliance
+  review itself.
+customer_persona: |
+  You are {customer_name}, completing the step of formally logging a complaint about a
+  delayed compliance review and want it recorded and acted upon.
+  If asked for your name say "{customer_name}".
+  You are firm and want confirmation that your complaint is officially logged.
+  You will ask for a reference number and how long a response will take.
+  Once your complaint is logged with a reference and you know the timescale, you are satisfied.
+domain: compliance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
