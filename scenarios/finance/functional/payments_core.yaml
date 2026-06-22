@@ -1,0 +1,115 @@
+# ─── Finance & Payments — Core Functional Scenarios ──────────────────────────
+# Tests the payments/finance agent's ability to handle everyday money movement:
+# initiating a payment, converting currency (FX), setting up a recurring standing
+# order, and investigating a failed or pending transaction.
+#
+# mode: agent  → LLM plays the customer role (natural, reactive conversation)
+# authenticated: true  → session pre-authenticated; the agent should not re-do full KBA
+---
+name: "Finance — Initiate One-Off Payment"
+description: >
+  Pre-authenticated session. The agent should help the customer set up a single
+  payment to a new payee, confirm the details back, and apply appropriate
+  verification before money moves.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "Hi, I'd like to send 250 pounds to a friend please"
+goal: >
+  The agent confirms the payment amount (250 pounds), captures and reads back the
+  payee's name, sort code and account number, applies a verification or
+  confirmation step (e.g. a confirmation-of-payee check or a one-time passcode)
+  before submitting, and tells the customer when the payment will arrive.
+customer_persona: |
+  You are {customer_name}, a finance/payments customer who wants to send a one-off
+  payment of 250 pounds to a friend called Priya Sharma.
+  If asked for your name say "{customer_name}".
+  If asked for your date of birth say "12th March 1990".
+  If asked for the payee details say sort code 04-00-04, account number 11223344.
+  You are cooperative and will provide a one-time passcode if the agent asks for one.
+  Once the agent confirms the payment is set up and tells you when it will arrive,
+  you are satisfied.
+domain: finance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Finance — FX Currency Conversion Quote"
+description: >
+  Pre-authenticated session. The customer wants to convert GBP to EUR. The agent
+  should quote the exchange rate, any fees, and the amount the customer receives.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "I want to convert 1000 pounds into euros, what will I get?"
+goal: >
+  The agent provides a specific exchange rate for GBP to EUR, states any conversion
+  fee or margin clearly, gives the net euro amount the customer would receive, and
+  asks for confirmation before executing the conversion rather than assuming it.
+customer_persona: |
+  You are {customer_name}, a finance/payments customer who wants to convert
+  1000 GBP into EUR for an upcoming trip.
+  If asked for your name say "{customer_name}".
+  If asked for your date of birth say "5th July 1985".
+  You care about the rate and any hidden fees, so you will ask "are there any fees?"
+  if they are not mentioned.
+  Once you know the rate, the fee, and how many euros you will receive, you are satisfied.
+domain: finance
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Finance — Set Up Recurring Standing Order"
+description: >
+  Pre-authenticated session. The customer wants a monthly standing order to a
+  letting agent. The agent should capture amount, payee, frequency, start date,
+  and confirm before creating it.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "Can you set up a monthly standing order for my rent please?"
+goal: >
+  The agent captures the payment amount, the payee details, the frequency (monthly),
+  the start date and any end date, reads the full standing order back to the customer
+  for confirmation, and only creates it after the customer explicitly confirms.
+customer_persona: |
+  You are {customer_name}, a finance/payments customer who wants to set up a
+  monthly standing order of 1200 pounds to your letting agent.
+  If asked for your name say "{customer_name}".
+  If asked for your date of birth say "22nd September 1993".
+  If asked for the payee say "Greenfield Lettings", sort code 09-01-02, account 55667788.
+  If asked when it should start, say the 1st of next month, with no end date.
+  Once the agent reads the standing order back and confirms it is scheduled, you are satisfied.
+domain: finance
+max_turns: 14
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+
+---
+name: "Finance — Investigate Failed or Pending Payment"
+description: >
+  Pre-authenticated session. A payment the customer made has not arrived. The agent
+  should locate the transaction, explain its status, and set out next steps.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "I sent a payment yesterday but it hasn't arrived, what's going on?"
+goal: >
+  The agent locates the specific transaction, states its current status (e.g. pending,
+  failed, or held for review), explains the likely reason in plain language, gives a
+  realistic expected resolution time, and offers a concrete next step (such as a recall,
+  a resend, or a reference number to track it).
+customer_persona: |
+  You are {customer_name}, a finance/payments customer worried that a 480 pound
+  payment you sent yesterday has not reached the recipient.
+  If asked for your name say "{customer_name}".
+  If asked for your date of birth say "30th January 1979".
+  If asked for details, say the payment was to "Daniel Okafor" for 480 pounds, sent yesterday afternoon.
+  You are anxious and want reassurance plus a clear timeline.
+  Once you understand the status, the reason, and what happens next, you are satisfied.
+domain: finance
+max_turns: 14
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0

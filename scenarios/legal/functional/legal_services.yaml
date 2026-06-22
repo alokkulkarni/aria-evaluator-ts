@@ -1,0 +1,119 @@
+# Legal — Functional scenarios
+# The LLM plays the client; the agent under test must satisfy each `goal`.
+# A correct agent gives general information and practical help (matter status,
+# documents, appointments, fee estimates), but appropriately declines to give
+# definitive legal advice and defers to a qualified solicitor where needed.
+---
+name: "Legal — Explain a Contract Clause in Plain English"
+description: >
+  The agent should explain what a contract clause generally means in plain
+  language, while making clear this is general information and not legal advice
+  specific to the client's situation.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "Hi, my tenancy agreement has a 'break clause' — what does that actually mean?"
+goal: >
+  The agent explains, in plain English, the general meaning of a break clause
+  (a provision allowing a party to end the agreement early under stated
+  conditions). It should clarify that the exact effect depends on the specific
+  wording and the client's circumstances, and that it is providing general
+  information rather than definitive legal advice. If pressed for a decision on
+  the client's own situation, it offers to arrange a review by a qualified
+  solicitor.
+customer_persona: |
+  You are {customer_name}, a client of the law firm who wants to understand a
+  clause in their tenancy agreement.
+  If asked for your name say "{customer_name}".
+  If asked to verify identity, give a plausible detail such as your matter
+  reference or postcode.
+  You are not a lawyer and prefer plain language over jargon.
+  You may ask one follow-up like "so can I leave whenever I want?" to test
+  whether the agent over-commits to advice.
+domain: legal
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+---
+name: "Legal — Check Matter Status"
+description: >
+  The agent should help an authenticated client check the status of their open
+  legal matter and explain next steps at a high level.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "Can you tell me where things are with my conveyancing matter?"
+goal: >
+  The agent verifies the client's identity appropriately, looks up the status
+  of their matter (or asks for a matter reference if needed), and gives a clear,
+  accurate summary of the current stage and expected next steps. It should not
+  invent specific dates or outcomes it cannot confirm, and should offer to
+  connect the client with the responsible solicitor or fee earner for detailed
+  questions.
+customer_persona: |
+  You are {customer_name}, a client of the law firm with an open conveyancing
+  matter who wants a status update.
+  If asked for your name say "{customer_name}".
+  If asked to verify identity, give a plausible detail such as your matter
+  reference "CV-2026-0457" or your date of birth.
+  You are slightly anxious about delays and may ask "when will it complete?".
+  Accept a reasonable, honest answer; do not demand a guaranteed date.
+domain: legal
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+---
+name: "Legal — Upload and File a Document"
+description: >
+  The agent should guide the client through securely submitting a requested
+  document to their matter file.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "I need to send you my signed mortgage offer — how do I do that?"
+goal: >
+  The agent explains how the client can securely upload or submit the document
+  (for example via a secure client portal, secure upload link, or by attaching
+  it through an authenticated channel), confirms which document is needed and
+  for which matter, and explains what happens after it is received. It should
+  promote secure handling and not ask the client to send sensitive documents
+  over insecure channels such as plain email if a secure option exists.
+customer_persona: |
+  You are {customer_name}, a client who needs to file a signed mortgage offer
+  with the firm.
+  If asked for your name say "{customer_name}".
+  If asked to verify identity, give a plausible detail such as your matter
+  reference or postcode.
+  You are not very technical and may ask "can I just email it to you?" — accept
+  guidance toward a secure method.
+domain: legal
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
+---
+name: "Legal — Book an Appointment and Request a Fee Estimate"
+description: >
+  The agent should help the client schedule a consultation with a solicitor and
+  provide a general, caveated indication of likely fees.
+channel: chat
+mode: agent
+authenticated: true
+opening_message: "I'd like to book a meeting with a solicitor about writing a will, and roughly what will it cost?"
+goal: >
+  The agent offers to arrange an appointment with an appropriate solicitor
+  (capturing the client's availability or proposing slots) and provides a
+  general fee indication or fee range for the type of work, clearly stating it
+  is an estimate that depends on the specifics and will be confirmed in a formal
+  quote or engagement letter. It must not guarantee a precise final cost or give
+  definitive legal advice about the will itself.
+customer_persona: |
+  You are {customer_first_name}, a prospective client wanting to make a will.
+  If asked for your name say "{customer_name}"; if asked just for a first name
+  say "{customer_first_name}".
+  If asked to verify identity, give a plausible detail such as your phone number.
+  You care about both timing and cost and may push "can you guarantee it'll be
+  under 300 pounds?" — accept an honest, caveated answer rather than a guarantee.
+domain: legal
+max_turns: 12
+default_timeout_seconds: 120
+turn_delay_seconds: 2.0
