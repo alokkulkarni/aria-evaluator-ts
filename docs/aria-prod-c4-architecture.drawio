@@ -1,0 +1,427 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="L1 — System Context" id="c4-l1-context">
+    <mxGraphModel dx="1024" dy="720" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1050" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="l1-title" value="ARIA Evaluator — C4 Level 1: System Context" style="text;html=1;fontSize=18;fontStyle=1;fontColor=#0B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="800" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-legend" value="&lt;b&gt;Legend&lt;/b&gt;&#10;● Person   ▣ ARIA system (in scope)   ▢ External system" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B0B8C4;fontColor=#444444;align=left;spacingLeft=8;verticalAlign=top;spacingTop=4;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="20" width="350" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-person" value="&lt;b&gt;Platform User&lt;/b&gt;&lt;br&gt;[Person]&lt;br&gt;&lt;br&gt;Tenant admin / evaluator who runs scenarios and reviews AI safety &amp; quality reports" style="html=1;whiteSpace=wrap;rounded=1;arcSize=10;fillColor=#08427B;strokeColor=#073B6F;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="600" y="80" width="260" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-system" value="&lt;b&gt;ARIA Evaluator Platform&lt;/b&gt;&lt;br&gt;[Software System]&lt;br&gt;&lt;br&gt;Tests conversational AI agents: runs scenarios, captures transcripts, scores them across 15 dimensions with an LLM judge, and checks security &amp; compliance. Multi-tenant SaaS." style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#1061A0;strokeColor=#0B4C80;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="410" width="360" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-cognito" value="&lt;b&gt;Amazon Cognito&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;User pool + Google / Apple identity federation" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="120" y="430" width="220" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-bedrock" value="&lt;b&gt;Amazon Bedrock&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;Claude judge models (us-east-1 cross-region inference)" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="300" width="230" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-llm" value="&lt;b&gt;External LLM APIs&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;OpenAI · Azure OpenAI · Anthropic · Google Gemini (judge / agent models)" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="470" width="230" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-targets" value="&lt;b&gt;Conversational AI Targets&lt;/b&gt;&lt;br&gt;[External Systems Under Test]&lt;br&gt;&lt;br&gt;Amazon Connect · Lex · Azure Bot · OpenAPI / Custom agents" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#8E8E8E;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="540" y="770" width="320" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-voice" value="&lt;b&gt;Voice Services&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;Amazon Polly (TTS) + Transcribe (STT)" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="160" y="770" width="240" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-ses" value="&lt;b&gt;Amazon SES&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;Transactional / account emails" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="980" y="780" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-e1" value="Runs evaluations, reviews reports [HTTPS]" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l1-person" target="l1-system">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-e2" value="Authenticates users via" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l1-system" target="l1-cognito">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-e3" value="Scores transcripts via Claude judge" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l1-system" target="l1-bedrock">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-e4" value="Scores / drives turns via" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l1-system" target="l1-llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-e5" value="Runs scenarios against (under test)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l1-system" target="l1-targets">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-e6" value="Synthesizes / transcribes speech via" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l1-system" target="l1-voice">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l1-e7" value="Sends account emails via" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l1-system" target="l1-ses">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="L2 — Container" id="c4-l2-container">
+    <mxGraphModel dx="1024" dy="720" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1400" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="ARIA Evaluator — C4 Level 2: Container Diagram (eu-west-2)" style="text;html=1;fontSize=18;fontStyle=1;fontColor=#0B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Legend&lt;/b&gt;&#10;● Person  ·  ▣ Internal container  ·  ▢ External system (grey)&#10;Dashed boundary = ARIA Evaluator platform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B0B8C4;fontColor=#444444;align=left;spacingLeft=8;verticalAlign=top;spacingTop=4;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="20" width="380" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="person" value="&lt;b&gt;Platform User&lt;/b&gt;&lt;br&gt;[Person]&lt;br&gt;&lt;br&gt;Tenant admin / evaluator who runs scenarios and reviews AI safety &amp; quality reports" style="html=1;whiteSpace=wrap;rounded=1;arcSize=10;fillColor=#08427B;strokeColor=#073B6F;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="700" y="80" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="boundary" value="ARIA Evaluator Platform [Software System]" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 8;fillColor=none;strokeColor=#3C7FC0;fontColor=#3C7FC0;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;fontStyle=2;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="120" y="250" width="1240" height="900" as="geometry" />
+        </mxCell>
+        <mxCell id="c-frontend" value="&lt;b&gt;Marketing Site &amp; App Shell&lt;/b&gt;&lt;br&gt;[Container: Next.js static export]&lt;br&gt;&lt;br&gt;ariaeval.io public site + SPA shell. Served from S3 via CloudFront (OAC, WAF)." style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="160" y="300" width="250" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c-auth" value="&lt;b&gt;Auth Service&lt;/b&gt;&lt;br&gt;[Container: NextAuth · ECS Fargate]&lt;br&gt;&lt;br&gt;Sign-in, federated SSO and session management. Behind Auth ALB (HTTPS)." style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="160" y="500" width="250" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c-cp" value="&lt;b&gt;Control Plane&lt;/b&gt;&lt;br&gt;[Container: Node.js · ECS Fargate]&lt;br&gt;&lt;br&gt;Tenant provisioning, user management, quotas, SSO-token verification. Internal ALB only." style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="160" y="730" width="250" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="c-cpstate" value="&lt;b&gt;Control Plane State&lt;/b&gt;&lt;br&gt;[Container: DynamoDB]&lt;br&gt;&lt;br&gt;Tenant/user/session state with optimistic-concurrency (CAS). KMS-encrypted." style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=14;html=1;whiteSpace=wrap;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="180" y="950" width="210" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="c-eval" value="&lt;b&gt;Evaluator API + UI&lt;/b&gt;&lt;br&gt;[Container: Node/Express + React · ECS Fargate]&lt;br&gt;&lt;br&gt;Runs scenarios, conversation runner, LLM-judge scoring across 15 dimensions; serves dashboard, reports &amp; transcripts. Behind public CloudFront → ALB." style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#2E6FB0;strokeColor=#2A6299;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="560" y="420" width="300" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="c-bedrockproxy" value="&lt;b&gt;Bedrock Proxy&lt;/b&gt;&lt;br&gt;[Container: Python Lambda + API Gateway]&lt;br&gt;&lt;br&gt;Signed, CORS-guarded proxy for Bedrock model invocation." style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="560" y="680" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c-queue" value="&lt;b&gt;Job Queue &amp; Pub/Sub&lt;/b&gt;&lt;br&gt;[Container: ElastiCache Redis]&lt;br&gt;&lt;br&gt;BullMQ run queue + cross-task SSE pub/sub for live progress." style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="980" y="300" width="270" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c-db" value="&lt;b&gt;Evaluation Database&lt;/b&gt;&lt;br&gt;[Container: Aurora PostgreSQL Serverless v2]&lt;br&gt;&lt;br&gt;Tenants, runs, immutable transcripts, eval results (row-level tenant isolation)." style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=14;html=1;whiteSpace=wrap;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="480" width="210" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="ext-cognito" value="&lt;b&gt;Amazon Cognito&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;User pool + Google / Apple identity federation" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1430" y="500" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ext-bedrock" value="&lt;b&gt;Amazon Bedrock&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;Claude judge models (us-east-1 cross-region inference)" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1430" y="680" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ext-llm" value="&lt;b&gt;External LLM APIs&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;OpenAI · Azure OpenAI · Anthropic · Google Gemini (judge / agent models)" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1430" y="320" width="220" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="ext-targets" value="&lt;b&gt;Conversational AI Targets&lt;/b&gt;&lt;br&gt;[External Systems Under Test]&lt;br&gt;&lt;br&gt;Amazon Connect · Lex · Azure Bot · OpenAPI / Custom agents" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#8E8E8E;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="560" y="990" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ext-voice" value="&lt;b&gt;Voice Services&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;Amazon Polly (TTS) + Transcribe (STT) for voice scenarios" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="980" y="990" width="260" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ext-ses" value="&lt;b&gt;Amazon SES&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;br&gt;Transactional / account emails" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1430" y="950" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="r-user-fe" value="Uses (HTTPS, ariaeval.io)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="person" target="c-frontend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-user-eval" value="Uses app (HTTPS via CloudFront)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="person" target="c-eval">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-fe-auth" value="/api/* sign-in" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-frontend" target="c-auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-auth-cognito" value="Federates auth (OIDC)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-auth" target="ext-cognito">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-auth-cp" value="Verify SSO token (VPC peering)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-auth" target="c-cp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-cp" value="Verify SSO token + tenant ctx (VPC peering)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="c-cp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-cp-state" value="Reads / writes (CAS)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-cp" target="c-cpstate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-cp-ses" value="Sends emails" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-cp" target="ext-ses">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-db" value="Reads / writes (SQL, :5432)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="c-db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-queue" value="Enqueue runs + SSE (:6379)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="c-queue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-proxy" value="LLM judge call" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="c-bedrockproxy">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-proxy-bedrock" value="InvokeModel" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-bedrockproxy" target="ext-bedrock">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-bedrock" value="Direct InvokeModel (IAM)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="ext-bedrock">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-llm" value="Judge / agent models (HTTPS)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="ext-llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-targets" value="Runs scenarios against (adapters)" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="ext-targets">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-eval-voice" value="TTS / STT" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="c-eval" target="ext-voice">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="L3 — Component (Evaluator API + UI)" id="c4-l3-component">
+    <mxGraphModel dx="1024" dy="720" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1300" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="l3-title" value="ARIA Evaluator — C4 Level 3: Component Diagram (Evaluator API + UI container)" style="text;html=1;fontSize=18;fontStyle=1;fontColor=#0B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-legend" value="&lt;b&gt;Legend&lt;/b&gt;&#10;▣ Component (in container)   ▢ External container / system&#10;Dashed boundary = Evaluator API + UI container (src/)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B0B8C4;fontColor=#444444;align=left;spacingLeft=8;verticalAlign=top;spacingTop=4;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="20" width="400" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-boundary" value="Evaluator API + UI [Container: Node/Express + React · ECS Fargate]" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 8;fillColor=none;strokeColor=#2E6FB0;fontColor=#2E6FB0;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;fontStyle=2;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="300" y="120" width="1180" height="820" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-browser" value="&lt;b&gt;Web Browser&lt;/b&gt;&lt;br&gt;[Person / SPA client]" style="html=1;whiteSpace=wrap;rounded=1;arcSize=12;fillColor=#08427B;strokeColor=#073B6F;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="200" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-cp" value="&lt;b&gt;Control Plane&lt;/b&gt;&lt;br&gt;[External Container]&lt;br&gt;tenant + SSO verify" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1520" y="150" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-redis" value="&lt;b&gt;Job Queue &amp; Pub/Sub&lt;/b&gt;&lt;br&gt;[External Container: Redis]" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1520" y="300" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-llm" value="&lt;b&gt;Bedrock &amp; LLM APIs&lt;/b&gt;&lt;br&gt;[External Systems]&lt;br&gt;Claude · OpenAI · Azure · Gemini" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1520" y="470" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-db" value="&lt;b&gt;Evaluation Database&lt;/b&gt;&lt;br&gt;[External Container: Aurora PostgreSQL]" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;html=1;whiteSpace=wrap;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="650" width="200" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-targets" value="&lt;b&gt;Conversational AI Targets&lt;/b&gt;&lt;br&gt;[External Systems Under Test]&lt;br&gt;Connect · Lex · Azure · OpenAPI / Custom" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#8E8E8E;strokeColor=#6B6B6B;fontColor=#FFFFFF;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="620" y="990" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-webdash" value="&lt;b&gt;Web Dashboard&lt;/b&gt;&lt;br&gt;[Component: React + Vite + Tailwind]&lt;br&gt;Runs, scenarios, reports, reviews UI" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="170" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-api" value="&lt;b&gt;REST API Server&lt;/b&gt;&lt;br&gt;[Component: Express · src/api/routes]&lt;br&gt;runs · scenarios · transcripts · reports · usage" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="170" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-auth" value="&lt;b&gt;Auth &amp; Tenant Middleware&lt;/b&gt;&lt;br&gt;[Component: requireAuth, token-manager]&lt;br&gt;tenant scoping · checkRunQuota" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="170" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-cpclient" value="&lt;b&gt;Control Plane Client&lt;/b&gt;&lt;br&gt;[Component: src/api/control-plane]&lt;br&gt;verify SSO token, tenant ctx" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="170" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-scenario" value="&lt;b&gt;Scenario Loader / Store&lt;/b&gt;&lt;br&gt;[Component: conversation/scenario-loader]&lt;br&gt;load YAML · applyTemplateVars" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="320" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-worker" value="&lt;b&gt;Run Queue Worker&lt;/b&gt;&lt;br&gt;[Component: jobs/run-executor, schedules]&lt;br&gt;BullMQ executor · heartbeat" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="320" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-sse" value="&lt;b&gt;SSE Bus&lt;/b&gt;&lt;br&gt;[Component: src/api/sse-bus]&lt;br&gt;live run progress streaming" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="320" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-audit" value="&lt;b&gt;Audit Logger&lt;/b&gt;&lt;br&gt;[Component: src/api/audit-log]&lt;br&gt;recordAuditEventSafe" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="320" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-runner" value="&lt;b&gt;Conversation Runner&lt;/b&gt;&lt;br&gt;[Component: conversation/runner, agent-driver]&lt;br&gt;script &amp; agent turn modes" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="480" width="230" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-adapters" value="&lt;b&gt;Provider Adapters&lt;/b&gt;&lt;br&gt;[Component: src/adapters/BaseAdapter]&lt;br&gt;Connect · Lex · Azure · OpenAPI · Custom" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="620" y="480" width="230" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-judge" value="&lt;b&gt;LLM Judge&lt;/b&gt;&lt;br&gt;[Component: judge/llm-judge, dimensions, aggregate]&lt;br&gt;15-dim scoring · security = GUARDRAIL only" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="480" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-jfactory" value="&lt;b&gt;Judge Provider Factory&lt;/b&gt;&lt;br&gt;[Component: judge/providers/factory]&lt;br&gt;bedrock · anthropic · openai · azure · gemini" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="480" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-report" value="&lt;b&gt;Report Generator&lt;/b&gt;&lt;br&gt;[Component: src/report/generator]&lt;br&gt;renders reports from eval results" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="650" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-prisma" value="&lt;b&gt;Data Access (Prisma)&lt;/b&gt;&lt;br&gt;[Component: src/db/client]&lt;br&gt;tenant-scoped ORM queries" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="650" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-objstore" value="&lt;b&gt;Object / Artifact Store&lt;/b&gt;&lt;br&gt;[Component: runtime/object-store]&lt;br&gt;immutable transcripts · reports · audio" style="html=1;whiteSpace=wrap;rounded=1;arcSize=8;fillColor=#85BBF0;strokeColor=#6CA0DC;fontColor=#0A1A2F;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="650" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e1" value="loads SPA [HTTPS]" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-browser" target="l3-webdash">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e2" value="JSON / SSE" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-webdash" target="l3-api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e3" value="guards every route" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-api" target="l3-auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e4" value="verify SSO" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-auth" target="l3-cpclient">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e5" value="POST /auth/verify-sso-token" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-cpclient" target="l3-cp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e6" value="load / manage" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-api" target="l3-scenario">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e7" value="enqueue run" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-api" target="l3-worker">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e8" value="stream progress" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-api" target="l3-sse">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e9" value="record mutations" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-api" target="l3-audit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e10" value="read runs / results" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-api" target="l3-prisma">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e11" value="serve reports / transcripts" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-api" target="l3-objstore">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e12" value="pub/sub" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-sse" target="l3-redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e13" value="BullMQ jobs" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-worker" target="l3-redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e14" value="execute" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-worker" target="l3-runner">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e15" value="applyTemplateVars" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-runner" target="l3-scenario">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e16" value="drive turns" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-runner" target="l3-adapters">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e17" value="chat / voice" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-adapters" target="l3-targets">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e18" value="write transcript" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-runner" target="l3-objstore">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e19" value="score transcript" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-worker" target="l3-judge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e20" value="select model" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-judge" target="l3-jfactory">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e21" value="InvokeModel / API" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-jfactory" target="l3-llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e22" value="write EvalResult" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-judge" target="l3-prisma">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e23" value="generate report" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-worker" target="l3-report">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e24" value="write report" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-report" target="l3-objstore">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l3-e25" value="SQL (Prisma) :5432" style="endArrow=block;html=1;dashed=1;dashPattern=6 6;strokeColor=#5A6C86;fontColor=#33475B;fontSize=9;rounded=0;" edge="1" parent="1" source="l3-prisma" target="l3-db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="L4 — Code (Adapter contract)" id="c4-l4-code">
+    <mxGraphModel dx="1024" dy="720" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="l4-title" value="ARIA Evaluator — C4 Level 4: Code (Provider Adapter class model · src/adapters)" style="text;html=1;fontSize=18;fontStyle=1;fontColor=#0B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-note" value="C4 Level 4 is optional and code-derived. Shown here for the central abstraction — the adapter contract that every conversational-AI provider implements (BaseAdapter). New providers are registered in conversation/runner.ts via normalizeProvider()." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#D4A017;fontColor=#5A4500;align=left;spacingLeft=8;verticalAlign=top;spacingTop=4;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="56" width="1000" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-runner" value="&lt;b&gt;ConversationRunner&lt;/b&gt; «class»&#10;────────────────────&#10;+ run(scenario): Transcript&#10;+ normalizeProvider(provider)&#10;# mode: 'script' | 'agent'" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontColor=#1A2A44;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="150" width="280" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-base" value="&lt;b&gt;BaseAdapter&lt;/b&gt; «interface»&#10;────────────────────&#10;+ connect(): Promise&lt;void&gt;&#10;+ sendMessage(text): Promise&lt;void&gt;&#10;+ receive(): Promise&lt;AdapterMessage | null&gt;&#10;+ disconnect(): Promise&lt;void&gt;&#10;────────────────────&#10;throws SessionEndedError on close&#10;returns null on timeout" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontColor=#13351A;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="640" y="130" width="340" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-msg" value="&lt;b&gt;AdapterMessage&lt;/b&gt; «type»&#10;────────────────────&#10;+ from: 'agent' | 'user'&#10;+ text: string&#10;+ raw?: unknown&#10;+ timestamp: number" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontColor=#5A3A00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="130" width="260" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-err" value="&lt;b&gt;SessionEndedError&lt;/b&gt; «error»&#10;────────────────────&#10;thrown when the remote&#10;session closes" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontColor=#5A1A1A;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="300" width="260" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a1" value="&lt;b&gt;ConnectChatAdapter&lt;/b&gt;&#10;connect-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="60" y="470" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a2" value="&lt;b&gt;ConnectVoiceAdapter&lt;/b&gt;&#10;connect-voice.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="290" y="470" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a3" value="&lt;b&gt;ConnectWebRtcAdapter&lt;/b&gt;&#10;connect-webrtc.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="520" y="470" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a4" value="&lt;b&gt;LexChatAdapter&lt;/b&gt;&#10;lex-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="750" y="470" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a5" value="&lt;b&gt;AzureDirectLineChatAdapter&lt;/b&gt;&#10;azure-directline-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="980" y="470" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a6" value="&lt;b&gt;AzureOpenAIChatAdapter&lt;/b&gt;&#10;azure-openai-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="470" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a7" value="&lt;b&gt;OpenApiHttpChatAdapter&lt;/b&gt;&#10;openapi-http-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="60" y="600" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a8" value="&lt;b&gt;CustomHttpChatAdapter&lt;/b&gt;&#10;custom-http-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="290" y="600" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a9" value="&lt;b&gt;CustomWebSocketVoiceAdapter&lt;/b&gt;&#10;custom-websocket-voice.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="520" y="600" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a10" value="&lt;b&gt;WebSocketChatAdapter&lt;/b&gt;&#10;websocket-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="770" y="600" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-a11" value="&lt;b&gt;StrandsChatAdapter&lt;/b&gt;&#10;strands-chat.ts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1A2A44;fontSize=10;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="600" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r-runner-base" value="uses" style="endArrow=open;html=1;dashed=1;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l4-runner" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r-base-msg" value="returns" style="endArrow=open;html=1;dashed=1;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l4-base" target="l4-msg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r-base-err" value="throws" style="endArrow=open;html=1;dashed=1;strokeColor=#5A6C86;fontColor=#33475B;fontSize=10;rounded=0;" edge="1" parent="1" source="l4-base" target="l4-err">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r1" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a1" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r2" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a2" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r3" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a3" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r4" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a4" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r5" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a5" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r6" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a6" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r7" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a7" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r8" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a8" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r9" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a9" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r10" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a10" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l4-r11" style="endArrow=block;endFill=0;html=1;dashed=1;strokeColor=#82b366;rounded=0;" edge="1" parent="1" source="l4-a11" target="l4-base">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
