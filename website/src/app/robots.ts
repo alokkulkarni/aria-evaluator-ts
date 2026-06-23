@@ -2,6 +2,9 @@ import type { MetadataRoute } from 'next'
 
 import { SITE_URL } from '@/lib/schema'
 
+// Required for `output: 'export'` — render this route handler at build time.
+export const dynamic = 'force-static'
+
 // Keep authenticated / app surfaces out of search and AI crawls.
 const disallow = ['/api/', '/dashboard/', '/sign-out', '/sign-up/provisioning']
 

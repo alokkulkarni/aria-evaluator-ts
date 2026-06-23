@@ -1,6 +1,17 @@
-import type { CookiePreferences } from '@/components/shared/CookieConsentBanner'
-
 type ConsentState = 'granted' | 'denied'
+
+/**
+ * Cookie categories users can toggle. `necessary` is always on.
+ * Defined here (shared, framework-agnostic lib) rather than in the React banner,
+ * so this module stays self-contained — the auth-backend build compiles src/lib
+ * too and can't resolve frontend component paths.
+ */
+export interface CookiePreferences {
+  necessary: true
+  functional: boolean
+  analytics: boolean
+  marketing: boolean
+}
 
 /**
  * EEA + UK + EFTA (+ Switzerland) ISO country codes where non-essential cookies
