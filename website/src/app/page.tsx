@@ -297,6 +297,12 @@ export default function HomePage() {
                 </dd>
               </div>
             </dl>
+            <Link
+              href="/guides/what-is-ai-agent-evaluation"
+              className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-cyan-300 transition hover:text-cyan-200"
+            >
+              Read the full guide <ArrowRight className="h-4 w-4" />
+            </Link>
           </Reveal>
 
           {/* Positioning table — addresses the buyer/comparison intent the SERP rewards */}

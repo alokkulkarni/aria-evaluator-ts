@@ -11,6 +11,7 @@ const footerGroups = {
     { label: 'Pricing', href: '/pricing' },
     { label: 'Security', href: '/security' },
     { label: 'Docs', href: '/docs' },
+    { label: 'Evaluation guide', href: '/guides/what-is-ai-agent-evaluation' },
     { label: 'Community', href: '/community' },
   ],
   Company: [
