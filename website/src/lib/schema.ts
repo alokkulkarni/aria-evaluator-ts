@@ -136,3 +136,31 @@ export function buildBlogPostingSchema(post: BlogPost) {
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },
   }
 }
+
+/**
+ * Article schema for evergreen guide/pillar pages (org-authored, dated for freshness).
+ */
+export function buildArticleSchema(opts: {
+  path: string
+  headline: string
+  description: string
+  datePublished: string
+  dateModified?: string
+}) {
+  const url = `${SITE_URL}${opts.path}`
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    '@id': `${url}#article`,
+    headline: opts.headline,
+    description: opts.description,
+    url,
+    datePublished: opts.datePublished,
+    dateModified: opts.dateModified ?? opts.datePublished,
+    inLanguage: 'en',
+    author: { '@type': 'Organization', '@id': `${SITE_URL}/#organization` },
+    publisher: { '@id': `${SITE_URL}/#organization` },
+    isPartOf: { '@id': `${SITE_URL}/#website` },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+  }
+}
