@@ -3,7 +3,11 @@
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 
-import { applyConsentToGtag, isLikelyEEAorUK, regionalDefaultPreferences } from '@/lib/consent'
+import { applyConsentToGtag, isLikelyEEAorUK, regionalDefaultPreferences, type CookiePreferences } from '@/lib/consent'
+
+// CookiePreferences now lives in @/lib/consent (self-contained shared lib);
+// re-exported here for backward compatibility.
+export type { CookiePreferences }
 
 /** Event other components dispatch (e.g. a footer "Cookie settings" link) to reopen the banner. */
 const REOPEN_EVENT = 'aria:open-cookie-preferences'
@@ -11,14 +15,6 @@ const REOPEN_EVENT = 'aria:open-cookie-preferences'
 /** Reopen the consent banner so users can withdraw/change consent as easily as they gave it. */
 export function openCookiePreferences() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(REOPEN_EVENT))
-}
-
-/** Cookie categories that users can toggle. 'necessary' is always on. */
-export interface CookiePreferences {
-  necessary: true
-  functional: boolean
-  analytics: boolean
-  marketing: boolean
 }
 
 const STORAGE_KEY = 'aria_cookie_consent'
