@@ -371,11 +371,11 @@ resource "aws_cloudfront_response_headers_policy" "security" {
     content_security_policy {
       content_security_policy = join("; ", [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: https:",
-        "connect-src 'self' https://accounts.google.com https://github.com",
+        "connect-src 'self' https://accounts.google.com https://github.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com",
         "frame-src https://accounts.google.com",
         "frame-ancestors 'none'",
         "base-uri 'self'",

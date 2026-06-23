@@ -123,6 +123,23 @@ variable "acm_certificate_arn_us_east_1" {
   default     = ""
 }
 
+# ── SEO / Analytics ───────────────────────────────────────────────────────────
+# Google Search Console domain verification + GA4 measurement. The verification
+# token is public (it lives in DNS) so it's a plain default; GA4 only emits when
+# the measurement id is set.
+
+variable "google_site_verification_txt" {
+  description = "Google Search Console domain-verification token (value of the apex google-site-verification TXT record). The TXT record was created out-of-band and is adopted via `terraform import`."
+  type        = string
+  default     = "nb9sd5DDMyx3ZnSxSXTZ0Z-5eZag-WaFPL9tbxFG6l8"
+}
+
+variable "ga4_measurement_id" {
+  description = "GA4 Measurement ID (e.g. G-XXXXXXXXXX) injected into the static site at build time as NEXT_PUBLIC_GA4_MEASUREMENT_ID. Empty disables analytics."
+  type        = string
+  default     = ""
+}
+
 # ── Notifications ──────────────────────────────────────────────────────────────
 
 variable "alarm_sns_topic_arn" {

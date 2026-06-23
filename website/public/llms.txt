@@ -1,0 +1,23 @@
+# ARIA Evaluator
+
+> Enterprise AI safety evaluation, observability, and global deployment workflows for modern teams. ARIA Evaluator scores conversational-AI agents with a panel of independent AI judges across 15 quality and safety dimensions, runs adversarial security tests, and routes judge disagreements to human reviewers so teams can launch AI with verifiable quality and safety scores.
+
+## Core pages
+- [Home](https://ariaeval.io/): Product overview — panel-based scoring, 15 dimensions, supported platforms.
+- [Pricing](https://ariaeval.io/pricing): Plans from Free to Enterprise (scenarios/run, runs/month, AI models, regions).
+- [Docs](https://ariaeval.io/docs): How to connect an agent, run scenarios, and read evaluation results.
+- [Security](https://ariaeval.io/security): Security posture, data isolation, and responsible-disclosure policy.
+- [Blog](https://ariaeval.io/blog): Articles on multi-model judging, red-teaming, observability, and AI compliance.
+- [Community](https://ariaeval.io/community): Discussion spaces for AI evaluation, risk, security, bias & fairness, and compliance.
+
+## Key facts
+- Evaluation covers 15 dimensions across five groups: response quality, task completion, safety & security, customer experience, and escalation & vulnerability.
+- Each conversation is scored by multiple independent AI judges; disagreements are escalated to human reviewers.
+- Adapters: Amazon Connect, Amazon Lex, Azure Bot Service, Microsoft Copilot, OpenAPI/REST, and WebSocket — no SDK changes to the agent under test.
+- Adversarial security testing includes prompt injection, jailbreak, and social engineering.
+- Compliance and standards coverage: FCA Consumer Duty, EU AI Act, OWASP LLM Top 10, NIST AI RMF, MITRE ATLAS, ISO 27001, SOC 2, GDPR.
+- Available across 8 global deployment regions with tenant isolation.
+
+## Contact
+- Security: security@ariaeval.io
+- General: https://ariaeval.io/contact
