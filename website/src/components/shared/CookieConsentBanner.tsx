@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 
-import { applyConsentToGtag } from '@/lib/consent'
+import { applyConsentToGtag, isLikelyEEAorUK, regionalDefaultPreferences } from '@/lib/consent'
 
 /** Event other components dispatch (e.g. a footer "Cookie settings" link) to reopen the banner. */
 const REOPEN_EVENT = 'aria:open-cookie-preferences'
@@ -108,13 +108,19 @@ export function CookieConsentBanner() {
   const [preferences, setPreferences] = useState<CookiePreferences>({ ...DEFAULT_PREFERENCES })
 
   useEffect(() => {
-    // Show banner if no consent stored or consent version outdated
     const consent = loadConsent()
     if (consent) {
       // Returning visitor: replay their stored choice into Consent Mode on every load.
       applyConsentToGtag(consent.preferences)
-    } else {
-      // Small delay so the page renders before the banner slides in
+      return
+    }
+    // No stored choice yet — set toggle defaults for this region (opt-in inside EEA/UK,
+    // pre-selected elsewhere).
+    setPreferences(regionalDefaultPreferences())
+    // EEA/UK must opt in → auto-show the banner. Elsewhere analytics is granted by
+    // default via GA4's region-scoped Consent Mode default, and users opt out via the
+    // footer "Cookie settings" link — so we don't force the banner on them.
+    if (isLikelyEEAorUK()) {
       const timer = setTimeout(() => setVisible(true), 800)
       return () => clearTimeout(timer)
     }
