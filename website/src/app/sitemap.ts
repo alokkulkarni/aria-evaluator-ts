@@ -4,6 +4,9 @@ import { BLOG_POSTS } from '@/lib/blog-data'
 import { COMMUNITIES } from '@/lib/communities'
 import { SITE_URL } from '@/lib/schema'
 
+// Required for `output: 'export'` — render this route handler at build time.
+export const dynamic = 'force-static'
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date()
 
