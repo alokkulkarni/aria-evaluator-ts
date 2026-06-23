@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowUpRight } from 'lucide-react'
 
 import { AriaLogo } from '@/components/shared/AriaLogo'
+import { CookieSettingsButton } from '@/components/shared/CookieSettingsButton'
 import { MagneticButton } from '@/components/motion/MagneticButton'
 
 const footerGroups = {
@@ -100,6 +101,11 @@ export function Footer() {
                     </Link>
                   </li>
                 ))}
+                {title === 'Legal' && (
+                  <li>
+                    <CookieSettingsButton />
+                  </li>
+                )}
               </ul>
             </div>
           ))}

@@ -135,9 +135,9 @@ variable "google_site_verification_txt" {
 }
 
 variable "ga4_measurement_id" {
-  description = "GA4 Measurement ID (e.g. G-XXXXXXXXXX) injected into the static site at build time as NEXT_PUBLIC_GA4_MEASUREMENT_ID. Empty disables analytics."
+  description = "GA4 Measurement ID injected into the static site at build time as NEXT_PUBLIC_GA4_MEASUREMENT_ID. Public value (embedded in page HTML). Empty disables analytics. Collection is gated by Consent Mode v2 until the user opts in via the cookie banner."
   type        = string
-  default     = ""
+  default     = "G-3MJ8PK2F6Y"
 }
 
 # ── Notifications ──────────────────────────────────────────────────────────────
