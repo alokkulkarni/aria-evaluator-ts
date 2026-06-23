@@ -10,6 +10,7 @@ const footerGroups = {
     { label: 'Features', href: '/#features' },
     { label: 'Pricing', href: '/pricing' },
     { label: 'Security', href: '/security' },
+    { label: 'AI red teaming', href: '/solutions/ai-red-teaming' },
     { label: 'Docs', href: '/docs' },
     { label: 'Evaluation guide', href: '/guides/what-is-ai-agent-evaluation' },
     { label: 'Community', href: '/community' },
