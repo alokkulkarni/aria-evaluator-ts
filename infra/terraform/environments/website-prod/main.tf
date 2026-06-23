@@ -88,7 +88,7 @@ resource "null_resource" "build_and_deploy_website" {
         mv src/middleware.ts src/_middleware_backup.ts
       fi
 
-      NEXT_PUBLIC_SIGNUP_MODE=${var.signup_mode} NEXT_BUILD_MODE=export npm run build
+      NEXT_PUBLIC_SIGNUP_MODE=${var.signup_mode} NEXT_PUBLIC_GA4_MEASUREMENT_ID=${var.ga4_measurement_id} NEXT_BUILD_MODE=export npm run build
 
       # Restore API routes and middleware
       if [ -d src/app/_api_backup ]; then
@@ -109,6 +109,47 @@ resource "null_resource" "build_and_deploy_website" {
 
       echo "==> Website deployed."
     EOT
+  }
+}
+
+# ── Google Search Console verification (DNS TXT) ──────────────────────────────
+# The site is already verified in Search Console via this apex TXT record, which
+# was created out-of-band. We adopt it into Terraform so it's codified:
+#   terraform import 'aws_route53_record.google_site_verification[0]' \
+#     '${var.route53_zone_id}_${var.domain_name}_TXT'
+# After import, `terraform plan` shows no change (value matches live DNS).
+# If SPF/DMARC TXT are later added at the apex, fold them into `records` (one TXT set per name).
+resource "aws_route53_record" "google_site_verification" {
+  count   = var.google_site_verification_txt != "" && var.route53_zone_id != "" ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.domain_name
+  type    = "TXT"
+  ttl     = 3600
+  records = ["google-site-verification=${var.google_site_verification_txt}"]
+}
+
+# ── Google SEO API credentials — from Secrets Manager ─────────────────────────
+# Canonical as-code home for the local seo tooling's Google credentials (PageSpeed/
+# CrUX API key + Search Console / GA4 service-account JSON). Seeded with placeholders,
+# then populated out-of-band (mirrors the google_oauth pattern above):
+#   aws secretsmanager put-secret-value --secret-id /aria/website/prod/seo-google-api \
+#     --secret-string "$(jq -n --arg k "$API_KEY" --rawfile sa service_account.json \
+#       '{api_key:$k, service_account_json:$sa}')"
+resource "aws_secretsmanager_secret" "seo_google" {
+  name                    = "/aria/website/prod/seo-google-api"
+  description             = "Google SEO API credentials (PSI/CrUX api_key + Search Console/GA4 service account) for analyst tooling"
+  recovery_window_in_days = 7
+  tags                    = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "seo_google" {
+  secret_id = aws_secretsmanager_secret.seo_google.id
+  secret_string = jsonencode({
+    api_key              = "PENDING_BOOTSTRAP"
+    service_account_json = "PENDING_BOOTSTRAP"
+  })
+  lifecycle {
+    ignore_changes = [secret_string] # real values populated out-of-band; don't revert
   }
 }
 

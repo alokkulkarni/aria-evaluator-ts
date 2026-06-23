@@ -3,6 +3,16 @@
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 
+import { applyConsentToGtag, isLikelyEEAorUK, regionalDefaultPreferences } from '@/lib/consent'
+
+/** Event other components dispatch (e.g. a footer "Cookie settings" link) to reopen the banner. */
+const REOPEN_EVENT = 'aria:open-cookie-preferences'
+
+/** Reopen the consent banner so users can withdraw/change consent as easily as they gave it. */
+export function openCookiePreferences() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(REOPEN_EVENT))
+}
+
 /** Cookie categories that users can toggle. 'necessary' is always on. */
 export interface CookiePreferences {
   necessary: true
@@ -49,6 +59,8 @@ function saveConsent(preferences: CookiePreferences) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(consent))
   // Also set a cookie so server-side can read consent state
   document.cookie = `cookie_consent=${encodeURIComponent(JSON.stringify(preferences))};path=/;max-age=${365 * 24 * 60 * 60};SameSite=Lax`
+  // Propagate the choice to Google Consent Mode v2 (GA4).
+  applyConsentToGtag(preferences)
 }
 
 /** Hook to read cookie preferences anywhere in the app. */
@@ -96,13 +108,35 @@ export function CookieConsentBanner() {
   const [preferences, setPreferences] = useState<CookiePreferences>({ ...DEFAULT_PREFERENCES })
 
   useEffect(() => {
-    // Show banner if no consent stored or consent version outdated
     const consent = loadConsent()
-    if (!consent) {
-      // Small delay so the page renders before the banner slides in
+    if (consent) {
+      // Returning visitor: replay their stored choice into Consent Mode on every load.
+      applyConsentToGtag(consent.preferences)
+      return
+    }
+    // No stored choice yet — set toggle defaults for this region (opt-in inside EEA/UK,
+    // pre-selected elsewhere).
+    setPreferences(regionalDefaultPreferences())
+    // EEA/UK must opt in → auto-show the banner. Elsewhere analytics is granted by
+    // default via GA4's region-scoped Consent Mode default, and users opt out via the
+    // footer "Cookie settings" link — so we don't force the banner on them.
+    if (isLikelyEEAorUK()) {
       const timer = setTimeout(() => setVisible(true), 800)
       return () => clearTimeout(timer)
     }
+  }, [])
+
+  useEffect(() => {
+    // Allow reopening the banner (e.g. a footer "Cookie settings" link) so consent
+    // can be withdrawn or changed as easily as it was given.
+    const reopen = () => {
+      const stored = loadConsent()
+      if (stored) setPreferences(stored.preferences)
+      setShowDetails(true)
+      setVisible(true)
+    }
+    window.addEventListener(REOPEN_EVENT, reopen)
+    return () => window.removeEventListener(REOPEN_EVENT, reopen)
   }, [])
 
   const handleAcceptAll = useCallback(() => {

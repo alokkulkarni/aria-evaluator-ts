@@ -4,6 +4,8 @@ import { ArrowLeft, ChevronRight } from 'lucide-react'
 import type { Metadata } from 'next'
 
 import { BLOG_POSTS, CATEGORY_META } from '@/lib/blog-data'
+import { JsonLd } from '@/components/shared/JsonLd'
+import { buildBlogPostingSchema } from '@/lib/schema'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -20,6 +22,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${post.title} — ARIA Evaluator Blog`,
     description: post.excerpt,
+    alternates: { canonical: `/blog/${post.slug}` },
+    openGraph: {
+      type: 'article',
+      title: post.title,
+      description: post.excerpt,
+      url: `/blog/${post.slug}`,
+      publishedTime: post.publishedAt,
+      authors: [post.author.name],
+      tags: post.tags,
+    },
   }
 }
 
@@ -32,6 +44,7 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <div className="max-w-8xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+      <JsonLd data={buildBlogPostingSchema(post)} />
       <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-10">
         {/* Article */}
         <article className="min-w-0">

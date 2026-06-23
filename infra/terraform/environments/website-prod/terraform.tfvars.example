@@ -56,6 +56,21 @@ domain_name                   = "ariaeval.io"
 route53_zone_id               = ""    # e.g. "Z0123456789ABCDEFGHIJ"
 acm_certificate_arn_us_east_1 = "" # e.g. "arn:aws:acm:us-east-1:ACCOUNT:certificate/UUID"
 
+# ── SEO / Analytics ───────────────────────────────────────────────────────────
+# Google Search Console: the apex `google-site-verification` TXT record already
+# exists and is adopted into Terraform (variable `google_site_verification_txt`
+# has the live token as its default). One-time, after first apply, import it:
+#   terraform import 'aws_route53_record.google_site_verification[0]' \
+#     '<route53_zone_id>_ariaeval.io_TXT'
+#
+# GA4: set the Measurement ID to turn on analytics (Consent Mode v2 default-denied
+# until a consent banner grants it). Leave empty to keep analytics off.
+# ga4_measurement_id = "G-XXXXXXXXXX"
+#
+# The seo-google API key + service-account JSON live in Secrets Manager
+# (/aria/website/prod/seo-google-api), seeded with PENDING_BOOTSTRAP and populated
+# out-of-band — never put them in this file.
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 # alarm_sns_topic_arn = "arn:aws:sns:eu-west-2:ACCOUNT:aria-alarms"
 
