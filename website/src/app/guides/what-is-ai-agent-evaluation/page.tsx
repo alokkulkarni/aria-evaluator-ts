@@ -230,6 +230,14 @@ export default function WhatIsAiAgentEvaluationPage() {
             </article>
           ))}
         </Reveal>
+        <Reveal delay={0.1} className="mt-6">
+          <Link
+            href="/guides/conversational-ai-red-teaming"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-cyan-300 transition hover:text-cyan-200"
+          >
+            Deep dive: conversational AI red teaming <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Reveal>
       </Section>
 
       {/* Compliance */}
