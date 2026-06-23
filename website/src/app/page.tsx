@@ -67,6 +67,14 @@ const steps = [
   { step: '04', title: 'Evaluate', description: 'Launch your tests and watch results stream in live — each conversation scored by a panel of judges, with anything they disagree on sent to your team for the final call.' },
 ]
 
+const comparisonRows = [
+  { label: 'Scoring', single: 'One LLM as the sole arbiter', aria: 'Panel of independent judges' },
+  { label: 'On disagreement', single: 'No signal — you trust the number', aria: 'Escalated to a human reviewer' },
+  { label: 'Adversarial testing', single: 'Usually a separate add-on', aria: 'Built in: injection, jailbreak, social engineering' },
+  { label: 'Compliance', single: 'Generic quality metrics', aria: 'FCA Consumer Duty, OWASP LLM Top 10, NIST AI RMF' },
+  { label: 'Evidence', single: 'A score', aria: 'Reasoning + audit log for every result' },
+] as const
+
 export default function HomePage() {
   return (
     <div>
@@ -242,6 +250,91 @@ export default function HomePage() {
           <StatCard value={8} suffix="+" label="Agent platforms supported" />
           <StatCard value={8} label="Global regions" />
         </Reveal>
+      </Section>
+
+      {/* ── What is AI agent evaluation (definitional, citable, question-led) ──── */}
+      <Section>
+        <SectionHeading
+          eyebrow="The basics"
+          title="What is AI agent evaluation?"
+          subtitle="A plain-English primer for teams putting conversational AI into production."
+        />
+
+        <div className="mt-12 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          {/* Self-contained answer block (~55 words) — built to be quotable by AI answers */}
+          <Reveal className="glass rounded-2xl p-6 sm:p-8">
+            <p className="text-lg leading-8 text-slate-200">
+              <span className="font-semibold text-white">AI agent evaluation</span> is the practice of
+              measuring how well a conversational AI agent performs before and after it ships — scoring
+              real transcripts for response quality, task completion, safety, and compliance, and
+              stress-testing the agent against adversarial attacks. ARIA does this with a panel of
+              independent AI judges, escalating any disagreement to a human, so every release ships with a
+              verifiable quality and safety score.
+            </p>
+
+            <dl className="mt-8 space-y-5">
+              <div>
+                <dt className="font-display text-sm font-semibold text-cyan-200">What does it measure?</dt>
+                <dd className="mt-1 text-sm leading-6 text-slate-400">
+                  15 dimensions across response quality, task completion, safety and security, customer
+                  experience, and escalation and vulnerability.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-display text-sm font-semibold text-cyan-200">
+                  How is a judge panel different from a single judge?
+                </dt>
+                <dd className="mt-1 text-sm leading-6 text-slate-400">
+                  One model&rsquo;s blind spot can skew a score. A panel of independent judges cross-checks
+                  every result, and anything they disagree on goes to a person for the final call.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-display text-sm font-semibold text-cyan-200">Who is it for?</dt>
+                <dd className="mt-1 text-sm leading-6 text-slate-400">
+                  Security, product, and platform teams launching agents on Amazon Connect, Lex, Azure,
+                  Copilot, or any custom endpoint — especially in regulated, safety-critical settings.
+                </dd>
+              </div>
+            </dl>
+          </Reveal>
+
+          {/* Positioning table — addresses the buyer/comparison intent the SERP rewards */}
+          <Reveal delay={0.1} className="glass flex flex-col rounded-2xl p-6 sm:p-8">
+            <p className="eyebrow">How ARIA differs</p>
+            <h3 className="mt-2 font-display text-lg font-semibold text-white">
+              Single-judge tools vs. a judge panel
+            </h3>
+            <div className="mt-5 overflow-hidden rounded-xl border border-white/10">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="bg-white/[0.04] text-xs uppercase tracking-wide text-slate-400">
+                    <th className="px-3 py-2.5 font-medium"> </th>
+                    <th className="px-3 py-2.5 font-medium">Single-judge tool</th>
+                    <th className="px-3 py-2.5 font-medium text-cyan-200">ARIA</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {comparisonRows.map((row) => (
+                    <tr key={row.label}>
+                      <th scope="row" className="px-3 py-2.5 align-top font-medium text-white">
+                        {row.label}
+                      </th>
+                      <td className="px-3 py-2.5 align-top text-slate-400">{row.single}</td>
+                      <td className="px-3 py-2.5 align-top text-slate-200">{row.aria}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Link
+              href="/pricing"
+              className="mt-5 inline-flex items-center gap-1.5 self-start rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+            >
+              Compare plans <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Reveal>
+        </div>
       </Section>
 
       {/* ── Platform showcase ────────────────────────────────────────────────── */}
