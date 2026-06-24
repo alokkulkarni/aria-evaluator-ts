@@ -7,7 +7,8 @@
     "build": "next build",
     "build:static": "NEXT_BUILD_MODE=export node scripts/build-static.mjs",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "figma:publish": "figma connect publish"
   },
   "dependencies": {
     "@auth/core": "^0.37.2",
@@ -40,6 +41,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@figma/code-connect": "^1.3.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

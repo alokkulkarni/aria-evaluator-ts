@@ -1,0 +1,10 @@
+{
+  "codeConnect": {
+    "parser": "react",
+    "include": ["src/**/*.figma.tsx"],
+    "importPaths": {
+      "src/components/marketing/*": "@/components/marketing",
+      "src/components/shared/*": "@/components/shared"
+    }
+  }
+}
