@@ -621,7 +621,8 @@ function scoreColor(score: number): string {
 function TurnContributionBars({ contributions }: { contributions: ReportTurnContribution[] }) {
   return (
     <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 space-y-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Per-turn contribution</p>
+      <p className="text-xs font-semibold text-slate-700">Score per agent turn</p>
+      <p className="text-[10px] text-slate-400 -mt-0.5">Each agent turn's own score for this dimension — these are averaged into the score above.</p>
       {contributions.map((c) => (
         <div key={c.turnIndex} className="flex items-center gap-2" title={c.contentPreview}>
           <span className="text-[10px] text-slate-500 w-12 flex-shrink-0">Turn {c.turnIndex}</span>
@@ -701,43 +702,48 @@ function DimensionExplain(
 
   const maxAbs = Math.max(0.01, ...exp.turns.map((t) => Math.abs(t.value)));
   const ordered = [...exp.turns].sort((a, b) => a.turnIndex - b.turnIndex);
+  const delta = (exp.fullScore - exp.baselineScore).toFixed(1);
+  const dimLabel = dimensionId.replace(/_/g, ' ');
+  const isSecurity = dimensionId === 'guardrail_compliance' || dimensionId === 'prompt_injection_resistance';
   return (
-    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 space-y-1">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          Turn attribution (Shapley)
-        </p>
-        <span className="text-[10px] text-slate-400">
-          baseline {exp.baselineScore}/10 → {exp.fullScore}/10
-        </span>
+    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-3 space-y-2">
+      <p className="text-xs font-semibold text-slate-700">Which turns drove the {dimLabel} score?</p>
+      <p className="text-[11px] leading-snug text-slate-500">
+        Re-scoring the conversation with each agent turn removed gives a baseline of{' '}
+        <strong>{exp.baselineScore}/10</strong>; the full conversation scores <strong>{exp.fullScore}/10</strong>.
+        Each bar is that turn's share of the {delta}-point difference
+        {isSecurity ? ' — how much that response helped hold the guardrail' : ''}.
+      </p>
+      <div className="flex items-center gap-3 text-[10px] text-slate-400">
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2 rounded-sm bg-green-500" /> raised the score</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2 rounded-sm bg-red-500" /> lowered the score</span>
       </div>
-      {ordered.map((t) => {
-        const positive = t.value >= 0;
-        const widthPct = Math.max(2, (Math.abs(t.value) / maxAbs) * 50);
-        return (
-          <div key={t.turnIndex} className="flex items-center gap-2" title={`${t.role}: ${t.contentPreview}`}>
-            <span className="text-[10px] text-slate-500 w-16 flex-shrink-0">Turn {t.turnIndex} · {t.role === 'agent' ? 'agent' : 'cust'}</span>
-            {/* Diverging bar around a centre line */}
-            <div className="flex-1 flex items-center">
-              <div className="w-1/2 flex justify-end">
-                {!positive && <div className="h-2 bg-red-500 rounded-l-full" style={{ width: `${widthPct}%` }} />}
+      <div className="space-y-1.5">
+        {ordered.map((t) => {
+          const positive = t.value >= 0;
+          const widthPct = Math.max(3, (Math.abs(t.value) / maxAbs) * 100);
+          return (
+            <div key={t.turnIndex}>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500 w-16 flex-shrink-0">Turn {t.turnIndex} · {t.role === 'agent' ? 'agent' : 'cust'}</span>
+                <span className="flex-1 h-2.5 rounded-full bg-slate-200 overflow-hidden">
+                  <span className={`block h-full ${positive ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${widthPct}%` }} />
+                </span>
+                <span className={`text-[10px] font-mono font-semibold w-16 text-right ${positive ? 'text-green-600' : 'text-red-600'}`}>
+                  {positive ? '+' : ''}{t.value.toFixed(1)} pts
+                </span>
               </div>
-              <div className="w-px h-3 bg-slate-300" />
-              <div className="w-1/2 flex justify-start">
-                {positive && <div className="h-2 bg-green-500 rounded-r-full" style={{ width: `${widthPct}%` }} />}
-              </div>
+              {t.contentPreview && (
+                <p className="text-[10px] text-slate-400 italic truncate" style={{ paddingLeft: 72 }} title={t.contentPreview}>“{t.contentPreview}”</p>
+              )}
             </div>
-            <span className={`text-[10px] font-mono font-semibold w-10 text-right ${positive ? 'text-green-600' : 'text-red-600'}`}>
-              {positive ? '+' : ''}{t.value}
-            </span>
-          </div>
-        );
-      })}
-      <p className="text-[9px] text-slate-400 pt-0.5">
-        {exp.exact ? 'exact' : 'sampled'} · {exp.coalitionsEvaluated} re-scores · {exp.judgeModel.split('.').pop()}
+          );
+        })}
+      </div>
+      <p className="text-[9px] text-slate-400">
+        Contributions sum to the {delta}-pt change · {exp.exact ? 'exact' : 'sampled'} · {exp.coalitionsEvaluated} re-scores · {exp.judgeModel.split('.').pop()}
         {meta && !meta.cached && meta.tokensUsed > 0 ? ` · ${formatTokenCount(meta.tokensUsed)} tokens` : ''}
-        {meta?.cached ? ' · cached' : ''}
-        {' · approximate attribution, complements the judge’s rationale'}
+        {meta?.cached ? ' · cached' : ''} · approximate, complements the judge’s rationale
       </p>
     </div>
   );

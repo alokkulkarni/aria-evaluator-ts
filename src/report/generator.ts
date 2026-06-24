@@ -178,27 +178,24 @@ export class ReportGenerator {
     .evidence-label { display: block; font-size: 11px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
     .evidence-quote { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 10px; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #4a5568; margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
     /* Explainability — per-turn contributions (Phase 1) + turn Shapley (Phase 2) */
-    .turn-attrib { margin-top: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; }
-    .turn-attrib-label { font-size: 10px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; display: flex; justify-content: space-between; }
-    .turn-attrib-note { font-weight: 400; text-transform: none; letter-spacing: 0; color: #a0aec0; }
-    .tb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .tb-name { font-size: 10px; color: #718096; width: 64px; flex-shrink: 0; }
-    .tb-track { flex: 1; height: 8px; background: #edf2f7; border-radius: 4px; overflow: hidden; }
-    .tb-fill { height: 8px; border-radius: 4px; }
+    .turn-attrib { margin-top: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 10px 12px; }
+    .ta-title { font-size: 12px; font-weight: 700; color: #2d3748; margin-bottom: 4px; }
+    .ta-body { font-size: 11px; line-height: 1.5; color: #718096; margin-bottom: 8px; }
+    .ta-body strong { color: #2d3748; }
+    .ta-legend { display: flex; gap: 14px; font-size: 10px; color: #a0aec0; margin-bottom: 8px; }
+    .ta-key { display: inline-flex; align-items: center; gap: 5px; }
+    .ta-swatch { width: 10px; height: 8px; border-radius: 2px; display: inline-block; }
+    .ta-swatch.good { background: #38a169; } .ta-swatch.bad { background: #e53e3e; }
+    .ta-item { margin-bottom: 7px; }
+    .ta-preview { font-size: 10px; color: #a0aec0; font-style: italic; padding-left: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+    .ta-foot { font-size: 9px; color: #a0aec0; margin-top: 8px; border-top: 1px solid #edf2f7; padding-top: 6px; }
+    .tb-row { display: flex; align-items: center; gap: 8px; }
+    .tb-name { font-size: 10px; color: #718096; width: 68px; flex-shrink: 0; }
+    .tb-track { flex: 1; height: 9px; background: #edf2f7; border-radius: 5px; overflow: hidden; }
+    .tb-fill { display: block; height: 9px; border-radius: 5px; }
     .tb-fill.good { background: #38a169; } .tb-fill.mid { background: #dd6b20; } .tb-fill.bad { background: #e53e3e; }
-    .tb-val { font-size: 10px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; width: 34px; text-align: right; flex-shrink: 0; }
-    /* Diverging Shapley bar: red (lowered) left of centre, green (raised) right */
-    .shap-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .shap-name { font-size: 10px; color: #718096; width: 96px; flex-shrink: 0; }
-    .shap-bar { flex: 1; display: flex; align-items: center; }
-    .shap-half { width: 50%; display: flex; }
-    .shap-half.left { justify-content: flex-end; }
-    .shap-center { width: 1px; height: 12px; background: #cbd5e0; }
-    .shap-seg { height: 8px; }
-    .shap-seg.neg { background: #e53e3e; border-radius: 4px 0 0 4px; }
-    .shap-seg.pos { background: #38a169; border-radius: 0 4px 4px 0; }
-    .shap-val { font-size: 10px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; width: 40px; text-align: right; flex-shrink: 0; }
-    .shap-val.neg { color: #e53e3e; } .shap-val.pos { color: #38a169; }
+    .tb-val { font-size: 10px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; width: 56px; text-align: right; flex-shrink: 0; color: #4a5568; }
+    .tb-val.pos { color: #2f855a; } .tb-val.neg { color: #c53030; }
   </style>
 </head>
 <body>
@@ -347,46 +344,55 @@ export class ReportGenerator {
     const rows = contributions
       .map((c) => {
         const cls = c.score >= 7 ? 'good' : c.score >= 5 ? 'mid' : 'bad';
-        return `<div class="tb-row">
+        return `<div class="ta-item"><div class="tb-row">
           <span class="tb-name">Turn ${c.turnIndex}</span>
           <span class="tb-track"><span class="tb-fill ${cls}" style="width:${Math.max(2, c.score * 10)}%"></span></span>
           <span class="tb-val">${c.score}/10</span>
-        </div>`;
+        </div></div>`;
       })
       .join('');
     return `<div class="turn-attrib">
-      <div class="turn-attrib-label"><span>Per-turn contribution</span></div>
+      <div class="ta-title">Score per agent turn</div>
+      <div class="ta-body">Each agent turn's own score for this dimension — these are averaged into the score above.</div>
       ${rows}
     </div>`;
   }
 
-  /** Phase 2: pre-computed turn-level Shapley attribution (diverging bars). */
+  /**
+   * Phase 2: pre-computed turn-level Shapley attribution. Each bar is a turn's
+   * share of the score swing from "all agent turns removed" (baseline) to the
+   * full conversation; green raised the score, red lowered it.
+   */
   private renderShapleyBars(exp: TurnShapleyExplanation): string {
     const maxAbs = Math.max(0.01, ...exp.turns.map((t) => Math.abs(t.value)));
+    const delta = (exp.fullScore - exp.baselineScore).toFixed(1);
+    const dimLabel = exp.dimensionId.replace(/_/g, ' ');
+    const isSecurity = exp.dimensionId === 'guardrail_compliance' || exp.dimensionId === 'prompt_injection_resistance';
     const rows = [...exp.turns]
       .sort((a, b) => a.turnIndex - b.turnIndex)
       .map((t) => {
         const positive = t.value >= 0;
-        const widthPct = Math.max(2, (Math.abs(t.value) / maxAbs) * 100);
-        const left = positive ? '' : `<span class="shap-seg neg" style="width:${widthPct}%"></span>`;
-        const right = positive ? `<span class="shap-seg pos" style="width:${widthPct}%"></span>` : '';
+        const widthPct = Math.max(3, (Math.abs(t.value) / maxAbs) * 100);
         const role = t.role === 'agent' ? 'agent' : 'cust';
-        return `<div class="shap-row" title="${escapeHtml(t.contentPreview)}">
-          <span class="shap-name">Turn ${t.turnIndex} · ${role}</span>
-          <span class="shap-bar">
-            <span class="shap-half left">${left}</span><span class="shap-center"></span><span class="shap-half">${right}</span>
-          </span>
-          <span class="shap-val ${positive ? 'pos' : 'neg'}">${positive ? '+' : ''}${t.value}</span>
+        const preview = t.contentPreview ? `<div class="ta-preview">“${escapeHtml(t.contentPreview)}”</div>` : '';
+        return `<div class="ta-item">
+          <div class="tb-row">
+            <span class="tb-name">Turn ${t.turnIndex} · ${role}</span>
+            <span class="tb-track"><span class="tb-fill ${positive ? 'good' : 'bad'}" style="width:${widthPct}%"></span></span>
+            <span class="tb-val ${positive ? 'pos' : 'neg'}">${positive ? '+' : ''}${t.value.toFixed(1)} pts</span>
+          </div>
+          ${preview}
         </div>`;
       })
       .join('');
     const note = `${exp.exact ? 'exact' : 'sampled'} · ${exp.coalitionsEvaluated} re-scores · ${escapeHtml(exp.judgeModel.split('.').pop() ?? exp.judgeModel)}`;
+    const securityNote = isSecurity ? ' — how much that response helped hold the guardrail' : '';
     return `<div class="turn-attrib">
-      <div class="turn-attrib-label">
-        <span>Turn attribution (Shapley)</span>
-        <span class="turn-attrib-note">baseline ${exp.baselineScore}/10 → ${exp.fullScore}/10 · ${note}</span>
-      </div>
+      <div class="ta-title">Which turns drove the ${escapeHtml(dimLabel)} score?</div>
+      <div class="ta-body">Re-scoring the conversation with each agent turn removed gives a baseline of <strong>${exp.baselineScore}/10</strong>; the full conversation scores <strong>${exp.fullScore}/10</strong>. Each bar is that turn's share of the ${delta}-point difference${securityNote}.</div>
+      <div class="ta-legend"><span class="ta-key"><span class="ta-swatch good"></span>raised the score</span><span class="ta-key"><span class="ta-swatch bad"></span>lowered the score</span></div>
       ${rows}
+      <div class="ta-foot">Contributions sum to the ${delta}-pt change · ${note} · approximate, complements the judge's rationale</div>
     </div>`;
   }
 
