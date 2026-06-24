@@ -11,6 +11,22 @@ export interface JudgeVote {
   justification?: string;
 }
 
+/**
+ * Per-turn contribution to a TRACE dimension score. These are the per-agent-turn
+ * scores the judge already produces before they are averaged into the dimension
+ * score — retained here so the UI can show "which turn dragged this dimension
+ * down" with zero extra judge calls (explainability Phase 1).
+ */
+export interface TurnContribution {
+  /** 1-based ordinal within the agent-turn sequence the judge scored. */
+  turnIndex: number;
+  role: 'customer' | 'agent';
+  /** Truncated turn text for display. */
+  contentPreview: string;
+  /** This turn's score for the dimension, 0–10. */
+  score: number;
+}
+
 export interface DimensionScore {
   score: number;         // 0–10 (committee mean when multiple judges)
   justification: string;
@@ -22,6 +38,8 @@ export interface DimensionScore {
   spread?: number;
   /** True when spread exceeds the committee disagreement threshold. */
   disagreement?: boolean;
+  /** Per-turn breakdown for TRACE dimensions (explainability Phase 1). */
+  turnContributions?: TurnContribution[];
 }
 
 /** Lightweight reference to a committee member, stored on the result. */

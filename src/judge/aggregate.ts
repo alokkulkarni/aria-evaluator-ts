@@ -1,8 +1,33 @@
 // src/judge/aggregate.ts
 // Pure committee aggregation. No SDK/IO imports so it is trivially unit-tested.
 
-import type { DimensionScore, JudgeRef, JudgeVote } from '../types/evaluation.js';
+import type { DimensionScore, JudgeRef, JudgeVote, TurnContribution } from '../types/evaluation.js';
 import { SECURITY_CORE_DIMENSIONS } from './dimensions.js';
+
+/** Average per-turn TRACE contributions across the members that produced them. */
+function mergeTurnContributions(members: MemberOutcome[], dimId: string): TurnContribution[] | undefined {
+  const lists = members
+    .map((m) => m.dimensionScores[dimId]?.turnContributions)
+    .filter((t): t is TurnContribution[] => Array.isArray(t) && t.length > 0);
+  if (lists.length === 0) return undefined;
+
+  const byIndex = new Map<number, { sum: number; count: number; sample: TurnContribution }>();
+  for (const list of lists) {
+    for (const tc of list) {
+      const e = byIndex.get(tc.turnIndex);
+      if (e) { e.sum += tc.score; e.count += 1; }
+      else byIndex.set(tc.turnIndex, { sum: tc.score, count: 1, sample: tc });
+    }
+  }
+  return [...byIndex.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([turnIndex, e]) => ({
+      turnIndex,
+      role: e.sample.role,
+      contentPreview: e.sample.contentPreview,
+      score: Math.round(e.sum / e.count),
+    }));
+}
 
 export const PASS_THRESHOLD = 6.0;
 
@@ -126,12 +151,14 @@ export function aggregateMemberScores(
             disagreement ? ' — JUDGES DISAGREED' : ''
           }. ${repDs?.justification ?? ''}`.trim();
 
+    const turnContributions = mergeTurnContributions(contributing, id);
     out[id] = {
       score: Math.round(mean),
       justification,
       evidence: repDs?.evidence,
       gap: repDs?.gap,
       ...(votes.length > 1 ? { judgeVotes: votes, spread, disagreement } : {}),
+      ...(turnContributions ? { turnContributions } : {}),
     };
   }
 

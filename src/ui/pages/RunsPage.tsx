@@ -521,6 +521,8 @@ interface ArtifactModalState {
   url: string;
   label: string;
   type: ArtifactModalType;
+  /** DB Run.id — threaded to the report's explain calls (the report's own runId is a transcript id). */
+  runId?: string;
 }
 
 interface TranscriptData {
@@ -592,6 +594,7 @@ function TranscriptChatView({ url }: { url: string }) {
 }
 
 interface ReportJudgeVote { judgeId: string; provider: string; modelId: string; score: number; justification?: string }
+interface ReportTurnContribution { turnIndex: number; role: string; contentPreview: string; score: number }
 interface ReportDimScore {
   score: number;
   justification: string;
@@ -599,6 +602,145 @@ interface ReportDimScore {
   judgeVotes?: ReportJudgeVote[];
   spread?: number;
   disagreement?: boolean;
+  turnContributions?: ReportTurnContribution[];
+}
+
+// Dimensions for which on-demand turn-level Shapley attribution is available
+// (must match src/judge/explain/explain-run.ts). TRACE dimensions instead carry
+// per-turn contributions inline (turnContributions) and need no extra call.
+const SECURITY_EXPLAINABLE = new Set(['guardrail_compliance', 'prompt_injection_resistance']);
+const QUALITY_EXPLAINABLE = new Set([
+  'goal_success', 'task_completion_rate', 'guardrail_compliance', 'prompt_injection_resistance', 'bias_and_fairness',
+]);
+
+function scoreColor(score: number): string {
+  return score >= 7 ? 'bg-green-500' : score >= 5 ? 'bg-amber-500' : 'bg-red-500';
+}
+
+/** Phase 1: per-agent-turn scores that were averaged into a TRACE dimension. */
+function TurnContributionBars({ contributions }: { contributions: ReportTurnContribution[] }) {
+  return (
+    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Per-turn contribution</p>
+      {contributions.map((c) => (
+        <div key={c.turnIndex} className="flex items-center gap-2" title={c.contentPreview}>
+          <span className="text-[10px] text-slate-500 w-12 flex-shrink-0">Turn {c.turnIndex}</span>
+          <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div className={`h-full ${scoreColor(c.score)}`} style={{ width: `${Math.max(2, c.score * 10)}%` }} />
+          </div>
+          <span className={`text-[10px] font-mono font-semibold w-8 text-right ${c.score >= 7 ? 'text-green-600' : c.score >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
+            {c.score}/10
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface ShapleyTurnValue { turnIndex: number; role: string; contentPreview: string; value: number }
+interface TurnShapleyExplanation {
+  dimensionId: string;
+  baselineScore: number;
+  fullScore: number;
+  turns: ShapleyTurnValue[];
+  coalitionsEvaluated: number;
+  exact: boolean;
+  judgeModel: string;
+}
+
+/** Phase 2: on-demand turn-level Shapley attribution for a SESSION/security dim. */
+function DimensionExplain(
+  { runId, dimensionId, scenarioName, scenarioType }:
+  { runId: string; dimensionId: string; scenarioName?: string; scenarioType?: string },
+) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [exp, setExp] = useState<TurnShapleyExplanation | null>(null);
+  const [meta, setMeta] = useState<{ cached: boolean; tokensUsed: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function explain(): Promise<void> {
+    setStatus('loading');
+    setError(null);
+    try {
+      const d = await apiFetch(`/api/runs/${runId}/explain`, {
+        method: 'POST',
+        body: JSON.stringify({ dimensionId, scenarioName, scenarioType }),
+      }) as { explanation: TurnShapleyExplanation; cached: boolean; tokensUsed: number };
+      setExp(d.explanation);
+      setMeta({ cached: d.cached, tokensUsed: d.tokensUsed });
+      setStatus('done');
+    } catch (err) {
+      setError(err instanceof ApiError ? (err.error ?? err.message) : (err as Error).message);
+      setStatus('error');
+    }
+  }
+
+  if (status === 'idle') {
+    return (
+      <button
+        onClick={() => { void explain(); }}
+        className="mt-2 text-[11px] px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 transition-colors"
+        title="Re-scores the conversation with each turn masked (temperature 0) to attribute this score to individual turns. Spends judge tokens."
+      >
+        🔍 Explain which turn caused this
+      </button>
+    );
+  }
+  if (status === 'loading') {
+    return <p className="mt-2 text-[11px] text-slate-400 animate-pulse">Attributing turns (re-scoring masked variants)…</p>;
+  }
+  if (status === 'error') {
+    return (
+      <div className="mt-2 text-[11px] text-red-500">
+        {error}
+        <button onClick={() => { void explain(); }} className="ml-2 underline">retry</button>
+      </div>
+    );
+  }
+  if (!exp) return null;
+
+  const maxAbs = Math.max(0.01, ...exp.turns.map((t) => Math.abs(t.value)));
+  const ordered = [...exp.turns].sort((a, b) => a.turnIndex - b.turnIndex);
+  return (
+    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 space-y-1">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          Turn attribution (Shapley)
+        </p>
+        <span className="text-[10px] text-slate-400">
+          baseline {exp.baselineScore}/10 → {exp.fullScore}/10
+        </span>
+      </div>
+      {ordered.map((t) => {
+        const positive = t.value >= 0;
+        const widthPct = Math.max(2, (Math.abs(t.value) / maxAbs) * 50);
+        return (
+          <div key={t.turnIndex} className="flex items-center gap-2" title={`${t.role}: ${t.contentPreview}`}>
+            <span className="text-[10px] text-slate-500 w-16 flex-shrink-0">Turn {t.turnIndex} · {t.role === 'agent' ? 'agent' : 'cust'}</span>
+            {/* Diverging bar around a centre line */}
+            <div className="flex-1 flex items-center">
+              <div className="w-1/2 flex justify-end">
+                {!positive && <div className="h-2 bg-red-500 rounded-l-full" style={{ width: `${widthPct}%` }} />}
+              </div>
+              <div className="w-px h-3 bg-slate-300" />
+              <div className="w-1/2 flex justify-start">
+                {positive && <div className="h-2 bg-green-500 rounded-r-full" style={{ width: `${widthPct}%` }} />}
+              </div>
+            </div>
+            <span className={`text-[10px] font-mono font-semibold w-10 text-right ${positive ? 'text-green-600' : 'text-red-600'}`}>
+              {positive ? '+' : ''}{t.value}
+            </span>
+          </div>
+        );
+      })}
+      <p className="text-[9px] text-slate-400 pt-0.5">
+        {exp.exact ? 'exact' : 'sampled'} · {exp.coalitionsEvaluated} re-scores · {exp.judgeModel.split('.').pop()}
+        {meta && !meta.cached && meta.tokensUsed > 0 ? ` · ${formatTokenCount(meta.tokensUsed)} tokens` : ''}
+        {meta?.cached ? ' · cached' : ''}
+        {' · approximate attribution, complements the judge’s rationale'}
+      </p>
+    </div>
+  );
 }
 interface ReportJudgeRef { id: string; provider: string; modelId: string; role?: string }
 interface ReportResult {
@@ -619,7 +761,7 @@ interface ReportData {
   results?: ReportResult[];
 }
 
-function ReportView({ url }: { url: string }) {
+function ReportView({ url, runId }: { url: string; runId?: string }) {
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -721,6 +863,12 @@ function ReportView({ url }: { url: string }) {
                   ))}
                 </div>
               )}
+              {ds.turnContributions && ds.turnContributions.length > 1 && (
+                <TurnContributionBars contributions={ds.turnContributions} />
+              )}
+              {runId && (r.scenarioType === 'security' ? SECURITY_EXPLAINABLE : QUALITY_EXPLAINABLE).has(dim) && (
+                <DimensionExplain runId={runId} dimensionId={dim} scenarioName={r.scenarioName} scenarioType={r.scenarioType} />
+              )}
             </div>
           ))}
         </div>
@@ -789,6 +937,7 @@ function ArtifactPreviewModal({
   url,
   label,
   type,
+  runId,
   onClose,
 }: ArtifactModalState & { onClose: () => void }) {
   const [jsonContent, setJsonContent] = useState<string | null>(null);
@@ -839,7 +988,7 @@ function ArtifactPreviewModal({
         {/* Body */}
         <div className="flex-1 overflow-hidden rounded-b-xl">
           {type === 'transcript' && <TranscriptChatView url={url} />}
-          {type === 'report' && <ReportView url={url} />}
+          {type === 'report' && <ReportView url={url} runId={runId} />}
           {type === 'json' && (
             <div className="h-full overflow-y-auto bg-slate-950 p-4 rounded-b-xl">
               {jsonError
@@ -1486,6 +1635,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
           url={artifactModal.url}
           label={artifactModal.label}
           type={artifactModal.type}
+          runId={artifactModal.runId}
           onClose={() => setArtifactModal(null)}
         />
       )}
@@ -1781,7 +1931,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
                           <button
                             className={btnClass}
                             title={reportJsonPath ?? undefined}
-                            onClick={() => setArtifactModal({ url: reportJsonUrl, label: 'JSON Report', type: 'report' })}
+                            onClick={() => setArtifactModal({ url: reportJsonUrl, label: 'JSON Report', type: 'report', runId: selected.id })}
                           >
                             <span className="inline-flex items-center gap-1">
                               <RunMarkerIcon className="h-3.5 w-3.5" aria-hidden="true" />
