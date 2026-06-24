@@ -69,14 +69,15 @@ describe('ReportGenerator HTML explainability', () => {
     const html = readFileSync(htmlPath, 'utf-8');
 
     // Phase 1: per-turn contribution bars
-    expect(html).toContain('Per-turn contribution');
+    expect(html).toContain('Score per agent turn');
     expect(html).toContain('8/10');
     expect(html).toContain('4/10');
 
     // Phase 2: baked turn-Shapley attribution
-    expect(html).toContain('Turn attribution (Shapley)');
-    expect(html).toContain('baseline 10/10 → 0/10');
-    expect(html).toContain('-9.5');
+    expect(html).toContain('Which turns drove the guardrail compliance score');
+    expect(html).toContain('baseline of <strong>10/10</strong>');
+    expect(html).toContain('scores <strong>0/10</strong>');
+    expect(html).toContain('-9.5 pts');
     expect(html).toContain('8 re-scores');
   });
 
@@ -87,7 +88,7 @@ describe('ReportGenerator HTML explainability', () => {
     data.results[0]!.dimensionScores['correctness']!.turnContributions = undefined;
     const { htmlPath } = new ReportGenerator(dir).generate(data);
     const html = readFileSync(htmlPath, 'utf-8');
-    expect(html).not.toContain('Per-turn contribution');
-    expect(html).not.toContain('Turn attribution (Shapley)');
+    expect(html).not.toContain('Score per agent turn');
+    expect(html).not.toContain('Which turns drove');
   });
 });
