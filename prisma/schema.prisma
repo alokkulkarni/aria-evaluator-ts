@@ -168,6 +168,7 @@ model Run {
   securityAttack SecurityAttack?
   transcripts  TranscriptArtifact[]
   scenarioEvals ScenarioEval[]
+  explanations Explanation[]
   scenarioRefsJson String?  // JSON string[] of scenario refs (path#index) — lets "Re-run" reuse the original selection
   tenantId     String?
   createdAt    DateTime  @default(now())
@@ -455,6 +456,27 @@ model SecurityAttack {
   @@index([category])
   @@index([severity])
   @@index([createdAt])
+}
+
+// ─── Explanations (explainability Phase 2) ─────────────────────────────────────
+// On-demand turn-level Shapley attribution for one SESSION/security dimension of
+// a run. Computed post-hoc (extra judge calls) and cached here keyed by config
+// hash. The attribution payload is small, so it is stored inline as JSON rather
+// than in the object store. See src/judge/explain/.
+model Explanation {
+  id           String   @id @default(cuid())
+  runId        String   // DB Run.id
+  run          Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  scenarioName String   @default("") // which scenario within the run (multi-scenario runs share a runId)
+  dimensionId  String   // which dimension was attributed (e.g. guardrail_compliance)
+  method       String   @default("shapley-turn")
+  configHash   String   // hash of (model + scenario + dimension + transcript) — cache validity
+  data         String   // JSON: TurnShapleyExplanation
+  tokensUsed   Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@unique([runId, scenarioName, dimensionId, method])
+  @@index([runId])
 }
 
 // ─── Report ───────────────────────────────────────────────────────────────────

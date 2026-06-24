@@ -13,6 +13,7 @@ import { appendRunLogLine, readRunLogLines } from '../../jobs/run-logs.js';
 import { normalizeArtifactRef, sanitizeArtifactPathInLogLine } from '../../runtime/paths.js';
 import type { Scenario } from '../../types/scenario.js';
 import { recordAuditEventSafe } from '../audit-log.js';
+import { explainRunTurnShapley, listRunExplanations, ExplainError } from '../../judge/explain/explain-run.js';
 import { registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings } from '../runtime-settings.js';
 import { checkRunQuota } from '../../shared/quota-enforcement.js';
@@ -394,6 +395,59 @@ runsRouter.get('/:id/logs', async (req, res) => {
     if (!run) return res.status(404).json({ error: 'Not found' });
     res.json({ logs: readRunLogLines(run.id).map(sanitizeArtifactPathInLogLine) });
   } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+const DIMENSION_ID_RE = /^[a-z][a-z_]{1,60}$/;
+
+// GET /api/runs/:id/explanations — cached turn-Shapley attributions for the run
+runsRouter.get('/:id/explanations', async (req, res) => {
+  const runId = req.params['id']!;
+  if (!UUID_RE.test(runId)) return res.status(400).json({ error: 'invalid run id format' });
+  try {
+    const explanations = await listRunExplanations(runId);
+    res.json({ explanations });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST /api/runs/:id/explain — compute (or return cached) turn-level Shapley
+// attribution for one SESSION/security dimension. Spends judge tokens, so it is
+// on-demand and audited.
+runsRouter.post('/:id/explain', async (req, res) => {
+  const runId = req.params['id']!;
+  if (!UUID_RE.test(runId)) return res.status(400).json({ error: 'invalid run id format' });
+
+  const body = (req.body ?? {}) as { dimensionId?: unknown; scenarioName?: unknown; scenarioType?: unknown; force?: unknown };
+  const dimensionId = typeof body.dimensionId === 'string' ? body.dimensionId : '';
+  if (!DIMENSION_ID_RE.test(dimensionId)) {
+    return res.status(400).json({ error: 'dimensionId is required (lowercase dimension id)' });
+  }
+  const scenarioName =
+    typeof body.scenarioName === 'string' && body.scenarioName.length <= 200 ? body.scenarioName : undefined;
+  const scenarioType =
+    body.scenarioType === 'security' || body.scenarioType === 'quality' ? body.scenarioType : undefined;
+  const force = body.force === true;
+
+  try {
+    const { explanation, cached, tokensUsed } = await explainRunTurnShapley(runId, dimensionId, {
+      scenarioName,
+      scenarioType,
+      force,
+    });
+    await recordAuditEventSafe(req, 'runs.explain', runId, {
+      dimensionId,
+      scenarioName,
+      method: explanation.method,
+      cached,
+      tokensUsed,
+      coalitions: explanation.coalitionsEvaluated,
+    });
+    res.json({ explanation, cached, tokensUsed });
+  } catch (err) {
+    if (err instanceof ExplainError) return res.status(err.status).json({ error: err.message });
     res.status(500).json({ error: (err as Error).message });
   }
 });

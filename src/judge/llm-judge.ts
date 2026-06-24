@@ -270,6 +270,14 @@ export class JudgeMember {
             })
             .join('\n'),
           gap: gaps.length > 0 ? gaps.join(' | ') : undefined,
+          // Explainability Phase 1: keep the per-turn scores (already computed
+          // above) so the UI can show which turn moved this dimension.
+          turnContributions: perTurn.map((r, i) => ({
+            turnIndex: i + 1,
+            role: 'agent' as const,
+            contentPreview: r.ariaTurn.length > 160 ? r.ariaTurn.slice(0, 160) + '…' : r.ariaTurn,
+            score: Math.round(r.score * 10),
+          })),
         };
       }
     }
@@ -313,6 +321,36 @@ export class JudgeMember {
       judgeTokenTotalEstimate: judgeUsage.totalTokens,
       scenarioType: isSecurityScenario ? 'security' : 'quality',
     };
+  }
+
+  /**
+   * Score ONLY the session (or security-session) dimensions for a transcript and
+   * return raw 0–10 scores. Used by the on-demand turn-Shapley explainer, which
+   * re-scores many masked variants of one transcript — so it skips the TRACE and
+   * escalation passes and issues a single batched call per variant. Deterministic
+   * when the member is constructed with temperature 0.
+   */
+  async scoreSession(
+    transcript: Transcript,
+    goal: string,
+    scenario?: Pick<Scenario, 'attack_type'>,
+  ): Promise<{ scores: Record<string, number>; usage: TokenEstimate }> {
+    const attackType = scenario?.attack_type;
+    const sessionDims = attackType != null ? SECURITY_SESSION_DIMENSIONS : SESSION_DIMENSIONS;
+    const judgeTranscript = sanitizeForJudge(transcript, attackType);
+    const fullContext = formatConversation(judgeTranscript);
+    const { results, usage } = await this.judgeBatch(
+      sessionDims,
+      fullContext.replace('{goal}', goal),
+      goal,
+      attackType,
+    );
+    const scores: Record<string, number> = {};
+    for (const dim of sessionDims) {
+      const r = results[dim.id] ?? { score: 0.5 };
+      scores[dim.id] = Math.round(r.score * 10);
+    }
+    return { scores, usage };
   }
 
   // ── Private ──────────────────────────────────────────────────────────────
