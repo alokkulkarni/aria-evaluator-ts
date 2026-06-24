@@ -18,7 +18,8 @@ const footerGroups = {
   Company: [
     { label: 'About', href: '/about' },
     { label: 'Blog', href: '/blog' },
-    { label: 'Careers', href: '/careers' },
+    // Careers hidden for now — page still exists at /careers, just not linked. Restore when hiring resumes.
+    // { label: 'Careers', href: '/careers' },
     { label: 'Contact', href: '/contact' },
   ],
   Legal: [
