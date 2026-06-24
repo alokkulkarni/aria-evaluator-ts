@@ -15,6 +15,7 @@ import {
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import type { Scenario } from '../types/index.js';
 import type { Turn } from '../types/transcript.js';
+import { formatModelIdForRegion, extractBareModelId } from '../shared/judge-config.js';
 
 export interface AgentDriverConfig {
   modelId?: string;
@@ -27,12 +28,27 @@ export class AgentDriver {
   private conversationHistory: Message[] = [];
 
   constructor(config: AgentDriverConfig = {}) {
-    this.modelId =
+    const region = config.region ?? process.env['BEDROCK_REGION'] ?? 'eu-west-2';
+    const rawModelId =
       config.modelId ??
       process.env['JUDGE_MODEL_ID'] ??
       'eu.anthropic.claude-sonnet-4-6';
+    // Newer Anthropic/Nova models (e.g. Haiku 4.5) reject on-demand throughput and
+    // require a cross-region inference profile ID (eu./us./ap. prefix). Normalise the
+    // resolved ID the same way the judge does (src/judge/providers/bedrock.ts) so
+    // agent-mode turns don't fail with "Invocation of model ID ... isn't supported".
+    //
+    // formatModelIdForRegion only knows registered models; for anything else it
+    // returns the bare ID, which would strip a geo prefix the caller deliberately
+    // supplied (the default eu.anthropic.… fallback or a custom profile/ARN). Keep
+    // the original in that case; only adopt the formatted ID when it actually adds
+    // the required prefix.
+    const bareModelId = extractBareModelId(rawModelId);
+    const formatted = formatModelIdForRegion(bareModelId, region);
+    this.modelId =
+      formatted === bareModelId && rawModelId !== bareModelId ? rawModelId : formatted;
     this.client = new BedrockRuntimeClient({
-      region: config.region ?? process.env['BEDROCK_REGION'] ?? 'eu-west-2',
+      region,
       // Prevent a hung Bedrock call from blocking agent-mode turns indefinitely.
       requestHandler: new NodeHttpHandler({
         requestTimeout: parseInt(process.env['AGENT_DRIVER_TIMEOUT_MS'] ?? '30000'),

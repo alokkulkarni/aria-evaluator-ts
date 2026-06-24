@@ -525,11 +525,42 @@ export class ReportGenerator {
         <div class="transcript-card">
           <h3>📋 ${escapeHtml(t.scenarioName)} <small style="color:#718096">[${t.provider ?? 'unknown'} · ${t.channel}]</small></h3>
           ${turns}
-          ${t.error ? `<p style="color:#e53e3e;margin-top:8px">⚠ Error: ${escapeHtml(t.error)}</p>` : ''}
+          ${t.error && !isInfrastructureError(t.error) ? `<p style="color:#e53e3e;margin-top:8px">⚠ Error: ${escapeHtml(t.error)}</p>` : ''}
         </div>`;
       })
       .join('');
   }
+}
+
+/**
+ * Provider/infrastructure failures (Bedrock model-invocation errors, throttling,
+ * auth, quota, timeouts) are platform issues, not evaluation signal. We never
+ * surface their raw SDK text in the report: it's noise to the reader and can leak
+ * internal model IDs / ARNs. Genuine run-ending reasons (e.g. session ended) still
+ * render. The correct response to one of these is to fix it at the source, not to
+ * show it to a report consumer.
+ */
+function isInfrastructureError(message: string): boolean {
+  const m = message.toLowerCase();
+  return [
+    'invocation of model id',
+    'inference profile',
+    'on-demand throughput',
+    'throttlingexception',
+    'too many requests',
+    'accessdeniedexception',
+    'validationexception',
+    'serviceunavailable',
+    'service unavailable',
+    'resourcenotfoundexception',
+    'modeltimeoutexception',
+    'modelnotready',
+    'modelerrorexception',
+    'expiredtoken',
+    'could not load credentials',
+    'security token',
+    'bedrock',
+  ].some((needle) => m.includes(needle));
 }
 
 function escapeHtml(str: string): string {
