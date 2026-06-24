@@ -53,7 +53,7 @@ export const BLOG_POSTS: BlogPost[] = [
     excerpt:
       'Most evaluation pipelines use a single model as the arbiter of quality. This creates systematic blind spots that widen precisely when you need reliable judgements the most. Here is how multi-model judging changes the equation.',
     category: 'platform-engineering',
-    author: { name: 'Dr Elena Vasquez', role: 'Research Engineer' },
+    author: { name: 'Alok Kulkarni', role: 'Founder' },
     publishedAt: '2025-05-20',
     readTime: 12,
     tags: ['evaluation', 'llm-judges', 'multi-model', 'calibration'],
@@ -128,7 +128,7 @@ export const BLOG_POSTS: BlogPost[] = [
     excerpt:
       'Manual prompt testing catches perhaps 10% of what a structured red-team programme finds. Enterprise deployments need systematic adversarial coverage — not heroic individual effort.',
     category: 'red-team',
-    author: { name: 'Marcus Webb', role: 'Principal Security Engineer' },
+    author: { name: 'Alok Kulkarni', role: 'Founder' },
     publishedAt: '2025-05-05',
     readTime: 10,
     tags: ['red-teaming', 'adversarial', 'security', 'owasp', 'prompt-injection'],
@@ -201,7 +201,7 @@ export const BLOG_POSTS: BlogPost[] = [
     excerpt:
       'Most teams measure accuracy. The best teams measure the entire evaluation lifecycle — from input telemetry to judge reasoning traces. Here is what you are missing without trace-level observability.',
     category: 'observability',
-    author: { name: 'Priya Sharma', role: 'Staff Engineer' },
+    author: { name: 'Alok Kulkarni', role: 'Founder' },
     publishedAt: '2025-04-22',
     readTime: 8,
     tags: ['observability', 'opentelemetry', 'metrics', 'tracing', 'slo'],
@@ -270,7 +270,7 @@ export const BLOG_POSTS: BlogPost[] = [
     excerpt:
       'Enterprise contact centre AI fails in predictable patterns when conversations leave the intended path. Five failure modes account for the majority of incidents — and all of them are testable before deployment.',
     category: 'red-team',
-    author: { name: 'James Thornton', role: 'AI Safety Lead' },
+    author: { name: 'Alok Kulkarni', role: 'Founder' },
     publishedAt: '2025-04-08',
     readTime: 9,
     tags: ['contact-centre', 'escalation', 'functional-testing', 'edge-cases'],
@@ -346,7 +346,7 @@ export const BLOG_POSTS: BlogPost[] = [
     excerpt:
       "The EU AI Act entered into force in August 2024. Compliance obligations for high-risk AI systems are now active. Here is what the Act actually requires from your evaluation programme — and the gaps most teams have.",
     category: 'research',
-    author: { name: 'Tom Bradley', role: 'VP Engineering' },
+    author: { name: 'Alok Kulkarni', role: 'Founder' },
     publishedAt: '2025-03-18',
     readTime: 11,
     tags: ['eu-ai-act', 'compliance', 'regulation', 'iso-42001', 'governance'],
@@ -426,7 +426,7 @@ export const BLOG_POSTS: BlogPost[] = [
     excerpt:
       'Most teams test their model before initial deployment. Very few have automated evaluation pipelines that run on subsequent model updates. The gap between a deployment test and a sustainable programme is where most AI quality stories end.',
     category: 'platform-engineering',
-    author: { name: 'Sarah Chen', role: 'Head of AI Platform' },
+    author: { name: 'Alok Kulkarni', role: 'Founder' },
     publishedAt: '2025-03-04',
     readTime: 9,
     tags: ['evaluation', 'pipeline', 'governance', 'nist', 'mlops'],
