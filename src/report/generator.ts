@@ -5,7 +5,8 @@ import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { appPaths } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
-import type { EvalResult } from '../types/evaluation.js';
+import type { EvalResult, TurnContribution } from '../types/evaluation.js';
+import type { TurnShapleyExplanation } from '../judge/explain/turn-shapley.js';
 import { ALL_DIMENSIONS_BY_ID } from '../judge/dimensions.js';
 
 export interface ReportData {
@@ -13,6 +14,12 @@ export interface ReportData {
   generatedAt: string;
   transcripts: Transcript[];
   results: EvalResult[];
+  /**
+   * Pre-computed turn-level Shapley attributions, keyed by scenarioName →
+   * dimensionId (explainability Phase 2, baked statically into the HTML report).
+   * Optional and gated — populated only when REPORT_EXPLAIN_TURNS is enabled.
+   */
+  explanations?: Record<string, Record<string, TurnShapleyExplanation>>;
 }
 
 export class ReportGenerator {
@@ -69,7 +76,7 @@ export class ReportGenerator {
       })
       .join('');
 
-    const dimTable = this.renderDimensionTable(results);
+    const dimTable = this.renderDimensionTable(results, data.explanations);
     const committeeSection = this.renderJudgeConsensus(results);
     const transcriptCards = this.renderTranscriptCards(transcripts);
 
@@ -170,6 +177,28 @@ export class ReportGenerator {
     .evidence-block { margin-top: 8px; }
     .evidence-label { display: block; font-size: 11px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
     .evidence-quote { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 10px; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #4a5568; margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
+    /* Explainability — per-turn contributions (Phase 1) + turn Shapley (Phase 2) */
+    .turn-attrib { margin-top: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; }
+    .turn-attrib-label { font-size: 10px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .turn-attrib-note { font-weight: 400; text-transform: none; letter-spacing: 0; color: #a0aec0; }
+    .tb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .tb-name { font-size: 10px; color: #718096; width: 64px; flex-shrink: 0; }
+    .tb-track { flex: 1; height: 8px; background: #edf2f7; border-radius: 4px; overflow: hidden; }
+    .tb-fill { height: 8px; border-radius: 4px; }
+    .tb-fill.good { background: #38a169; } .tb-fill.mid { background: #dd6b20; } .tb-fill.bad { background: #e53e3e; }
+    .tb-val { font-size: 10px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; width: 34px; text-align: right; flex-shrink: 0; }
+    /* Diverging Shapley bar: red (lowered) left of centre, green (raised) right */
+    .shap-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .shap-name { font-size: 10px; color: #718096; width: 96px; flex-shrink: 0; }
+    .shap-bar { flex: 1; display: flex; align-items: center; }
+    .shap-half { width: 50%; display: flex; }
+    .shap-half.left { justify-content: flex-end; }
+    .shap-center { width: 1px; height: 12px; background: #cbd5e0; }
+    .shap-seg { height: 8px; }
+    .shap-seg.neg { background: #e53e3e; border-radius: 4px 0 0 4px; }
+    .shap-seg.pos { background: #38a169; border-radius: 0 4px 4px 0; }
+    .shap-val { font-size: 10px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; width: 40px; text-align: right; flex-shrink: 0; }
+    .shap-val.neg { color: #e53e3e; } .shap-val.pos { color: #38a169; }
   </style>
 </head>
 <body>
@@ -313,7 +342,58 @@ export class ReportGenerator {
   </section>`;
   }
 
-  private renderDimensionTable(results: EvalResult[]): string {
+  /** Phase 1: per-agent-turn scores that were averaged into a TRACE dimension. */
+  private renderTurnContribBars(contributions: TurnContribution[]): string {
+    const rows = contributions
+      .map((c) => {
+        const cls = c.score >= 7 ? 'good' : c.score >= 5 ? 'mid' : 'bad';
+        return `<div class="tb-row">
+          <span class="tb-name">Turn ${c.turnIndex}</span>
+          <span class="tb-track"><span class="tb-fill ${cls}" style="width:${Math.max(2, c.score * 10)}%"></span></span>
+          <span class="tb-val">${c.score}/10</span>
+        </div>`;
+      })
+      .join('');
+    return `<div class="turn-attrib">
+      <div class="turn-attrib-label"><span>Per-turn contribution</span></div>
+      ${rows}
+    </div>`;
+  }
+
+  /** Phase 2: pre-computed turn-level Shapley attribution (diverging bars). */
+  private renderShapleyBars(exp: TurnShapleyExplanation): string {
+    const maxAbs = Math.max(0.01, ...exp.turns.map((t) => Math.abs(t.value)));
+    const rows = [...exp.turns]
+      .sort((a, b) => a.turnIndex - b.turnIndex)
+      .map((t) => {
+        const positive = t.value >= 0;
+        const widthPct = Math.max(2, (Math.abs(t.value) / maxAbs) * 100);
+        const left = positive ? '' : `<span class="shap-seg neg" style="width:${widthPct}%"></span>`;
+        const right = positive ? `<span class="shap-seg pos" style="width:${widthPct}%"></span>` : '';
+        const role = t.role === 'agent' ? 'agent' : 'cust';
+        return `<div class="shap-row" title="${escapeHtml(t.contentPreview)}">
+          <span class="shap-name">Turn ${t.turnIndex} · ${role}</span>
+          <span class="shap-bar">
+            <span class="shap-half left">${left}</span><span class="shap-center"></span><span class="shap-half">${right}</span>
+          </span>
+          <span class="shap-val ${positive ? 'pos' : 'neg'}">${positive ? '+' : ''}${t.value}</span>
+        </div>`;
+      })
+      .join('');
+    const note = `${exp.exact ? 'exact' : 'sampled'} · ${exp.coalitionsEvaluated} re-scores · ${escapeHtml(exp.judgeModel.split('.').pop() ?? exp.judgeModel)}`;
+    return `<div class="turn-attrib">
+      <div class="turn-attrib-label">
+        <span>Turn attribution (Shapley)</span>
+        <span class="turn-attrib-note">baseline ${exp.baselineScore}/10 → ${exp.fullScore}/10 · ${note}</span>
+      </div>
+      ${rows}
+    </div>`;
+  }
+
+  private renderDimensionTable(
+    results: EvalResult[],
+    explanations?: Record<string, Record<string, TurnShapleyExplanation>>,
+  ): string {
     if (results.length === 0) return '<p>No results.</p>';
 
     const allDimIds = new Set<string>();
@@ -380,11 +460,20 @@ export class ReportGenerator {
               ? ds.evidence.split('\n').map((line) => `<div class="evidence-quote">${escapeHtml(line)}</div>`).join('')
               : '';
 
+            // Explainability: per-turn contributions (Phase 1) + baked Shapley (Phase 2).
+            const turnBars = (ds.turnContributions?.length ?? 0) > 1
+              ? this.renderTurnContribBars(ds.turnContributions!)
+              : '';
+            const shap = explanations?.[result.scenarioName]?.[dimId];
+            const shapBars = shap ? this.renderShapleyBars(shap) : '';
+
             return `<div class="scenario-block ${blockClass}">
                 ${scenarioLabel}
                 ${gapBlock}
                 ${justLines ? `<div class="reasoning-block"><ul>${justLines}</ul></div>` : ''}
                 ${evidenceLines ? `<div class="evidence-block"><span class="evidence-label">📎 Evidence</span>${evidenceLines}</div>` : ''}
+                ${turnBars}
+                ${shapBars}
               </div>`;
           })
           .join('');

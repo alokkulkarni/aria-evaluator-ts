@@ -22,6 +22,7 @@ import type { BaseAdapter } from '../adapters/base.js';
 import { JudgePanel } from '../judge/judge-panel.js';
 import { getJudgeCommitteeConfig } from '../api/runtime-settings.js';
 import { ReportGenerator } from '../report/generator.js';
+import { explainTranscriptsForReport } from '../judge/explain/explain-run.js';
 import {
   loadScenariosFromFile,
   filterScenarios,
@@ -29,6 +30,7 @@ import {
 import type { Scenario } from '../types/scenario.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult } from '../types/evaluation.js';
+import type { TurnShapleyExplanation } from '../judge/explain/turn-shapley.js';
 
 type EvaluatorProvider = 'connect' | 'lex' | 'azure' | 'azure-openai' | 'strands' | 'copilot' | 'custom' | 'openapi' | 'websocket';
 const SUPPORTED_PROVIDERS: EvaluatorProvider[] = ['connect', 'lex', 'azure', 'azure-openai', 'strands', 'copilot', 'custom', 'openapi', 'websocket'];
@@ -37,6 +39,30 @@ const SUPPORTED_PROVIDERS: EvaluatorProvider[] = ['connect', 'lex', 'azure', 'az
 const PARALLEL_THRESHOLD = 10;
 // Max concurrent scenario workers (bounded to avoid provider rate limits)
 const MAX_CONCURRENCY = 5;
+
+/**
+ * Gated turn-attribution pre-compute for the HTML report (explainability Phase 2).
+ * Off by default — set REPORT_EXPLAIN_TURNS=true to bake turn-Shapley bars into the
+ * report for security-core / failed dimensions (spends extra judge tokens, capped
+ * by REPORT_EXPLAIN_MAX, default 12 computations).
+ */
+async function reportExplanations(
+  transcripts: Transcript[],
+  results: EvalResult[],
+): Promise<Record<string, Record<string, TurnShapleyExplanation>> | undefined> {
+  const flag = (process.env['REPORT_EXPLAIN_TURNS'] ?? '').toLowerCase();
+  if (flag !== 'true' && flag !== '1') return undefined;
+  const max = Number(process.env['REPORT_EXPLAIN_MAX']);
+  try {
+    console.log('  🔍 Pre-computing turn attribution for the report…');
+    return await explainTranscriptsForReport(transcripts, results, {
+      max: Number.isFinite(max) && max > 0 ? max : 12,
+    });
+  } catch (err) {
+    console.warn(`  ⚠  turn attribution skipped: ${(err as Error).message}`);
+    return undefined;
+  }
+}
 
 console.log(`
 🚀 ARIA Evaluator TS  starting at ${new Date().toISOString()}
@@ -92,12 +118,14 @@ if (args['transcript']) {
 
   const judge = new JudgePanel(getJudgeCommitteeConfig());
   const result = await judge.evaluate(transcript, 'Evaluate transcript quality');
+  const explanations = await reportExplanations([transcript], [result]);
   const reporter = new ReportGenerator();
   reporter.generate({
     runId: transcript.id,
     generatedAt: new Date().toISOString(),
     transcripts: [transcript],
     results: [result],
+    ...(explanations ? { explanations } : {}),
   });
   process.exit(0);
 }
@@ -176,12 +204,14 @@ if (allTranscripts.length === 0) {
 }
 
 if (allResults.length > 0) {
+  const explanations = await reportExplanations(allTranscripts, allResults);
   const reporter = new ReportGenerator();
   reporter.generate({
     runId,
     generatedAt: new Date().toISOString(),
     transcripts: allTranscripts,
     results: allResults,
+    ...(explanations ? { explanations } : {}),
   });
 
   const passCount = allResults.filter((r) => r.passed).length;

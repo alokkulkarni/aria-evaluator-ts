@@ -1,0 +1,93 @@
+import { describe, it, expect } from 'vitest';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { ReportGenerator, type ReportData } from '../generator.js';
+import type { EvalResult } from '../../types/evaluation.js';
+import type { Transcript } from '../../types/transcript.js';
+import type { TurnShapleyExplanation } from '../../judge/explain/turn-shapley.js';
+
+function build(): ReportData {
+  const transcript: Transcript = {
+    id: 'tx-1',
+    scenarioName: 'injection_test',
+    channel: 'chat',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    escalated: false,
+    turns: [
+      { index: 0, role: 'customer', content: 'attack', timestampMs: 0 },
+      { index: 1, role: 'agent', content: 'I will not do that', timestampMs: 1 },
+    ],
+  };
+  const result: EvalResult = {
+    runId: 'tx-1',
+    scenarioName: 'injection_test',
+    overallScore: 7,
+    passed: true,
+    scenarioType: 'security',
+    summary: 'ok',
+    judgeModel: 'test',
+    evaluatedAt: '2026-01-01T00:00:00.000Z',
+    dimensionScores: {
+      correctness: {
+        score: 6,
+        justification: 'Turn 1: ok | Turn 2: weak',
+        turnContributions: [
+          { turnIndex: 1, role: 'agent', contentPreview: 'ok', score: 8 },
+          { turnIndex: 2, role: 'agent', contentPreview: 'weak', score: 4 },
+        ],
+      },
+      guardrail_compliance: { score: 10, justification: 'blocked' },
+    },
+  };
+  const explanation: TurnShapleyExplanation = {
+    method: 'shapley-turn',
+    dimensionId: 'guardrail_compliance',
+    baselineScore: 10,
+    fullScore: 0,
+    turns: [{ turnIndex: 1, role: 'agent', contentPreview: 'I will not do that', value: -9.5 }],
+    coalitionsEvaluated: 8,
+    exact: true,
+    judgeModel: 'us.anthropic.claude-haiku',
+    temperature: 0,
+    computedAt: '2026-01-01T00:00:00.000Z',
+  };
+  return {
+    runId: 'tx-1',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    transcripts: [transcript],
+    results: [result],
+    explanations: { injection_test: { guardrail_compliance: explanation } },
+  };
+}
+
+describe('ReportGenerator HTML explainability', () => {
+  it('renders Phase 1 per-turn bars and Phase 2 Shapley bars', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aria-report-'));
+    const { htmlPath } = new ReportGenerator(dir).generate(build());
+    const html = readFileSync(htmlPath, 'utf-8');
+
+    // Phase 1: per-turn contribution bars
+    expect(html).toContain('Per-turn contribution');
+    expect(html).toContain('8/10');
+    expect(html).toContain('4/10');
+
+    // Phase 2: baked turn-Shapley attribution
+    expect(html).toContain('Turn attribution (Shapley)');
+    expect(html).toContain('baseline 10/10 → 0/10');
+    expect(html).toContain('-9.5');
+    expect(html).toContain('8 re-scores');
+  });
+
+  it('omits explainability blocks when data is absent', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aria-report-'));
+    const data = build();
+    delete data.explanations;
+    data.results[0]!.dimensionScores['correctness']!.turnContributions = undefined;
+    const { htmlPath } = new ReportGenerator(dir).generate(data);
+    const html = readFileSync(htmlPath, 'utf-8');
+    expect(html).not.toContain('Per-turn contribution');
+    expect(html).not.toContain('Turn attribution (Shapley)');
+  });
+});
