@@ -1,16 +1,14 @@
 // src/judge/explain/explain-run.ts
-// On-demand orchestration for turn-level Shapley explanations (explainability
-// Phase 2). Loads a completed run, resolves the specific scenario's transcript
-// (multi-scenario "portal" runs share one DB Run.id but produce one transcript
-// artifact per scenario), re-scores masked variants with a single deterministic
-// (temperature-0) judge, computes per-turn Shapley values for one SESSION/
-// security dimension, and caches the result keyed by (run, scenario, dimension).
+// Orchestration for turn-level Shapley explanations (explainability Phase 2).
 //
-// Note: the report UI surfaces a per-transcript `runId` (the transcript id) which
-// is NOT a DB Run.id — callers must pass the DB Run.id plus the scenarioName.
+// Two entry points share one compute core (explainTranscript):
+//   • explainRunTurnShapley  — on-demand, DB-backed + cached (interactive JSON
+//     report button). Loads the run + the scenario's TranscriptArtifact.
+//   • explainTranscriptsForReport — gated pre-compute from in-memory transcripts
+//     at report-generation time, baked statically into the HTML report.
 //
-// Cost: each coalition is one judge call. The compute module bounds this (exact
-// for short conversations; sampled + capped otherwise); cached results are free.
+// Compute re-scores masked transcript variants with a deterministic (temp-0)
+// judge. Each coalition is one judge call; the compute module bounds this.
 
 import { createHash } from 'node:crypto';
 import yaml from 'js-yaml';
@@ -22,10 +20,12 @@ import { BedrockJudgeProvider } from '../providers/bedrock.js';
 import { JudgeMember } from '../llm-judge.js';
 import { SECURITY_SESSION_DIMENSIONS } from '../dimensions.js';
 import type { Transcript } from '../../types/transcript.js';
-import { computeTurnShapley, type TurnShapleyExplanation } from './turn-shapley.js';
+import type { EvalResult } from '../../types/evaluation.js';
+import { computeTurnShapley, type TurnShapleyExplanation, type TurnShapleyOptions } from './turn-shapley.js';
 
 const METHOD = 'shapley-turn';
 const MAX_ATTRIBUTABLE_TURNS = 24;
+const FAIL_THRESHOLD = 6; // < 6/10 is a failing dimension score
 
 const EXPLAINABLE_QUALITY = new Set([
   'goal_success',
@@ -50,14 +50,65 @@ export interface ExplainResult {
 }
 
 export interface ExplainOptions {
-  /** Scenario within the run to attribute (required for multi-scenario runs). */
   scenarioName?: string;
-  /** 'security' | 'quality' — from the report result; drives dim set + sanitizer. */
   scenarioType?: string;
   force?: boolean;
 }
 
 interface ParsedTurn { index: number; role: string; content: string }
+
+/** A fresh deterministic (temperature-0) single judge used for re-scoring. */
+export function buildExplainerJudge(): { member: JudgeMember; judgeModel: string } {
+  const cfg = getJudgeRuntimeConfig();
+  const member = new JudgeMember(
+    { id: 'explainer', provider: 'bedrock', modelId: cfg.modelId },
+    new BedrockJudgeProvider(),
+    { systemPrompt: cfg.systemPrompt, temperature: 0, maxTokens: cfg.maxTokens },
+  );
+  return { member, judgeModel: cfg.modelId };
+}
+
+/** Core: turn-level Shapley for one dimension of an in-memory transcript (no DB). */
+export async function explainTranscript(params: {
+  transcript: Transcript;
+  dimensionId: string;
+  isSecurity: boolean;
+  goal: string;
+  attackType?: string;
+  member: JudgeMember;
+  judgeModel: string;
+  onUsage?: (totalTokens: number) => void;
+  options?: TurnShapleyOptions;
+}): Promise<TurnShapleyExplanation> {
+  const { transcript, dimensionId, isSecurity, goal, attackType, member, judgeModel, onUsage } = params;
+
+  // Attributable turns: agent turns for security (customer turns are redacted by
+  // the judge sanitizer), all turns otherwise.
+  let attributablePositions = transcript.turns
+    .map((t, pos) => ({ pos, t }))
+    .filter(({ t }) => (isSecurity ? t.role === 'agent' : true) && t.content.trim().length > 0)
+    .map(({ pos }) => pos);
+  if (attributablePositions.length > MAX_ATTRIBUTABLE_TURNS) {
+    attributablePositions = attributablePositions.slice(-MAX_ATTRIBUTABLE_TURNS);
+  }
+
+  const score = async (t: Transcript): Promise<number> => {
+    const { scores, usage } = await member.scoreSession(t, goal, attackType ? { attack_type: attackType } : undefined);
+    onUsage?.(usage.totalTokens);
+    return scores[dimensionId] ?? 0;
+  };
+
+  return computeTurnShapley({
+    transcript,
+    attributablePositions,
+    dimensionId,
+    judgeModel,
+    temperature: 0,
+    score,
+    now: new Date().toISOString(),
+    options: params.options,
+  });
+}
 
 function parseScenarioMeta(yamlContent: string | null | undefined): { goal: string; attackType?: string } {
   if (!yamlContent) return { goal: '' };
@@ -80,6 +131,28 @@ async function loadTranscriptTurns(ref: string): Promise<ParsedTurn[]> {
   return Array.isArray(tx.turns) ? tx.turns : [];
 }
 
+function toTranscript(
+  id: string,
+  scenarioName: string,
+  channel: string,
+  startedAt: string,
+  turns: ParsedTurn[],
+): Transcript {
+  return {
+    id,
+    scenarioName,
+    channel: channel === 'voice' ? 'voice' : 'chat',
+    startedAt,
+    turns: turns.map((t, i) => ({
+      index: typeof t.index === 'number' ? t.index : i,
+      role: t.role === 'agent' ? 'agent' : 'customer',
+      content: t.content,
+      timestampMs: 0,
+    })),
+    escalated: false,
+  };
+}
+
 /** Compute (or return cached) turn-Shapley attribution for one run + scenario + dimension. */
 export async function explainRunTurnShapley(
   runId: string, // DB Run.id
@@ -96,10 +169,6 @@ export async function explainRunTurnShapley(
   });
   if (!run) throw new ExplainError(404, 'Run not found');
 
-  // Resolve which conversation to attribute. Prefer the per-scenario transcript
-  // artifact (multi-scenario runs concatenate all turns in the Turn table, so the
-  // artifact is the only clean per-scenario source). Fall back to the Turn rows
-  // for legacy single-conversation runs without artifacts.
   const artifacts = run.transcripts ?? [];
   let scenarioName = opts.scenarioName ?? '';
   let turns: ParsedTurn[];
@@ -128,12 +197,9 @@ export async function explainRunTurnShapley(
   }
   if (turns.length === 0) throw new ExplainError(400, 'Selected transcript has no turns');
 
-  // Security vs quality: trust the caller's scenarioType (from the report), else
-  // derive from the scenario YAML's attack_type.
   const meta = parseScenarioMeta(run.scenario?.yamlContent);
   const isSecurity = opts.scenarioType === 'security' || (opts.scenarioType == null && meta.attackType != null);
   const effectiveAttack = isSecurity ? (meta.attackType ?? 'adversarial') : undefined;
-  const goal = meta.goal; // best-effort; '' for multi-scenario portal runs
 
   const allowed = isSecurity ? EXPLAINABLE_SECURITY : EXPLAINABLE_QUALITY;
   if (!allowed.has(dimensionId)) {
@@ -144,23 +210,17 @@ export async function explainRunTurnShapley(
     );
   }
 
-  const transcript: Transcript = {
-    id: run.id,
-    scenarioName: scenarioName || run.scenarioName,
-    channel: run.channel === 'voice' ? 'voice' : 'chat',
-    startedAt: (run.startedAt ?? run.createdAt).toISOString(),
-    turns: turns.map((t, i) => ({
-      index: typeof t.index === 'number' ? t.index : i,
-      role: t.role === 'agent' ? 'agent' : 'customer',
-      content: t.content,
-      timestampMs: 0,
-    })),
-    escalated: false,
-  };
+  const transcript = toTranscript(
+    run.id,
+    scenarioName || run.scenarioName,
+    run.channel,
+    (run.startedAt ?? run.createdAt).toISOString(),
+    turns,
+  );
 
-  const cfg = getJudgeRuntimeConfig();
+  const { member, judgeModel } = buildExplainerJudge();
   const configHash = createHash('sha256')
-    .update(`${cfg.modelId}|t0|${scenarioName}|${dimensionId}|${METHOD}|`)
+    .update(`${judgeModel}|t0|${scenarioName}|${dimensionId}|${METHOD}|`)
     .update(transcript.turns.map((t) => `${t.role}:${t.content}`).join('¶'))
     .digest('hex')
     .slice(0, 40);
@@ -171,41 +231,16 @@ export async function explainRunTurnShapley(
     return { explanation: JSON.parse(existing.data) as TurnShapleyExplanation, cached: true, tokensUsed: 0 };
   }
 
-  // Attributable turns: agent turns for security (customer turns are redacted by
-  // the judge sanitizer), all turns otherwise.
-  let attributablePositions = transcript.turns
-    .map((t, pos) => ({ pos, t }))
-    .filter(({ t }) => (isSecurity ? t.role === 'agent' : true) && t.content.trim().length > 0)
-    .map(({ pos }) => pos);
-  if (attributablePositions.length > MAX_ATTRIBUTABLE_TURNS) {
-    attributablePositions = attributablePositions.slice(-MAX_ATTRIBUTABLE_TURNS);
-  }
-
-  const member = new JudgeMember(
-    { id: 'explainer', provider: 'bedrock', modelId: cfg.modelId },
-    new BedrockJudgeProvider(),
-    { systemPrompt: cfg.systemPrompt, temperature: 0, maxTokens: cfg.maxTokens },
-  );
-
   let tokensUsed = 0;
-  const score = async (t: Transcript): Promise<number> => {
-    const { scores, usage } = await member.scoreSession(
-      t,
-      goal,
-      effectiveAttack ? { attack_type: effectiveAttack } : undefined,
-    );
-    tokensUsed += usage.totalTokens;
-    return scores[dimensionId] ?? 0;
-  };
-
-  const explanation = await computeTurnShapley({
+  const explanation = await explainTranscript({
     transcript,
-    attributablePositions,
     dimensionId,
-    judgeModel: cfg.modelId,
-    temperature: 0,
-    score,
-    now: new Date().toISOString(),
+    isSecurity,
+    goal: meta.goal,
+    attackType: effectiveAttack,
+    member,
+    judgeModel,
+    onUsage: (t) => { tokensUsed += t; },
   });
 
   await prisma.explanation.upsert({
@@ -215,6 +250,62 @@ export async function explainRunTurnShapley(
   });
 
   return { explanation, cached: false, tokensUsed };
+}
+
+/**
+ * Gated pre-compute for the HTML report: turn-Shapley for the security-core
+ * dimensions of every security scenario (regardless of pass/fail — "which turn
+ * blocked the attack") plus any failed explainable dimension. Computed from the
+ * in-memory transcripts at report-generation time and bounded by `max`.
+ *
+ * Returns a map scenarioName → dimensionId → explanation.
+ */
+export async function explainTranscriptsForReport(
+  transcripts: Transcript[],
+  results: EvalResult[],
+  opts: { max?: number } = {},
+): Promise<Record<string, Record<string, TurnShapleyExplanation>>> {
+  const max = opts.max ?? 12;
+  const byId = new Map(transcripts.map((t) => [t.id, t]));
+  const out: Record<string, Record<string, TurnShapleyExplanation>> = {};
+  let computed = 0;
+  const { member, judgeModel } = buildExplainerJudge();
+
+  for (const result of results) {
+    if (computed >= max) break;
+    const transcript = byId.get(result.runId);
+    if (!transcript || transcript.turns.length === 0) continue;
+    const isSecurity = result.scenarioType === 'security';
+    const allowed = isSecurity ? EXPLAINABLE_SECURITY : EXPLAINABLE_QUALITY;
+
+    const dims = Object.keys(result.dimensionScores).filter((dimId) => {
+      if (!allowed.has(dimId)) return false;
+      const ds = result.dimensionScores[dimId];
+      // security core dims always (show which turn drove the verdict); quality
+      // dims only when failing.
+      return isSecurity || (ds != null && ds.score < FAIL_THRESHOLD);
+    });
+
+    for (const dimId of dims) {
+      if (computed >= max) break;
+      try {
+        const explanation = await explainTranscript({
+          transcript,
+          dimensionId: dimId,
+          isSecurity,
+          goal: '', // scenario goal not available at report time; security dims don't need it
+          attackType: isSecurity ? 'adversarial' : undefined,
+          member,
+          judgeModel,
+        });
+        (out[result.scenarioName] ??= {})[dimId] = explanation;
+        computed += 1;
+      } catch (err) {
+        console.warn(`  ⚠  report explain failed for ${result.scenarioName}/${dimId}: ${(err as Error).message}`);
+      }
+    }
+  }
+  return out;
 }
 
 /** All stored explanations for a run (parsed), newest first. */
