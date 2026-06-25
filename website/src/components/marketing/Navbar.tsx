@@ -2,12 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, ChevronDown, Github, Library, Menu, Play, Star, X } from 'lucide-react'
+import { BookOpen, ChevronDown, Github, Library, Menu, Play, Slack, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import { AriaLogo } from '@/components/shared/AriaLogo'
-import { GITHUB_URL } from '@/lib/site'
+import { GITHUB_URL, SLACK_URL } from '@/lib/site'
 
 const navItems = [
   { label: 'Features', href: '/#features' },
@@ -36,22 +36,33 @@ const resourceItems = [
   },
 ]
 
-/** OpenChoreo-style "Star on GitHub" pill — the primary action for an OSS project. */
-function GitHubStar({ className }: { className?: string }) {
+/** OpenChoreo-style icon links (GitHub + Slack) — the social actions for an OSS project. */
+function SocialLinks({ className }: { className?: string }) {
+  const iconClass =
+    'inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/10 hover:text-white'
   return (
-    <Link
-      href={GITHUB_URL}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={cn(
-        'group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-sm font-medium text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/10 hover:text-white',
-        className,
-      )}
-    >
-      <Github className="h-4 w-4" />
-      <span>Star on GitHub</span>
-      <Star className="h-3.5 w-3.5 text-cyan-300 transition group-hover:fill-cyan-300" />
-    </Link>
+    <div className={cn('flex items-center gap-2', className)}>
+      <Link
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noreferrer noopener"
+        aria-label="GitHub"
+        title="GitHub"
+        className={iconClass}
+      >
+        <Github className="h-[18px] w-[18px]" />
+      </Link>
+      <Link
+        href={SLACK_URL}
+        target="_blank"
+        rel="noreferrer noopener"
+        aria-label="Slack"
+        title="Slack community"
+        className={iconClass}
+      >
+        <Slack className="h-[18px] w-[18px]" />
+      </Link>
+    </div>
   )
 }
 
@@ -194,7 +205,7 @@ export function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <GitHubStar />
+          <SocialLinks />
         </div>
 
         <button
@@ -258,8 +269,8 @@ export function Navbar() {
               </div>
             ) : null}
 
-            <div className="mt-3 flex flex-col gap-2">
-              <GitHubStar className="justify-center" />
+            <div className="mt-3">
+              <SocialLinks />
             </div>
           </div>
         </div>

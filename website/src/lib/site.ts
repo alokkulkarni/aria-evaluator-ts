@@ -7,6 +7,8 @@ export const GITHUB_DISCUSSIONS_URL = `${GITHUB_URL}/discussions`
 export const GITHUB_ISSUES_URL = `${GITHUB_URL}/issues`
 export const GITHUB_CONTRIBUTING_URL = `${GITHUB_URL}/blob/main/CONTRIBUTING.md`
 
+export const SLACK_URL = 'https://ariaeval.slack.com'
+
 export const DOCS_URL = '/docs'
 
 export const LICENSE_NAME = 'Apache-2.0'

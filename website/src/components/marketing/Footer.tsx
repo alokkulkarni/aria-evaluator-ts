@@ -8,6 +8,7 @@ import {
   GITHUB_URL,
   GITHUB_DISCUSSIONS_URL,
   GITHUB_ISSUES_URL,
+  SLACK_URL,
   LICENSE_NAME,
   LICENSE_URL,
 } from '@/lib/site'
@@ -24,6 +25,7 @@ const footerGroups: Record<string, FooterLink[]> = {
     { label: 'GitHub', href: GITHUB_URL, external: true },
   ],
   Community: [
+    { label: 'Slack', href: SLACK_URL, external: true },
     { label: 'Discussions', href: GITHUB_DISCUSSIONS_URL, external: true },
     { label: 'Issues', href: GITHUB_ISSUES_URL, external: true },
     { label: 'Community', href: '/community' },
