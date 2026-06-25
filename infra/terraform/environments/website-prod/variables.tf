@@ -16,24 +16,6 @@ variable "force_destroy" {
   default     = false
 }
 
-variable "auth_origin_domain" {
-  description = "Custom hostname for the auth-backend ALB's HTTPS origin (regional ACM cert + Route 53 A-alias). CloudFront uses this as its /api/* origin over https-only, giving end-to-end TLS. Must be in the route53_zone_id zone."
-  type        = string
-  default     = "origin.ariaeval.io"
-}
-
-variable "auth_backend_image_tag" {
-  description = "Docker image tag for the auth backend container"
-  type        = string
-  default     = "latest"
-}
-
-variable "auth_backend_image_uri" {
-  description = "Pre-built auth backend image URI (e.g. from CI/CD). When set, skips local Docker build."
-  type        = string
-  default     = ""
-}
-
 variable "skip_website_build" {
   description = "Set to true when deploying via CI/CD (website is already built and synced to S3 separately)"
   type        = bool
@@ -41,66 +23,9 @@ variable "skip_website_build" {
 }
 
 variable "force_rebuild" {
-  description = "Increment to force a Docker image rebuild and website redeploy"
+  description = "Increment to force a website redeploy"
   type        = number
   default     = 1
-}
-
-variable "signup_mode" {
-  description = "Website signup mode: 'open' for all plans, 'waitlist' for free-only (prod)"
-  type        = string
-  default     = "waitlist"
-}
-
-variable "enable_cognito" {
-  description = "Enable Cognito as the OAuth broker for Google/Apple social sign-in."
-  type        = bool
-  default     = true
-}
-
-# ── Cognito Google identity provider ──────────────────────────────────────────
-# These are needed at terraform apply time to configure aws_cognito_identity_provider.
-# They end up in Terraform state as Cognito resource attributes — this is unavoidable
-# for Cognito. They do NOT flow into the auth-backend Secrets Manager secret;
-# NextAuth.js runtime credentials (GOOGLE_CLIENT_ID etc.) are populated separately
-# by: infra/scripts/bootstrap-oauth-secrets.sh prod
-variable "google_client_id" {
-  description = "Google OAuth Client ID — used only for Cognito identity provider configuration."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "google_client_secret" {
-  description = "Google OAuth Client Secret — used only for Cognito identity provider configuration."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "apple_client_id" {
-  description = "Apple Services ID for Cognito Sign in with Apple."
-  type        = string
-  default     = ""
-}
-
-variable "apple_team_id" {
-  description = "Apple developer team id."
-  type        = string
-  default     = ""
-}
-
-variable "apple_key_id" {
-  description = "Apple Sign in with Apple key id."
-  type        = string
-  default     = ""
-}
-
-variable "apple_private_key" {
-  description = "Apple Sign in with Apple private key PEM."
-  type        = string
-  sensitive   = true
-  default     = ""
 }
 
 # ── Domain & TLS ────────────────────────────────────────────────────────────────
@@ -146,20 +71,6 @@ variable "alarm_sns_topic_arn" {
   description = "SNS topic ARN for CloudWatch alarms"
   type        = string
   default     = ""
-}
-
-# ── Control Plane ──────────────────────────────────────────────────────────────
-
-variable "control_plane_url" {
-  description = "Control plane API URL"
-  type        = string
-  default     = ""
-}
-
-variable "control_plane_url_ssm_param_name" {
-  description = "SSM Parameter name used by auth-backend to resolve the control-plane URL at runtime."
-  type        = string
-  default     = "/aria/control-plane/prod/internal-url"
 }
 
 variable "tags" {

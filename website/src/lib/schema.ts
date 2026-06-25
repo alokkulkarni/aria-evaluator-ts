@@ -1,13 +1,12 @@
 import type { BlogPost } from './blog-data'
-import { PLANS } from './plans'
+import { GITHUB_URL } from './site'
 
 /**
  * Schema.org structured data (JSON-LD) for the marketing site.
  *
  * Rendered server-side in the root layout via <JsonLd /> so it ships in the
  * initial HTML — required for Google rich results and AI search (AI Overviews,
- * ChatGPT, Perplexity) entity resolution. Offers are derived from PLANS so the
- * pricing markup stays in sync with the real pricing source of truth.
+ * ChatGPT, Perplexity) entity resolution.
  *
  * Validate after changes:
  *   https://search.google.com/test/rich-results
@@ -17,12 +16,11 @@ import { PLANS } from './plans'
 export const SITE_URL = 'https://ariaeval.io'
 
 const SITE_DESCRIPTION =
-  'Enterprise AI safety evaluation, observability, and global deployment workflows for modern teams.'
+  'Open-source AI agent evaluation: score conversational AI across 15 quality and safety dimensions with a panel of independent AI judges. Self-hostable.'
 
-// TODO: add real, owned social/profile URLs (LinkedIn, X, GitHub) to strengthen
-// the Organization entity for the Knowledge Graph and AI engines. Leave empty
-// rather than shipping guessed URLs — `sameAs` is only emitted when non-empty.
-const SOCIAL_PROFILES: string[] = []
+// Owned profiles that strengthen the Organization entity for the Knowledge Graph
+// and AI engines. `sameAs` is only emitted when non-empty.
+const SOCIAL_PROFILES: string[] = [GITHUB_URL]
 
 const organization = {
   '@type': 'Organization',
@@ -57,24 +55,6 @@ const website = {
   // Adding a Sitelinks Searchbox without a real ?q= handler is a Rich Results error.
 }
 
-// Build one Offer per priced plan straight from PLANS (skips the -1 "Contact sales" tier).
-const offers = PLANS.filter((plan) => plan.price.monthly >= 0).map((plan) => ({
-  '@type': 'Offer',
-  name: plan.name,
-  price: String(plan.price.monthly),
-  priceCurrency: 'USD',
-  url: `${SITE_URL}/pricing`,
-  availability: 'https://schema.org/InStock',
-  ...(plan.price.monthly > 0 && {
-    priceSpecification: {
-      '@type': 'UnitPriceSpecification',
-      price: String(plan.price.monthly),
-      priceCurrency: 'USD',
-      unitText: 'MONTH',
-    },
-  }),
-}))
-
 const webApplication = {
   '@type': 'WebApplication',
   '@id': `${SITE_URL}/#webapp`,
@@ -98,7 +78,13 @@ const webApplication = {
     'Human review queue with audit-logged overrides',
     'Encrypted conversations stored in isolated infrastructure',
   ],
-  offers,
+  // Free and open source.
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+    availability: 'https://schema.org/InStock',
+  },
 }
 
 /** Site-wide structured-data graph: Organization + WebSite + WebApplication. */

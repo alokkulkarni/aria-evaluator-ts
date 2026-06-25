@@ -63,64 +63,6 @@ variable "host_port" {
   default     = 3000
 }
 
-# ── NextAuth ───────────────────────────────────────────────────────────────────
-
-variable "nextauth_url" {
-  description = "Full public URL of the website (NEXTAUTH_URL). Must match the host_port."
-  type        = string
-  default     = "http://localhost:3000"
-}
-
-variable "nextauth_secret" {
-  description = <<-EOT
-    Secret used by NextAuth to sign tokens.
-    Generate with: openssl rand -base64 32
-    Never commit to source control — pass via terraform.tfvars or TF_VAR_nextauth_secret.
-  EOT
-  type        = string
-  sensitive   = true
-}
-
-# ── OAuth providers (optional for local dev) ───────────────────────────────────
-
-variable "google_client_id" {
-  description = "Google OAuth client ID (optional — leave empty to disable Google sign-in)"
-  type        = string
-  default     = ""
-}
-
-variable "google_client_secret" {
-  description = "Google OAuth client secret"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "github_client_id" {
-  description = "GitHub OAuth app client ID (optional — leave empty to disable GitHub sign-in)"
-  type        = string
-  default     = ""
-}
-
-variable "github_client_secret" {
-  description = "GitHub OAuth app client secret"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-# ── Control plane ──────────────────────────────────────────────────────────────
-
-variable "control_plane_url" {
-  description = <<-EOT
-    Base URL of the ARIA control plane API.
-    For local Docker, prefer http://host.docker.internal:<port> so the website
-    container can reach the control-plane container via the host.
-  EOT
-  type        = string
-  default     = ""
-}
-
 # ── Extra environment variables ────────────────────────────────────────────────
 
 variable "extra_environment_vars" {
@@ -130,18 +72,4 @@ variable "extra_environment_vars" {
     value = string
   }))
   default = []
-}
-
-# ── Auth Backend (split architecture) ──────────────────────────────────────────
-
-variable "enable_auth_backend" {
-  description = "Set to true to run the auth backend as a separate container"
-  type        = bool
-  default     = false
-}
-
-variable "auth_backend_host_port" {
-  description = "Host port for the auth backend container"
-  type        = number
-  default     = 3001
 }

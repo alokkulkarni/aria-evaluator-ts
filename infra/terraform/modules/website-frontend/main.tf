@@ -2,9 +2,7 @@
 #
 # Deploys the ARIA Evaluator static website to S3 + CloudFront with:
 #   - Private S3 bucket (OAC, not public website hosting)
-#   - CloudFront distribution with dual origins:
-#       Default (*) → S3 (static pages)
-#       /api/*      → ALB (auth backend, provided via variable)
+#   - CloudFront distribution serving static pages from S3 (default + /_next/static/*)
 #   - Optional custom domain (Route53 + ACM)
 #   - CloudFront Function to block *.cloudfront.net direct access
 #   - WAF Web ACL (rate limiting + AWS managed rules)
@@ -196,32 +194,11 @@ resource "aws_cloudfront_distribution" "main" {
   # and per-GB; CloudFront still serves all viewers, just routed via nearer edges.
   price_class = "PriceClass_100"
 
-  # ── Origin 1: S3 (static pages) ──
+  # ── Origin: S3 (static pages) ──
   origin {
     domain_name              = aws_s3_bucket.static.bucket_regional_domain_name
     origin_id                = "s3-static"
     origin_access_control_id = aws_cloudfront_origin_access_control.static.id
-  }
-
-  # ── Origin 2: ALB (auth backend API) ──
-  dynamic "origin" {
-    for_each = var.auth_backend_alb_dns != "" ? { enabled = true } : {}
-    content {
-      domain_name = var.auth_backend_alb_dns
-      origin_id   = "alb-auth"
-
-      custom_origin_config {
-        http_port              = 80
-        https_port             = 443
-        origin_protocol_policy = var.auth_backend_alb_https ? "https-only" : "http-only"
-        origin_ssl_protocols   = ["TLSv1.2"]
-      }
-
-      custom_header {
-        name  = "X-CF-Origin-Secret"
-        value = var.auth_backend_origin_secret
-      }
-    }
   }
 
   # ── Default behavior: S3 static ──
@@ -250,31 +227,6 @@ resource "aws_cloudfront_distribution" "main" {
         event_type   = "viewer-request"
         function_arn = aws_cloudfront_function.domain_redirect[0].arn
       }
-    }
-  }
-
-  # ── /api/* behavior: ALB auth backend (no caching) ──
-  dynamic "ordered_cache_behavior" {
-    for_each = var.auth_backend_alb_dns != "" ? { enabled = true } : {}
-    content {
-      path_pattern           = "/api/*"
-      target_origin_id       = "alb-auth"
-      viewer_protocol_policy = "redirect-to-https"
-      allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-      cached_methods         = ["GET", "HEAD"]
-      compress               = true
-
-      forwarded_values {
-        query_string = true
-        headers      = ["Authorization", "Content-Type", "Origin", "Referer", "Host"]
-        cookies {
-          forward = "all"
-        }
-      }
-
-      min_ttl     = 0
-      default_ttl = 0
-      max_ttl     = 0
     }
   }
 

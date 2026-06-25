@@ -4,6 +4,7 @@ import { ArrowUpRight } from 'lucide-react'
 import { BLOG_POSTS, CATEGORY_META, EXTERNAL_RESOURCES } from '@/lib/blog-data'
 import { PageHeader, Section, SectionHeading } from '@/components/marketing/ui'
 import { Reveal } from '@/components/motion/Reveal'
+import { GITHUB_URL, DOCS_URL } from '@/lib/site'
 import { BlogFilterClient } from './BlogFilterClient'
 
 export const metadata = {
@@ -27,8 +28,8 @@ export default function BlogPage() {
         eyebrow="Blog"
         title="Insights on AI safety, evaluation, and platform delivery"
         description="Read how enterprise teams are approaching red-teaming, evaluation observability, and multi-model operations in fast-moving AI environments."
-        primary={{ href: '/sign-up', label: 'Get started' }}
-        secondary={{ href: '/pricing', label: 'View pricing' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
+        secondary={{ href: DOCS_URL, label: 'Read the docs' }}
       />
 
       {/* Topic overviews */}

@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Globe, KeyRound, Lock, Server, ShieldCheck
 import { FeatureCard } from '@/components/marketing/FeatureCard'
 import { CtaBand, PageHeader, Section, SectionHeading } from '@/components/marketing/ui'
 import { Reveal } from '@/components/motion/Reveal'
+import { GITHUB_URL } from '@/lib/site'
 
 export const metadata = {
   title: 'Security — ARIA Evaluator',
@@ -95,7 +96,7 @@ export default function SecurityPage() {
         eyebrow="Security"
         title="Security built for enterprise AI teams"
         description="ARIA combines dedicated infrastructure, regional data residency, end-to-end encryption, and granular access controls so you can run adversarial AI evaluations without exposing sensitive model behaviour or conversation data."
-        primary={{ href: '/sign-up', label: 'Get started' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/security/disclosure', label: 'Disclosure policy' }}
       />
 
@@ -281,7 +282,7 @@ export default function SecurityPage() {
         eyebrow="Ready to evaluate securely"
         title="Security that scales with your AI ambitions"
         description="Start with the Free plan and evaluate up to 5 runs — no infrastructure to manage. Scale into dedicated tenancy when your compliance requirements demand it."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/contact', label: 'Talk to security team' }}
       />
     </div>

@@ -498,3 +498,105 @@
     transform: none;
   }
 }
+
+/* ── Docs prose ─────────────────────────────────────────────────────────────
+   Scoped typography for /docs content pages so each page can be written with
+   plain semantic markup (h2/p/ul/pre/code/table) instead of per-element classes. */
+.docs-prose {
+  color: rgb(203 213 225); /* slate-300 */
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+.docs-prose > * + * {
+  margin-top: 1.1rem;
+}
+.docs-prose h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 0.25rem;
+  scroll-margin-top: 6rem;
+  font-family: var(--font-space-grotesk), system-ui, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.docs-prose h3 {
+  margin-top: 1.75rem;
+  font-family: var(--font-space-grotesk), system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+}
+.docs-prose a {
+  color: rgb(103 232 249); /* cyan-300 */
+  text-decoration: none;
+}
+.docs-prose a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.docs-prose strong {
+  color: #fff;
+  font-weight: 600;
+}
+.docs-prose ul,
+.docs-prose ol {
+  margin-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.docs-prose ul {
+  list-style: disc;
+}
+.docs-prose ol {
+  list-style: decimal;
+}
+.docs-prose li::marker {
+  color: rgb(34 211 238); /* cyan-400 */
+}
+.docs-prose :not(pre) > code {
+  border-radius: 0.3rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85em;
+  color: rgb(165 243 252); /* cyan-200 */
+}
+.docs-prose pre {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(2, 6, 23, 0.6);
+  padding: 1rem 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: rgb(226 232 240);
+}
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+.docs-prose th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: #fff;
+}
+.docs-prose td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.6rem 0.75rem;
+  vertical-align: top;
+  color: rgb(148 163 184); /* slate-400 */
+}
+.docs-prose blockquote {
+  border-left: 2px solid rgba(34, 211, 238, 0.5);
+  padding-left: 1rem;
+  color: rgb(148 163 184);
+}
+.docs-prose hr {
+  border-color: rgba(255, 255, 255, 0.08);
+}

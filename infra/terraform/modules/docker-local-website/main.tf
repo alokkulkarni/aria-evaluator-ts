@@ -16,33 +16,15 @@ locals {
     : "${local.repo_root}/website"
   )
 
-  effective_control_plane_url = (
-    var.environment == "local"
-    ? replace(
-      replace(var.control_plane_url, "localhost", "host.docker.internal"),
-      "127.0.0.1",
-      "host.docker.internal",
-    )
-    : var.control_plane_url
-  )
-
   # ── Environment list in "KEY=VALUE" format for docker_container.env ───────
-  # Build from the typed list — NextAuth, OAuth secrets and optional extras.
+  # Static site — no auth. Only the public app config plus optional extras.
   base_env = [
     { name = "NODE_ENV", value = "production" },
     { name = "ARIA_DEPLOY_ENV", value = var.environment },
     { name = "PORT", value = tostring(var.container_port) },
     { name = "HOSTNAME", value = "0.0.0.0" },
-    { name = "NEXTAUTH_URL", value = var.nextauth_url },
-    { name = "NEXT_PUBLIC_APP_URL", value = var.nextauth_url },
+    { name = "NEXT_PUBLIC_APP_URL", value = "http://localhost:${var.host_port}" },
     { name = "NEXT_PUBLIC_APP_NAME", value = "ARIA Evaluator" },
-    { name = "NEXT_PUBLIC_CONTROL_PLANE_URL", value = "/api/control-plane" },
-    { name = "CONTROL_PLANE_INTERNAL_URL", value = local.effective_control_plane_url },
-    { name = "NEXTAUTH_SECRET", value = var.nextauth_secret },
-    { name = "GOOGLE_CLIENT_ID", value = var.google_client_id },
-    { name = "GOOGLE_CLIENT_SECRET", value = var.google_client_secret },
-    { name = "GITHUB_CLIENT_ID", value = var.github_client_id },
-    { name = "GITHUB_CLIENT_SECRET", value = var.github_client_secret },
   ]
 
   all_env  = concat(local.base_env, var.extra_environment_vars)
@@ -157,93 +139,4 @@ resource "docker_container" "app" {
     label = "component"
     value = "main-website"
   }
-}
-
-# ── Auth Backend (split architecture) ──────────────────────────────────────────
-# Optional: set var.enable_auth_backend = true to run the auth backend as a
-# separate container alongside the main website. This mirrors the prod
-# architecture where static pages are served from S3/CloudFront and API routes
-# are handled by a dedicated ECS service.
-
-resource "null_resource" "build_auth_image" {
-  count = var.enable_auth_backend ? 1 : 0
-
-  triggers = {
-    dockerfile_sha   = filesha1("${local.effective_build_context}/auth-backend/Dockerfile")
-    package_lock_sha = filesha1("${local.effective_build_context}/auth-backend/package-lock.json")
-    force_rebuild    = var.force_rebuild
-  }
-
-  provisioner "local-exec" {
-    environment = {
-      DOCKER_BUILDKIT = "1"
-    }
-
-    command = <<-EOT
-      docker build \
-        --tag "${var.app_name}-auth-backend" \
-        --file "${local.effective_build_context}/auth-backend/Dockerfile" \
-        "${local.effective_build_context}"
-    EOT
-  }
-}
-
-resource "docker_container" "auth_backend" {
-  count = var.enable_auth_backend ? 1 : 0
-  name  = "${local.name_prefix}-auth"
-  image = "${var.app_name}-auth-backend"
-
-  restart = "unless-stopped"
-
-  networks_advanced {
-    name = docker_network.app.name
-  }
-
-  ports {
-    internal = 3001
-    external = var.auth_backend_host_port
-    protocol = "tcp"
-  }
-
-  env = [
-    "NODE_ENV=production",
-    "ARIA_DEPLOY_ENV=${var.environment}",
-    "PORT=3001",
-    "HOSTNAME=0.0.0.0",
-    "NEXTAUTH_URL=${var.nextauth_url}",
-    "CONTROL_PLANE_INTERNAL_URL=${local.effective_control_plane_url}",
-    "NEXTAUTH_SECRET=${var.nextauth_secret}",
-    "GOOGLE_CLIENT_ID=${var.google_client_id}",
-    "GOOGLE_CLIENT_SECRET=${var.google_client_secret}",
-    "GITHUB_CLIENT_ID=${var.github_client_id}",
-    "GITHUB_CLIENT_SECRET=${var.github_client_secret}",
-  ]
-
-  healthcheck {
-    test = [
-      "CMD", "node", "-e",
-      "require('http').get('http://localhost:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-    ]
-    interval     = "30s"
-    timeout      = "10s"
-    start_period = "60s"
-    retries      = 3
-  }
-
-  labels {
-    label = "managed-by"
-    value = "terraform"
-  }
-
-  labels {
-    label = "environment"
-    value = var.environment
-  }
-
-  labels {
-    label = "component"
-    value = "auth-backend"
-  }
-
-  depends_on = [null_resource.build_auth_image]
 }

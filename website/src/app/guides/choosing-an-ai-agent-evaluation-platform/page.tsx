@@ -6,6 +6,7 @@ import { CtaBand, PageHeader, Section, SectionHeading } from '@/components/marke
 import { Reveal } from '@/components/motion/Reveal'
 import { JsonLd } from '@/components/shared/JsonLd'
 import { buildArticleSchema } from '@/lib/schema'
+import { GITHUB_URL, DOCS_URL } from '@/lib/site'
 
 const PUBLISHED = '2026-06-23'
 const DESCRIPTION =
@@ -71,7 +72,7 @@ export default function ChoosingPlatformPage() {
         eyebrow="Buyer’s guide"
         title="How to choose an AI agent evaluation platform"
         description="The market is crowded and every tool claims to be best. Here is a vendor-neutral framework for comparing them — the eight criteria that matter, the single-judge-vs-panel question, and an honest take on where ARIA fits."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/guides/what-is-ai-agent-evaluation', label: 'New to this? Start here' }}
       />
 
@@ -160,8 +161,8 @@ export default function ChoosingPlatformPage() {
         eyebrow="See it on your own agent"
         title="The fastest way to compare is to run it"
         description="Connect your agent and run a free evaluation across all 15 dimensions — then judge the platform on your own transcripts, not a feature grid."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
-        secondary={{ href: '/pricing', label: 'View pricing' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
+        secondary={{ href: DOCS_URL, label: 'Read the docs' }}
       />
     </div>
   )

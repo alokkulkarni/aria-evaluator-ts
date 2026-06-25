@@ -1,49 +1,23 @@
-# ── Website Production Deployment (Split Architecture) ─────────────────────────
+# ── Website Production Deployment (Static S3 + CloudFront) ─────────────────────
 # Copy this file to terraform.tfvars and fill in real values before deploying.
 #
 # Architecture:
 #   CloudFront (ariaeval.io)
 #   ├── /* (default)     → S3 bucket (static website export)
-#   ├── /api/*           → ALB → ECS Fargate (auth backend)
 #   └── /_next/static/*  → S3 bucket (long-cached assets)
 
 # ── Deploy Steps ──────────────────────────────────────────────────────────────
 #
-# Docker builds, ECR push, S3 sync, and CloudFront invalidation all happen
-# automatically during `terraform apply`. No manual docker/aws commands needed.
+# The website build, S3 sync, and CloudFront invalidation all happen
+# automatically during `terraform apply`. No manual aws commands needed.
 #
 #   cd infra/terraform/environments/website-prod
 #   cp terraform.tfvars.example terraform.tfvars   # fill in values
 #   terraform init
 #   terraform apply
 #
-# To force a rebuild when only source code changed (Dockerfile unchanged):
+# To force a website rebuild and redeploy:
 #   terraform apply -var='force_rebuild=2'
-
-# ── Auth Backend Image Tag ────────────────────────────────────────────────────
-auth_backend_image_tag = "latest"
-
-# ── Signup Mode ───────────────────────────────────────────────────────────────
-# "waitlist" = free-only signups (prod default), "open" = all plans available
-signup_mode = "waitlist"
-
-# ── Cognito OAuth Broker ───────────────────────────────────────────────────────
-# Keep enabled for stable Google/Apple redirects through Cognito hosted UI.
-enable_cognito = true
-
-# ── Auth Secrets (use TF_VAR_ env vars in CI/CD instead of hardcoding) ────────
-# nextauth_secret      = "..."
-# google_client_id     = "..."
-# google_client_secret = "..."
-#
-# After first apply, read output `cognito_idp_response_url` and set it as callback
-# URL in Google/Apple app settings.
-#
-# Apple via Cognito:
-# apple_client_id   = "com.ariaeval.web"
-# apple_team_id     = "..."
-# apple_key_id      = "..."
-# apple_private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 
 # ── Domain & TLS ──────────────────────────────────────────────────────────────
 # 1. Register domain in Route53 (already done: ariaeval.io)
@@ -73,13 +47,6 @@ acm_certificate_arn_us_east_1 = "" # e.g. "arn:aws:acm:us-east-1:ACCOUNT:certifi
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 # alarm_sns_topic_arn = "arn:aws:sns:eu-west-2:ACCOUNT:aria-alarms"
-
-# ── Control Plane Discovery ───────────────────────────────────────────────────
-# Optional explicit override:
-# control_plane_url = "http://internal-...elb.amazonaws.com"
-#
-# Default behavior uses SSM runtime discovery from:
-# control_plane_url_ssm_param_name = "/aria/control-plane/prod/internal-url"
 
 # ── CloudTrail ────────────────────────────────────────────────────────────────
 # cloudtrail_bucket_suffix = "prod"

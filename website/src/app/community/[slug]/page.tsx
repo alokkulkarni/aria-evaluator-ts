@@ -5,6 +5,7 @@ import { ArrowLeft, BookOpen, ExternalLink, FileText, MessageSquare, Newspaper, 
 import { COMMUNITIES, getCommunityById } from '@/lib/communities'
 import { SlackIcon, DiscordIcon, GitHubIcon } from '@/components/shared/BrandIcons'
 import { Section } from '@/components/marketing/ui'
+import { GITHUB_DISCUSSIONS_URL } from '@/lib/site'
 
 const platformMeta = {
   slack: { icon: SlackIcon, label: 'Slack', colour: 'bg-[#4A154B] hover:bg-[#3a1140]' },
@@ -66,7 +67,9 @@ export default async function CommunityDetailPage({ params }: { params: Promise<
           <div className="flex items-center justify-between">
             <h2 className="font-display text-xl font-bold text-white">Discussions</h2>
             <Link
-              href="/sign-up"
+              href={GITHUB_DISCUSSIONS_URL}
+              target="_blank"
+              rel="noreferrer noopener"
               className="rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-3.5 py-1.5 text-sm font-semibold text-slate-950 transition hover:brightness-110"
             >
               Start a discussion
@@ -99,9 +102,9 @@ export default async function CommunityDetailPage({ params }: { params: Promise<
           <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-6 text-center">
             <MessageSquare className="mx-auto h-8 w-8 text-slate-600" />
             <p className="mt-3 text-sm font-medium text-slate-200">Join the conversation</p>
-            <p className="mt-1 text-xs text-slate-500">Sign up for a free account to post, reply, and follow discussions.</p>
-            <Link href="/sign-up" className="mt-4 inline-flex rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-4 py-1.5 text-sm font-semibold text-slate-950 transition hover:brightness-110">
-              Sign up free
+            <p className="mt-1 text-xs text-slate-500">Join the discussion on GitHub to post, reply, and follow threads.</p>
+            <Link href={GITHUB_DISCUSSIONS_URL} target="_blank" rel="noreferrer noopener" className="mt-4 inline-flex rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-4 py-1.5 text-sm font-semibold text-slate-950 transition hover:brightness-110">
+              Join the discussion on GitHub
             </Link>
           </div>
         </section>

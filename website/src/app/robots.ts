@@ -5,8 +5,8 @@ import { SITE_URL } from '@/lib/schema'
 // Required for `output: 'export'` — render this route handler at build time.
 export const dynamic = 'force-static'
 
-// Keep authenticated / app surfaces out of search and AI crawls.
-const disallow = ['/api/', '/dashboard/', '/sign-out', '/sign-up/provisioning']
+// Open-source content site — nothing to hide from search or AI crawls.
+const disallow: string[] = []
 
 // AI search + assistant crawlers we explicitly welcome for GEO visibility.
 // (Listed separately so intent is documented even if the wildcard rule changes.)

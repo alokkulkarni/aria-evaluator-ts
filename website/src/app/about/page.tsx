@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2 } from 'lucide-react'
 
 import { CtaBand, PageHeader, Section, SectionHeading, StatCard } from '@/components/marketing/ui'
 import { Reveal } from '@/components/motion/Reveal'
+import { GITHUB_URL } from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'About — ARIA Evaluator',
@@ -101,7 +102,7 @@ export default function AboutPage() {
         eyebrow="About ARIA Evaluator"
         title="Close the gap between deploying AI and trusting it"
         description="ARIA Evaluator gives engineering, security, and governance teams one operating layer for AI agent testing, release controls, compliance evidence, and post-deployment oversight."
-        primary={{ href: '/sign-up', label: 'Start free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/contact', label: 'Talk to our team' }}
       />
 
@@ -279,7 +280,7 @@ export default function AboutPage() {
         eyebrow="Start evaluating"
         title="Put evaluation at the centre of your AI delivery pipeline"
         description="The Free plan supports 5 evaluation runs with the full 15-dimension judge. No infrastructure to configure. Results in minutes."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/contact', label: 'Talk to our team' }}
       />
     </div>

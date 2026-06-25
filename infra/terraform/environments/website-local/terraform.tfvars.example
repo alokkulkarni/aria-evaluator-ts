@@ -42,33 +42,8 @@ force_rebuild = "1"
 host_port      = 3000   # http://localhost:3000
 container_port = 3000
 
-# ── NextAuth ──────────────────────────────────────────────────────────────────
-# Generate a secret:  openssl rand -base64 32
-# NEVER commit the real value — keep it in terraform.tfvars (git-ignored)
-nextauth_secret = "REPLACE_WITH_openssl_rand_-base64_32"
-
-# ── OAuth providers (optional) ────────────────────────────────────────────────
-# Leave empty to use only the built-in Credentials provider (stub login).
-# Create OAuth apps at:
-#   GitHub:  https://github.com/settings/developers
-#   Google:  https://console.cloud.google.com/apis/credentials
-#
-# For local dev, set Callback URLs to:
-#   GitHub:  http://localhost:3000/api/auth/callback/github
-#   Google:  http://localhost:3000/api/auth/callback/google
-
-google_client_id     = ""
-google_client_secret = ""
-github_client_id     = ""
-github_client_secret = ""
-
-# ── Control plane (leave empty for local UI-only development) ─────────────────
-# When the control plane is running locally, set to its URL:
-#   control_plane_url = "http://host.docker.internal:4000"
-control_plane_url = ""
-
 # ── Extra environment variables ───────────────────────────────────────────────
 extra_environment_vars = [
-  # Example — enable verbose NextAuth logging:
-  # { name = "NEXTAUTH_DEBUG", value = "true" },
+  # Example:
+  # { name = "NEXT_PUBLIC_DEBUG", value = "true" },
 ]

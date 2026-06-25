@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, BarChart3, Globe, Scale, ShieldCheck } from 'lucide-react'
+import { ArrowRight, BarChart3, Bug, Github, Globe, MessageSquare, Scale, ShieldCheck, Star, Terminal } from 'lucide-react'
 
 import { Features } from '@/components/marketing/Features'
 import { FeatureCard } from '@/components/marketing/FeatureCard'
@@ -11,13 +11,21 @@ import { Reveal } from '@/components/motion/Reveal'
 import { RevealText } from '@/components/motion/RevealText'
 import { TiltCard } from '@/components/motion/TiltCard'
 import { HeroCanvas } from '@/components/three/HeroCanvas'
-import { formatPlanPrice, getPlanById } from '@/lib/plans'
+import {
+  GITHUB_URL,
+  GITHUB_REPO,
+  GITHUB_DISCUSSIONS_URL,
+  GITHUB_ISSUES_URL,
+  GITHUB_CONTRIBUTING_URL,
+  DOCS_URL,
+  LICENSE_NAME,
+} from '@/lib/site'
 
 const heroPills = [
-  { label: 'SOC 2 Type II', status: 'pursuing' },
-  { label: 'GDPR Aligned', status: 'pursuing' },
-  { label: 'ISO 27001', status: 'pursuing' },
-  { label: '8 Global Regions', status: 'live' },
+  { label: `${LICENSE_NAME} licensed`, status: 'live' },
+  { label: 'Self-host anywhere', status: 'live' },
+  { label: 'Panel of AI judges', status: 'live' },
+  { label: '15 evaluation dimensions', status: 'live' },
 ] as const
 
 const quickFeatures = [
@@ -46,7 +54,29 @@ const supportedPlatforms = [
   { name: 'WebSocket', detail: 'Custom chat bots' },
 ]
 
-const previewPlans = ['free', 'individual', 'enterprise_starter'] as const
+const communityCards = [
+  {
+    icon: Github,
+    title: 'Contribute',
+    description: 'Pick up a good-first-issue, add an adapter or judge dimension, and open a PR. Contributions of every size are welcome.',
+    cta: 'Read the contributing guide',
+    href: GITHUB_CONTRIBUTING_URL,
+  },
+  {
+    icon: Bug,
+    title: 'Report an issue',
+    description: 'Hit a bug or have a feature request? Open an issue on GitHub and help shape the roadmap.',
+    cta: 'Open an issue',
+    href: GITHUB_ISSUES_URL,
+  },
+  {
+    icon: MessageSquare,
+    title: 'Join the discussion',
+    description: 'Ask questions, share evaluation setups, and talk AI safety with the community on GitHub Discussions.',
+    cta: 'Start a discussion',
+    href: GITHUB_DISCUSSIONS_URL,
+  },
+]
 
 const showcaseRuns = [
   { label: 'Adversarial coverage', value: 96, suffix: '%', tone: 'bg-emerald-400' },
@@ -61,10 +91,10 @@ const showcaseRegions = [
 ]
 
 const steps = [
-  { step: '01', title: 'Sign up', description: 'Create your ARIA account with secure onboarding for engineering and security teams.' },
-  { step: '02', title: 'Choose region', description: 'Select the deployment region that matches your compliance and latency needs.' },
-  { step: '03', title: 'Connect', description: 'Point an adapter at your agent — Connect, Lex, Azure, Copilot, or any HTTP endpoint.' },
-  { step: '04', title: 'Evaluate', description: 'Launch your tests and watch results stream in live — each conversation scored by a panel of judges, with anything they disagree on sent to your team for the final call.' },
+  { step: '01', title: 'Clone the repo', description: 'git clone the project and install dependencies — everything runs locally or on your own infrastructure.' },
+  { step: '02', title: 'Configure', description: 'Point ARIA at your model provider (Bedrock/Claude) and define scenarios in YAML for the agents you want to test.' },
+  { step: '03', title: 'Connect your agent', description: 'Point an adapter at your agent — Connect, Lex, Azure, Copilot, or any HTTP endpoint. No instrumentation required.' },
+  { step: '04', title: 'Evaluate', description: 'Run your scenarios and watch results stream in — each conversation scored by a panel of judges across 15 dimensions, with full reasoning and a report you can share.' },
 ]
 
 const comparisonRows = [
@@ -87,41 +117,47 @@ export default function HomePage() {
         <div className="max-w-8xl mx-auto grid min-h-[92vh] items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
           <div>
             <Reveal>
-              <span className="eyebrow rounded-full border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-70" />
-                  <span className="relative h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                </span>
-                Enterprise AI Safety Evaluation
-              </span>
+              <Link
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="eyebrow group rounded-full border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur transition hover:border-cyan-300/30 hover:bg-white/10"
+              >
+                <Star className="h-3.5 w-3.5 text-cyan-300" />
+                Now open source — star us on GitHub
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </Link>
             </Reveal>
 
             <h1 className="mt-6 font-display text-5xl font-bold leading-[1.02] tracking-tight text-white sm:text-7xl">
               <RevealText as="span" text="Evaluate AI Agents." className="block" />
-              <RevealText as="span" text="At Enterprise Scale." className="block" gradient stagger={0.06} />
+              <RevealText as="span" text="In the open." className="block" gradient stagger={0.06} />
             </h1>
 
             <Reveal delay={0.15}>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300/90">
-                Put every AI conversation in front of a panel of independent AI judges — with a person
-                making the call when they disagree — so you launch with quality scores you can stand behind.
+                ARIA Evaluator is an open-source platform that puts every AI conversation in front of a
+                panel of independent AI judges — scoring quality, safety, and compliance across 15
+                dimensions. Self-host it anywhere; the whole project is {LICENSE_NAME}-licensed on GitHub.
               </p>
             </Reveal>
 
             <Reveal delay={0.25}>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <MagneticButton
-                  href="/sign-up"
+                  href={GITHUB_URL}
+                  external
                   className="group items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_16px_44px_-12px_rgba(34,211,238,0.7)] transition hover:brightness-110"
                 >
-                  Start for free
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  <Github className="h-4 w-4" />
+                  View on GitHub
                 </MagneticButton>
                 <Link
-                  href="/pricing"
-                  className="rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 backdrop-blur transition hover:border-white/30 hover:bg-white/10"
+                  href={DOCS_URL}
+                  className="group inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 backdrop-blur transition hover:border-white/30 hover:bg-white/10"
                 >
-                  View pricing
+                  Read the docs
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
               </div>
             </Reveal>
@@ -334,10 +370,12 @@ export default function HomePage() {
               </table>
             </div>
             <Link
-              href="/pricing"
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer noopener"
               className="mt-5 inline-flex items-center gap-1.5 self-start rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-slate-100 transition hover:border-white/30 hover:bg-white/10"
             >
-              Compare plans <ArrowRight className="h-4 w-4" />
+              <Github className="h-4 w-4" /> View on GitHub
             </Link>
           </Reveal>
         </div>
@@ -347,8 +385,8 @@ export default function HomePage() {
       <Section>
         <SectionHeading
           eyebrow="Platform showcase"
-          title="See the main ARIA workspace before you sign up"
-          subtitle="Get a feel for the workspace before you sign up — coverage at a glance, how confident the judges are, and full control over where your data lives."
+          title="See ARIA in action"
+          subtitle="Get a feel for the workspace — coverage at a glance, how confident the judges are, and full control over where your data lives, all running on infrastructure you own."
         />
 
         <div className="mt-12 grid gap-6 lg:grid-cols-2">
@@ -524,7 +562,7 @@ export default function HomePage() {
       <Section>
         <SectionHeading
           eyebrow="How it works"
-          title="From sign-up to full-scale evaluation in minutes"
+          title="From git clone to full-scale evaluation in minutes"
         />
 
         <div className="relative mt-12">
@@ -543,65 +581,99 @@ export default function HomePage() {
         </div>
       </Section>
 
-      {/* ── Pricing preview ──────────────────────────────────────────────────── */}
+      {/* ── Quick start ──────────────────────────────────────────────────────── */}
       <Section>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <SectionHeading
-            eyebrow="Pricing preview"
-            title="Start small, then scale into dedicated infrastructure"
-          />
-          <Reveal delay={0.1}>
-            <Link
-              href="/pricing"
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-slate-100 transition hover:border-white/30 hover:bg-white/10"
-            >
-              View full pricing <ArrowRight className="h-4 w-4" />
-            </Link>
+        <SectionHeading
+          eyebrow="Quick start"
+          title="Run your first evaluation locally"
+          subtitle="Clone the repo, point it at your model provider, and score your first conversation. No account, no signup — it's open source."
+        />
+
+        <div className="mt-12 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <Reveal className="glass overflow-hidden rounded-2xl">
+            <div className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
+              <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+              <span className="ml-3 inline-flex items-center gap-1.5 text-xs text-slate-500">
+                <Terminal className="h-3.5 w-3.5" /> bash
+              </span>
+            </div>
+            <pre className="overflow-x-auto p-5 text-sm leading-7 text-slate-200">
+              <code>{`# Clone the repository
+git clone https://github.com/${GITHUB_REPO}.git
+cd aria-evaluator-ts
+
+# Install dependencies
+npm install
+
+# Run a scenario against your agent
+npm run cli:openapi -- --scenario=examples/account-balance.yaml`}</code>
+            </pre>
+          </Reveal>
+
+          <Reveal delay={0.1} className="flex flex-col justify-center gap-4">
+            <p className="text-base leading-7 text-slate-300">
+              Everything runs on infrastructure you control — bring your own Bedrock/Claude credentials,
+              define scenarios in YAML, and get a full report with per-dimension scores and judge reasoning.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <MagneticButton
+                href={GITHUB_URL}
+                external
+                className="items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110"
+              >
+                <Github className="h-4 w-4" /> View on GitHub
+              </MagneticButton>
+              <Link
+                href={DOCS_URL}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Read the docs <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </Reveal>
         </div>
+      </Section>
 
-        <Reveal stagger={0.1} className="mt-12 grid gap-5 lg:grid-cols-3">
-          {previewPlans.map((id) => {
-            const plan = getPlanById(id)
-            if (!plan) return null
-            return (
-              <article key={plan.id} className="glass flex h-full flex-col justify-between gap-6 rounded-2xl p-6">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-display text-xl font-semibold text-white">{plan.name}</h3>
-                    <p className="mt-1 text-sm text-slate-400">{plan.tagline}</p>
-                  </div>
-                  <p className="font-display text-4xl font-bold tracking-tight text-white">
-                    {formatPlanPrice(plan, 'monthly')}
-                  </p>
-                  <ul className="space-y-2 text-sm text-slate-400">
-                    {plan.features.slice(0, 4).map((feature) => (
-                      <li key={feature} className="flex items-start gap-2">
-                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <Link
-                  href={`/sign-up?plan=${plan.id}`}
-                  className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:brightness-110"
-                >
-                  {plan.id === 'enterprise_unlimited' ? 'Contact sales' : 'Get started'}
-                </Link>
-              </article>
-            )
-          })}
+      {/* ── Community ────────────────────────────────────────────────────────── */}
+      <Section>
+        <SectionHeading
+          eyebrow="Community"
+          title="Built in the open — join us"
+          subtitle="ARIA Evaluator is community-driven. Contribute code, report issues, or join the conversation."
+          align="center"
+        />
+
+        <Reveal stagger={0.08} className="mt-12 grid gap-5 md:grid-cols-3">
+          {communityCards.map(({ icon: Icon, title, description, cta, href }) => (
+            <Link
+              key={title}
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="glass group flex flex-col rounded-2xl p-6 transition-colors hover:border-cyan-300/30"
+            >
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-300/20 to-blue-400/5 text-cyan-200">
+                <Icon className="h-5 w-5" />
+              </span>
+              <h3 className="mt-4 font-display text-lg font-semibold text-white">{title}</h3>
+              <p className="mt-2 flex-1 text-sm leading-6 text-slate-400">{description}</p>
+              <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-cyan-300 transition group-hover:text-cyan-200">
+                {cta} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </Link>
+          ))}
         </Reveal>
       </Section>
 
       {/* ── Final CTA ────────────────────────────────────────────────────────── */}
       <CtaBand
-        eyebrow="Ready to launch"
-        title="Ready to evaluate your AI?"
-        description="Create your ARIA workspace, pick a region, and start shipping safer AI releases with confidence."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
-        secondary={{ href: '/pricing', label: 'Compare plans' }}
+        eyebrow="Open source"
+        title="Ready to evaluate your AI agents?"
+        description="Clone the repo, run your first 15-dimension judge in minutes, and help shape the project."
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
+        secondary={{ href: DOCS_URL, label: 'Read the docs' }}
       />
     </div>
   )

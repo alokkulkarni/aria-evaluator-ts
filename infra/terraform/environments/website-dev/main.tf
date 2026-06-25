@@ -1,11 +1,7 @@
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
-data "aws_availability_zones" "available" { state = "available" }
 
 locals {
-  availability_zones = slice(data.aws_availability_zones.available.names, 0, 2)
-  public_url         = "https://${module.frontend.cloudfront_domain_name}"
-
   common_tags = merge(
     var.tags,
     {
@@ -13,37 +9,6 @@ locals {
       "aria:pricing_track" = "platform"
     },
   )
-}
-
-# ── Auth Backend (ECS Fargate behind ALB) ─────────────────────────────────────
-
-module "auth_backend" {
-  source = "../../modules/website-auth"
-
-  app_name    = "aria"
-  environment = "dev"
-  public_url  = local.public_url
-
-  # Separate VPC for auth backend
-  vpc_cidr            = "10.51.0.0/16"
-  public_subnet_cidrs = ["10.51.1.0/24", "10.51.2.0/24"]
-  availability_zones  = local.availability_zones
-
-  # Dev: minimal sizing
-  cpu           = 256
-  memory        = 512
-  desired_count = 1
-  image_tag     = var.auth_backend_image_tag
-
-  # OAuth credentials are NOT passed through Terraform.
-  # Run: infra/scripts/bootstrap-oauth-secrets.sh dev
-  # after the first terraform apply to populate credentials in Secrets Manager.
-
-  control_plane_url  = var.control_plane_url
-  log_retention_days = 14
-  force_destroy      = var.force_destroy
-
-  tags = local.common_tags
 }
 
 # ── Static Frontend (S3 + CloudFront) ─────────────────────────────────────────
@@ -62,10 +27,7 @@ module "frontend" {
   domain_name     = ""
   route53_zone_id = ""
 
-  # Wire auth backend ALB as second CloudFront origin
-  auth_backend_alb_dns       = module.auth_backend.alb_dns_name
-  auth_backend_origin_secret = module.auth_backend.origin_secret
-  force_destroy              = var.force_destroy
+  force_destroy = var.force_destroy
 
   tags = local.common_tags
 }

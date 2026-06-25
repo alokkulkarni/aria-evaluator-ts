@@ -9,11 +9,17 @@ import { CountUp } from '@/components/motion/CountUp'
 import { MagneticButton } from '@/components/motion/MagneticButton'
 import { Reveal } from '@/components/motion/Reveal'
 import { RevealText } from '@/components/motion/RevealText'
+import { PRIMARY_CTA } from '@/lib/site'
 
 interface Cta {
   href: string
   label: string
 }
+
+/** External (off-site, e.g. GitHub) links open in a new tab. */
+const isExternal = (href: string) => /^https?:\/\//.test(href)
+const externalProps = (href: string) =>
+  isExternal(href) ? { target: '_blank' as const, rel: 'noreferrer noopener' } : {}
 
 /** Standard padded content section. */
 export function Section({
@@ -109,6 +115,7 @@ export function PageHeader({
               {primary ? (
                 <MagneticButton
                   href={primary.href}
+                  external={isExternal(primary.href)}
                   className="items-center justify-center rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_14px_40px_-12px_rgba(34,211,238,0.7)] transition hover:brightness-110"
                 >
                   {primary.label}
@@ -117,6 +124,7 @@ export function PageHeader({
               {secondary ? (
                 <Link
                   href={secondary.href}
+                  {...externalProps(secondary.href)}
                   className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 transition hover:border-white/30 hover:bg-white/10"
                 >
                   {secondary.label} <ArrowRight className="h-4 w-4" />
@@ -146,10 +154,10 @@ export function PageHeader({
 
 /** Reusable closing call-to-action band. */
 export function CtaBand({
-  eyebrow = 'Ready to launch',
+  eyebrow = 'Open source',
   title,
   description,
-  primary = { href: '/sign-up', label: 'Start for free' },
+  primary = PRIMARY_CTA,
   secondary,
 }: {
   eyebrow?: string
@@ -175,6 +183,7 @@ export function CtaBand({
             <div className="flex flex-wrap gap-3">
               <MagneticButton
                 href={primary.href}
+                external={isExternal(primary.href)}
                 className="items-center justify-center rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_14px_40px_-12px_rgba(34,211,238,0.7)] transition hover:brightness-110"
               >
                 {primary.label}
@@ -182,6 +191,7 @@ export function CtaBand({
               {secondary ? (
                 <Link
                   href={secondary.href}
+                  {...externalProps(secondary.href)}
                   className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 transition hover:border-white/30 hover:bg-white/10"
                 >
                   {secondary.label}

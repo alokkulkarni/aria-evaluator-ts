@@ -5,6 +5,7 @@ import { COMMUNITIES } from '@/lib/communities'
 import { SlackIcon, DiscordIcon, GitHubIcon } from '@/components/shared/BrandIcons'
 import { PageHeader, Section, SectionHeading } from '@/components/marketing/ui'
 import { Reveal } from '@/components/motion/Reveal'
+import { GITHUB_DISCUSSIONS_URL } from '@/lib/site'
 
 const platformIcons = {
   slack: SlackIcon,
@@ -34,7 +35,7 @@ export default function CommunityPage() {
         eyebrow="Community"
         title="Join the AI safety conversation"
         description="Connect with practitioners, researchers, and teams building trustworthy AI. Share knowledge, discuss emerging standards, and help shape how the industry evaluates and governs AI systems."
-        primary={{ href: '/sign-up', label: 'Join the community' }}
+        primary={{ href: GITHUB_DISCUSSIONS_URL, label: 'Join the discussion' }}
         secondary={{ href: '/blog', label: 'Read the blog' }}
       />
 
@@ -128,9 +129,9 @@ export default function CommunityPage() {
 
       <Section className="py-8 text-center">
         <p className="text-sm text-slate-500">
-          Free plan members get full community access.{' '}
-          <Link href="/sign-up" className="font-medium text-cyan-300 hover:text-cyan-200">
-            Sign up for free
+          Everyone is welcome in the open-source community.{' '}
+          <Link href={GITHUB_DISCUSSIONS_URL} target="_blank" rel="noreferrer noopener" className="font-medium text-cyan-300 hover:text-cyan-200">
+            Join on GitHub
           </Link>{' '}
           and start exploring.
         </p>

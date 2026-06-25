@@ -14,6 +14,7 @@ import { CtaBand, PageHeader, Section, SectionHeading } from '@/components/marke
 import { Reveal } from '@/components/motion/Reveal'
 import { JsonLd } from '@/components/shared/JsonLd'
 import { buildArticleSchema } from '@/lib/schema'
+import { GITHUB_URL, DOCS_URL } from '@/lib/site'
 
 const PUBLISHED = '2026-06-23'
 const DESCRIPTION =
@@ -112,7 +113,7 @@ export default function WhatIsAiAgentEvaluationPage() {
         eyebrow="Guide"
         title="What is AI agent evaluation?"
         description="A plain-English guide to measuring whether a conversational AI agent is accurate, safe, and compliant — before and after it reaches your customers."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/guides/choosing-an-ai-agent-evaluation-platform', label: 'How to choose a platform' }}
       />
 
@@ -283,8 +284,8 @@ export default function WhatIsAiAgentEvaluationPage() {
         eyebrow="Ready to evaluate"
         title="Put your agent in front of a panel of judges"
         description="Create a workspace, connect your agent, and run your first 15-dimension evaluation in minutes — free."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
-        secondary={{ href: '/pricing', label: 'View pricing' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
+        secondary={{ href: DOCS_URL, label: 'Read the docs' }}
       />
     </div>
   )

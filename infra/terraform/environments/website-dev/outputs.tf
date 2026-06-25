@@ -20,25 +20,6 @@ output "s3_bucket_name" {
   value       = module.frontend.s3_bucket_name
 }
 
-# ── Auth Backend outputs ──────────────────────────────────────────────────────
-
-output "auth_ecr_repository_url" {
-  description = "Push auth backend Docker image here"
-  value       = module.auth_backend.ecr_repository_url
-}
-
-output "auth_ecs_cluster_name" {
-  value = module.auth_backend.ecs_cluster_name
-}
-
-output "auth_ecs_service_name" {
-  value = module.auth_backend.ecs_service_name
-}
-
-output "auth_log_group_name" {
-  value = module.auth_backend.log_group_name
-}
-
 # ── CloudTrail outputs ────────────────────────────────────────────────────────
 
 output "cloudtrail_trail_arn" {

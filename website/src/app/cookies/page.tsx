@@ -26,10 +26,8 @@ export default function CookiesPage() {
             {
               title: '2.1 Strictly Necessary Cookies (Always Active)',
               content: [
-                'These cookies are essential for the website and platform to function correctly. They enable core features such as authentication, session management, security protections, and load balancing. Without these cookies, the service cannot operate.',
-                '• __session / next-auth.session-token — Maintains your authenticated session across page loads. Duration: session. Provider: ARIA Evaluator.',
+                'These cookies are essential for the website to function correctly. They enable core features such as security protections and load balancing. Without these cookies, the service cannot operate.',
                 '• __csrf — Protects against cross-site request forgery attacks. Duration: session. Provider: ARIA Evaluator.',
-                '• __Host-next-auth.csrf-token — NextAuth CSRF protection token. Duration: session. Provider: NextAuth.',
                 '• cookie_consent — Stores your cookie preference selections. Duration: 365 days. Provider: ARIA Evaluator.',
               ],
             },

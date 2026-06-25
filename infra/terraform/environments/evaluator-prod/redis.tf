@@ -38,16 +38,16 @@ resource "aws_security_group" "redis" {
 module "redis" {
   source = "../../modules/redis"
 
-  environment                = var.environment
-  engine_version           = "7.0"
+  environment    = var.environment
+  engine_version = "7.0"
   # Cost-optimized: t4g.micro (0.5 GB) is ample for a BullMQ queue + SSE pub/sub.
-  node_type                = var.redis_node_type != null ? var.redis_node_type : "cache.t4g.micro"
-  num_cache_nodes          = var.redis_num_cache_nodes != null ? var.redis_num_cache_nodes : 1
+  node_type                  = var.redis_node_type != null ? var.redis_node_type : "cache.t4g.micro"
+  num_cache_nodes            = var.redis_num_cache_nodes != null ? var.redis_num_cache_nodes : 1
   automatic_failover_enabled = false
   at_rest_encryption_enabled = true
   transit_encryption_enabled = false # Simplify for dev
 
-  subnet_group_name = aws_elasticache_subnet_group.redis.name
+  subnet_group_name  = aws_elasticache_subnet_group.redis.name
   security_group_ids = [aws_security_group.redis.id]
 
   snapshot_retention_limit = var.redis_snapshot_retention_limit != null ? var.redis_snapshot_retention_limit : 5
