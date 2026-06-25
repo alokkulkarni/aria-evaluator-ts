@@ -7,6 +7,12 @@
 # CONTROL_PLANE_INTERNAL_URL/SECRET and the tenant instance URL auto-wire via SSM —
 # no manual values needed beyond the placeholders below.
 
+# ── Remote state backend (read by ./init-backend.sh, not by Terraform itself) ──
+# Use the same S3 bucket / KMS key / lock table as the other prod stacks.
+terraform_state_bucket      = "REPLACE_WITH_STATE_BUCKET"          # e.g. aria-evaluator-tf-state-XXXXXX
+terraform_state_kms_key_arn = "REPLACE_WITH_STATE_KMS_KEY_ARN"
+terraform_state_lock_table  = "aria-evaluator-tf-locks"
+
 # ── Core ──────────────────────────────────────────────────────────────────────
 aws_region  = "eu-west-2"
 app_name    = "aria-evaluator"

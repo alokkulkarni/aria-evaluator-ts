@@ -21,7 +21,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = "aria-evaluator"
-      Environment = "dev"
+      Environment = "prod"
       ManagedBy   = "terraform"
     }
   }
@@ -35,7 +35,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = "aria-evaluator"
-      Environment = "dev"
+      Environment = "prod"
       ManagedBy   = "terraform"
     }
   }
