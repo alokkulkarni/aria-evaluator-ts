@@ -21,7 +21,7 @@ export default function RunLocallyPage() {
         <h2>Prerequisites</h2>
         <ul>
           <li><strong>Node.js ≥ 20</strong> and npm.</li>
-          <li>A <strong>PostgreSQL</strong> database and a <strong>Redis</strong> instance reachable from your machine. (If you&rsquo;d rather not run these yourself, use the <Link href="/docs/deploy-terraform">Docker/Terraform</Link> setup, which starts both for you.)</li>
+          <li>A <strong>PostgreSQL</strong> database and a <strong>Redis</strong> instance reachable from your machine (e.g. <code>docker run -p 5432:5432 -e POSTGRES_PASSWORD=aria postgres:16-alpine</code>). The one-command <Link href="/docs/deploy-terraform">Docker stack</Link> keeps its Postgres/Redis internal to the compose network, so for <code>npm run dev</code> you provide your own host-reachable instances.</li>
           <li><strong>AWS credentials with Bedrock access</strong> for the judge.</li>
         </ul>
 

@@ -29,6 +29,23 @@ export default function ConfigurationPage() {
           </tbody>
         </table>
 
+        <h2>AWS credentials</h2>
+        <p>
+          ARIA&rsquo;s judge runs on <strong>Amazon Bedrock</strong>, so you need AWS credentials with
+          access to a Bedrock model. The local stack mounts your host <code>~/.aws</code> directory
+          <strong>read-only</strong> into the containers, so once your CLI is configured no extra wiring
+          is needed.
+        </p>
+        <ul>
+          <li><strong>Configure credentials</strong> — run <code>aws configure</code> (writes <code>~/.aws/credentials</code>), or <code>aws sso login</code> for an SSO profile. Environment variables (<code>AWS_ACCESS_KEY_ID</code> / <code>AWS_SECRET_ACCESS_KEY</code>) also work.</li>
+          <li><strong>Pick a region</strong> — set <code>AWS_REGION</code> / <code>JUDGE_BEDROCK_REGION</code> to a region where you have Bedrock access (default <code>eu-west-2</code>).</li>
+          <li><strong>Enable model access</strong> — in the AWS console, open <em>Bedrock → Model access</em> and enable the Claude models you&rsquo;ll judge with. Without this, judge calls fail with an access error.</li>
+        </ul>
+        <p>
+          The app starts fine without AWS credentials — you only need them to actually run an
+          evaluation (the judge call).
+        </p>
+
         <h2>The judge</h2>
         <p>The judge runs on Amazon Bedrock by default. Newer models are resolved to the correct cross-region inference profile automatically based on the region.</p>
         <table>

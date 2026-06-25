@@ -33,10 +33,33 @@ npm install`}</code></pre>
 
         <p>From here, choose how you want to run ARIA — plain npm, or Docker via Terraform.</p>
 
-        <h2>Option A — Run with npm</h2>
+        <h2>Option A — Full stack with Docker (recommended)</h2>
         <p>
-          Best for active development. Provide a Postgres database and Redis, then set up the
-          environment and start the app:
+          One command brings up the app plus its PostgreSQL and Redis — health-ordered, with the
+          database migrated automatically. Postgres and Redis stay internal to the compose network;
+          only the app is exposed.
+        </p>
+        <pre><code>{`# optional: copy config (AWS region, secrets, extra judge keys)
+cp .env.example .env
+
+cd infra/terraform/environments/local
+terraform init
+terraform apply                 # app at http://localhost:3001`}</code></pre>
+        <p>
+          Equivalent without Terraform: <code>docker compose up --build</code> from the repo root. Full
+          details are in <Link href="/docs/deploy-terraform">Deploy with Terraform</Link>.
+        </p>
+        <p>
+          <strong>First login:</strong> a default <code>admin</code> user is created and its password is
+          printed to the logs — grab it with{' '}
+          <code>docker compose logs aria-evaluator | grep -A4 &quot;default admin&quot;</code>, then invite
+          teammates from the in-app <strong>Team</strong> page.
+        </p>
+
+        <h2>Option B — Run from source with npm</h2>
+        <p>
+          Best for active development. Provide your own host-reachable Postgres + Redis (the compose
+          stack&rsquo;s are internal-only), then:
         </p>
         <pre><code>{`cp .env.example .env
 # edit .env: DATABASE_URL (Postgres), REDIS_HOST/REDIS_PORT,
@@ -45,22 +68,8 @@ npm install`}</code></pre>
 npm run db:migrate    # create the schema
 npm run dev           # API + dashboard at http://localhost:3001`}</code></pre>
         <p>
-          See <Link href="/docs/run-locally">Run Locally</Link> for the full environment and
-          <Link href="/docs/configuration"> Configuration</Link> for every variable.
-        </p>
-
-        <h2>Option B — Run with Docker (Terraform)</h2>
-        <p>
-          Fastest way to get everything running — the local Terraform stack starts the app, Postgres,
-          and Redis as containers:
-        </p>
-        <pre><code>{`cd infra/terraform/environments/local
-cp terraform.tfvars.example terraform.tfvars   # set your values
-terraform init
-terraform apply                                 # app at http://localhost:3001`}</code></pre>
-        <p>
-          Full details — what it provisions, the variables, and teardown — are in{' '}
-          <Link href="/docs/deploy-terraform">Deploy with Terraform</Link>.
+          See <Link href="/docs/run-locally">Run Locally</Link> for the full environment and{' '}
+          <Link href="/docs/configuration">Configuration</Link> for every variable.
         </p>
 
         <h2>Run your first scenario</h2>

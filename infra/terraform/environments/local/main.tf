@@ -1,93 +1,53 @@
-# ── Phase 1: Auth system environment variables ────────────────────────────────
-# Phase 1 adds JWT tokens, OAuth, and Redis-backed sessions
+# ── Local environment: full docker-compose stack ─────────────────────────────
+# `terraform apply` here brings up the whole local stack in one command via the
+# repo-root docker-compose.yml: the app + PostgreSQL + Redis (+ an optional
+# Bedrock proxy). Postgres/Redis are internal to the compose network; only the
+# app is published, at http://localhost:3001.
+#
+# Configuration lives in the repo-root `.env` (copy from `.env.example`); compose
+# loads it automatically. This module only passes AWS_REGION and the compose
+# profile through, and runs `docker compose` for you.
+#
+# First login: a default admin is auto-created; its password is printed to the
+# app logs:  docker compose logs aria-evaluator | grep -A4 "default admin"
+
 locals {
-  phase1_environment_vars = [
-    # Reach the host-published Redis (redis.tf publishes 6379 to the host) via
-    # host.docker.internal — NOT localhost, which inside the app container is its
-    # own loopback. Same host-gateway pattern as the local bedrock proxy.
-    { name = "REDIS_HOST", value = "host.docker.internal" },
-    { name = "REDIS_PORT", value = "6379" },
-    { name = "ACCESS_TOKEN_SECRET", value = var.access_token_secret },
-    { name = "REFRESH_TOKEN_SECRET", value = var.refresh_token_secret },
-    { name = "GOOGLE_CLIENT_ID", value = var.google_client_id },
-    { name = "GOOGLE_CLIENT_SECRET", value = var.google_client_secret },
-    { name = "GOOGLE_REDIRECT_URI", value = "http://localhost:3001/auth/oauth/google/callback" },
-    { name = "GITHUB_CLIENT_ID", value = var.github_client_id },
-    { name = "GITHUB_CLIENT_SECRET", value = var.github_client_secret },
-    { name = "GITHUB_REDIRECT_URI", value = "http://localhost:3001/auth/oauth/github/callback" },
-    { name = "BULL_QUEUE_CONCURRENCY", value = "5" },
-  ]
-
-  # Plan limit overrides (optional — empty values are omitted)
-  limit_environment_vars = concat(
-    var.max_runs_per_month != "" ? [{ name = "MAX_RUNS_PER_MONTH", value = var.max_runs_per_month }] : [],
-    var.max_scenarios_per_run != "" ? [{ name = "MAX_SCENARIOS_PER_RUN", value = var.max_scenarios_per_run }] : [],
-    var.max_models != "" ? [{ name = "MAX_MODELS", value = var.max_models }] : [],
-    var.max_users != "" ? [{ name = "MAX_USERS", value = var.max_users }] : [],
-  )
-
-  # Multi-judge committee / calibration (Phase 1–5). Local has no Secrets Manager,
-  # so provider API keys are passed as plaintext env (dev/prod use Secrets Manager).
-  judge_environment_vars = concat(
-    var.judge_committee != "" ? [{ name = "JUDGE_COMMITTEE", value = var.judge_committee }] : [],
-    var.judge_disagreement_threshold != "" ? [{ name = "JUDGE_DISAGREEMENT_THRESHOLD", value = var.judge_disagreement_threshold }] : [],
-    var.judge_weighting_enabled != "" ? [{ name = "JUDGE_WEIGHTING_ENABLED", value = var.judge_weighting_enabled }] : [],
-    var.judge_kappa_trusted != "" ? [{ name = "JUDGE_KAPPA_TRUSTED", value = var.judge_kappa_trusted }] : [],
-    var.judge_kappa_min != "" ? [{ name = "JUDGE_KAPPA_MIN", value = var.judge_kappa_min }] : [],
-    var.judge_calibration_min_samples != "" ? [{ name = "JUDGE_CALIBRATION_MIN_SAMPLES", value = var.judge_calibration_min_samples }] : [],
-    var.max_judges != "" ? [{ name = "MAX_JUDGES", value = var.max_judges }] : [],
-    var.openai_base_url != "" ? [{ name = "OPENAI_BASE_URL", value = var.openai_base_url }] : [],
-    var.azure_openai_endpoint != "" ? [{ name = "AZURE_OPENAI_ENDPOINT", value = var.azure_openai_endpoint }] : [],
-    var.azure_openai_api_version != "" ? [{ name = "AZURE_OPENAI_API_VERSION", value = var.azure_openai_api_version }] : [],
-    var.openai_api_key != "" ? [{ name = "OPENAI_API_KEY", value = var.openai_api_key }] : [],
-    var.azure_openai_api_key != "" ? [{ name = "AZURE_OPENAI_API_KEY", value = var.azure_openai_api_key }] : [],
-    var.anthropic_api_key != "" ? [{ name = "ANTHROPIC_API_KEY", value = var.anthropic_api_key }] : [],
-    var.gemini_api_key != "" ? [{ name = "GEMINI_API_KEY", value = var.gemini_api_key }] : [],
-  )
+  repo_root = abspath("${path.module}/../../../..")
+  profiles  = var.enable_bedrock_proxy ? "bedrock" : ""
 }
 
-module "docker_local" {
-  source = "../../modules/docker-local"
+resource "null_resource" "stack" {
+  # Re-run `docker compose up --build` when the compose file, the image inputs,
+  # the app source, or the DB schema change (matches the docker-local module's
+  # rebuild triggers so code edits are picked up).
+  triggers = {
+    compose_sha    = filesha1("${local.repo_root}/docker-compose.yml")
+    dockerfile_sha = filesha1("${local.repo_root}/Dockerfile.local")
+    package_lock   = filesha1("${local.repo_root}/package-lock.json")
+    schema_sha     = filesha1("${local.repo_root}/prisma/schema.prisma")
+    source_sha = sha1(join("", [
+      for f in fileset(local.repo_root, "src/**") : filesha1("${local.repo_root}/${f}")
+    ]))
+    profiles  = local.profiles
+    repo_root = local.repo_root
+  }
 
-  app_name    = var.app_name
-  environment = var.environment
+  # Bring the stack up (build the image, start postgres/redis/app in order).
+  provisioner "local-exec" {
+    working_dir = local.repo_root
+    environment = {
+      AWS_REGION       = var.aws_region
+      COMPOSE_PROFILES = local.profiles
+      DOCKER_BUILDKIT  = "1"
+    }
+    command = "docker compose up -d --build --remove-orphans"
+  }
 
-  # Image — set app_dockerfile_context to the repo root for automatic builds,
-  # or leave empty and pre-build: `docker build -t aria-evaluator:local .`
-  app_image_name         = var.app_image_name
-  app_dockerfile_context = var.app_dockerfile_context
-
-  container_port = 3001
-  host_port      = var.host_port
-
-  extra_environment_vars = concat(
-    [{ name = "TENANT_SCOPING_MODE", value = var.tenant_scoping_mode }],
-    var.extra_environment_vars, local.phase1_environment_vars, local.limit_environment_vars, local.judge_environment_vars,
-  )
-
-  # ── External Bedrock proxy ───────────────────────────────────────────────────
-  # The Bedrock proxy now runs as a completely standalone service deployed with:
-  #   cd infra/terraform/environments/bedrock-proxy-local && terraform apply
-  #
-  # After deploying the proxy, set bedrock_proxy_url here so the evaluator can
-  # reach it across Docker network boundaries via the host loopback.
-  # On macOS/Windows (Docker Desktop):  "http://host.docker.internal:8765"
-  # On Linux native Docker:             "http://host.docker.internal:8765"
-  #   (the proxy module sets extra_hosts so host.docker.internal resolves)
-  # Leave empty to omit BEDROCK_LAMBDA_ENDPOINT (set it manually via
-  # extra_environment_vars pointing at AWS API Gateway instead).
-  bedrock_proxy_url = var.bedrock_proxy_url
-
-  # ── Scenarios / DB bind-mounts ───────────────────────────────────────────────
-  local_scenarios_dir = var.local_scenarios_dir
-  local_db_path       = var.local_db_path
-
-  # ── Control plane SSO ────────────────────────────────────────────────────────
-  # Point at the local control-plane container. Use host.docker.internal so the
-  # evaluator container can reach the control-plane container on the host network.
-  # Override in terraform.tfvars if using a different host port.
-  control_plane_internal_url    = var.control_plane_internal_url
-  control_plane_internal_secret = var.control_plane_internal_secret
-
-  website_url = var.website_url
+  # Tear the stack down on `terraform destroy`. (Add `-v` manually to also wipe
+  # the postgres/redis/state volumes.)
+  provisioner "local-exec" {
+    when        = destroy
+    working_dir = self.triggers.repo_root
+    command     = "docker compose down"
+  }
 }
