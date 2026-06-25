@@ -1,115 +1,28 @@
-# ── Local Docker deployment — terraform.tfvars ────────────────────────────────
-# Copy this file to terraform.tfvars, fill in your values, then run:
+# ── Local docker-compose stack — terraform.tfvars ────────────────────────────
+# `terraform apply` brings up the whole local stack (app + PostgreSQL + Redis)
+# via the repo-root docker-compose.yml:
 #
+#   cp terraform.tfvars.example terraform.tfvars
 #   terraform init
-#   terraform apply
+#   terraform apply        # app at http://localhost:3001
 #
-# The application will be available at http://localhost:<host_port>
-# Persistent data is stored in the Docker volume `aria-evaluator-local-state`.
+# Most config (AWS region, token secrets, optional judge provider keys) lives in
+# the repo-root `.env` — copy it from `.env.example`. docker compose loads it
+# automatically; you usually don't need to set anything here.
 #
-# To destroy all resources (containers, network, volume):
-#   terraform destroy
+# First login: a default admin user is auto-created; its password is printed to
+# the app logs:
+#   docker compose logs aria-evaluator | grep -A4 "default admin"
+#
+# AWS credentials: the judge runs on Amazon Bedrock and reads your host ~/.aws
+# (mounted read-only). Run `aws configure` or `aws sso login` first, and make
+# sure you have Bedrock model access in `aws_region`.
+#
+# Tear down:  terraform destroy   (add `docker compose down -v` to wipe volumes)
 # ─────────────────────────────────────────────────────────────────────────────
 
-app_name    = "aria-evaluator"
-environment = "local"
+aws_region = "eu-west-2"
 
-# ── Image ─────────────────────────────────────────────────────────────────────
-# Terraform always builds the image locally from the repo root — it never
-# attempts to pull from Docker Hub.  No manual `docker build` step is needed.
-#
-# The build context is auto-detected as the repo root (four levels above the
-# module directory).  Override only if you have a non-standard layout:
-#
-#   app_dockerfile_context = "/absolute/path/to/aria-evaluator-ts"
-#
-# To force a full rebuild after source changes (Dockerfile hash hasn't changed):
-#   terraform taint module.docker_local.null_resource.build_app_image
-#   terraform apply
-
-app_image_name         = "aria-evaluator:local"
-app_dockerfile_context = ""   # Leave empty — repo root is auto-detected
-
-# ── Ports ─────────────────────────────────────────────────────────────────────
-host_port = 3001   # http://localhost:3001
-
-# ── App-specific environment variables ────────────────────────────────────────
-# Mirrors dev/terraform.tfvars extra_environment_vars.
-# At minimum, set the values relevant for your chosen eval provider.
-
-extra_environment_vars = [
-  # ── Amazon Connect (leave blank if not testing Connect) ──────────────────
-  { name = "CONNECT_INSTANCE_ID",       value = "f969d4b4-f716-4974-a325-bb7899f2f293" },
-  { name = "CONNECT_REGION",            value = "eu-west-2" },
-  { name = "CONNECT_CONTACT_FLOW_NAME", value = "conversation bot flow" },
-  { name = "CONNECT_WEBRTC_FLOW_ID",    value = "f6d6545f-c9ae-4ca4-a4d8-6fdc8ba0494f" },
-
-  # ── Bedrock (judge model — used regardless of eval provider) ─────────────
-  { name = "BEDROCK_REGION",  value = "eu-west-2" },
-  { name = "JUDGE_MODEL_ID",  value = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0" },
-
-  # ── Bedrock Lambda endpoint (Option A for Bedrock eval provider) ─────────
-  # Point at your deployed AWS API Gateway URL if bedrock_proxy_enabled = false.
-  # { name = "BEDROCK_LAMBDA_ENDPOINT", value = "https://<id>.execute-api.eu-west-2.amazonaws.com" },
-
-  # ── Evaluation defaults ───────────────────────────────────────────────────
-  { name = "EVAL_CUSTOMER_ID",          value = "CUST-001" },
-  { name = "EVAL_CUSTOMER_NAME",        value = "James Wilson" },
-  { name = "EVAL_PROVIDER_DEFAULT",     value = "connect" },  # connect | bedrock | openapi
-  { name = "POLLY_VOICE_ID",            value = "Amy" },
-  { name = "EVAL_RESPONSE_TIMEOUT_SECONDS", value = "120" },
-  { name = "VOICE_PRE_SEND_DELAY_MS",   value = "1200" },
-]
-
-# ── Local Bedrock proxy (Option B — run Bedrock calls locally) ────────────────
-# Set bedrock_proxy_enabled = true to deploy a companion proxy container that
-# calls Bedrock directly using your local AWS credentials.
-#
-# AWS credentials are automatically mapped from ~/.aws into both the main app
-# container and this proxy container — no manual volume configuration needed.
-# Both ~/.aws/credentials (key-based) and ~/.aws/config (SSO profiles) are
-# detected and mounted read-only at /root/.aws inside each container.
-#
-# The proxy image is built automatically from lambda/bedrock_proxy/Dockerfile.local
-# (auto-detected from the repo root — no path configuration needed).
-# Override bedrock_proxy_dockerfile_context only for non-standard layouts.
-#
-# The proxy is then available at http://localhost:<bedrock_proxy_host_port>
-# and aria-evaluator automatically uses it when BEDROCK_LAMBDA_ENDPOINT is
-# left unset.
-#
-# Prerequisites:
-#   - AWS credentials with bedrock:InvokeModel on the host machine
-
-bedrock_proxy_enabled            = false
-# bedrock_proxy_dockerfile_context = ""   # auto-detected — only override if needed
-bedrock_proxy_host_port          = 8765
-bedrock_model_id                 = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-bedrock_region                   = "eu-west-2"
-bedrock_system_prompt            = "You are a helpful AI assistant for customer service."
-bedrock_max_tokens               = 2048
-
-# ── Pre-built scenario files ───────────────────────────────────────────────────
-# Set to the absolute path of the repo's scenarios/ directory.
-# This bind-mounts the directory into the container so pre-built YAML scenarios
-# are immediately available in the UI without any copy/upload step.
-# Terraform functions like abspath() cannot be used in .tfvars — use a literal path.
-#
-# Example (macOS / Linux):
-#   local_scenarios_dir = "/Users/<your-username>/repos/aria-evaluator-ts/scenarios"
-#
-# Windows (WSL):
-#   local_scenarios_dir = "/mnt/c/Users/<your-username>/repos/aria-evaluator-ts/scenarios"
-
-local_scenarios_dir = "/Users/alokkulkarni/Documents/Development/aria-evaluator-ts/scenarios"
-
-# ── Persistent SQLite DB across redeploys (optional) ──────────────────────────
-# Leave empty to let the container create a fresh DB in the named volume.
-#   local_db_path = "/Users/<your-username>/repos/aria-evaluator-ts/prisma/data/aria-evaluator.db"
-
-local_db_path = ""
-
-# ── Website URL (sign-out redirect target) ────────────────────────────────────
-# Where the user is redirected after signing out.
-# Default: http://localhost:3000 (local marketing website)
-website_url = "http://localhost:3000"
+# Set true to also start the local Bedrock proxy container so the app can call
+# Bedrock via a local HTTP proxy (docker compose --profile bedrock).
+enable_bedrock_proxy = false

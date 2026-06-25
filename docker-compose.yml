@@ -1,66 +1,119 @@
-# docker-compose.yml — local development
+# docker-compose.yml — full local stack for ARIA Evaluator
 #
-# Default usage (aria-evaluator only):
-#   docker compose up --build
+# Brings up everything you need to run ARIA locally, in dependency order:
+#   • postgres   — the database (internal only)
+#   • redis      — sessions + job queue (internal only)
+#   • aria-evaluator — the app + dashboard at http://localhost:3001
 #
-# With local Bedrock proxy (calls AWS Bedrock using your ~/.aws credentials):
-#   docker compose --profile bedrock up --build
+# Usage:
+#   docker compose up --build            # app + postgres + redis
+#   docker compose --profile bedrock up --build   # + local Bedrock proxy
+#   docker compose down                  # stop (add -v to also wipe data)
 #
-# Bind-mounts:
-#   ./scenarios          → /app/scenarios   (YAML scenarios, no rebuild needed)
-#   ./data               → /app/state       (SQLite DB + reports persist on host)
-#   ~/.aws               → /root/.aws       (for Bedrock access in both services)
+# This is also what `terraform apply` runs in infra/terraform/environments/local.
 #
-# Bedrock proxy:
-#   Host port:      http://localhost:8765
-#   Internal URL:   http://bedrock-proxy:8000  (use this in aria-evaluator Settings)
-#   Set BEDROCK_MODEL_ID and BEDROCK_REGION below to control which model is used.
+# First login: a default admin user is auto-created and its password is printed
+# to the app logs. Find it with:
+#   docker compose logs aria-evaluator | grep -A4 "default admin"
+#
+# AWS credentials: the judge runs on Amazon Bedrock. Your ~/.aws is mounted
+# read-only into the containers, so `aws configure` / `aws sso login` on the host
+# is enough. Set AWS_REGION (default eu-west-2) to a region where you have
+# Bedrock model access. See .env.example.
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aria
+      POSTGRES_PASSWORD: aria
+      POSTGRES_DB: aria
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No host port — only the app (on the compose network) needs it.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aria"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    # No host port — only the app needs it.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   aria-evaluator:
     build:
       context: .
       dockerfile: Dockerfile.local
     image: aria-evaluator:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "3001:3001"
     environment:
       NODE_ENV: production
+      ARIA_DEPLOY_ENV: local
       API_PORT: "3001"
-      SCENARIOS_DIR: /app/scenarios
-      # DB lives directly in ./data/aria-evaluator.db on host
-      DATABASE_URL: file:/app/state/aria-evaluator.db
-      EVAL_REPORT_OUTPUT_DIR: /app/state/reports
-      APP_STATE_DIR: /app/state
-      # AWS region for Bedrock (override if needed)
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-eu-west-2}
+      # Local mode: empty bucket disables S3 state sync and enables the
+      # auto-created default admin (see AUTH_DEFAULT_ADMIN_ENABLED).
+      AWS_S3_STATE_BUCKET: ""
+      AUTH_DEFAULT_ADMIN_ENABLED: "true"
+      # Database — reached over the compose network by service name.
+      DATABASE_URL: postgresql://aria:aria@postgres:5432/aria?schema=public
+      # Redis — sessions + BullMQ job queue.
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      BULL_QUEUE_CONCURRENCY: "5"
+      # Session/JWT secrets — dev defaults; override in .env for anything shared.
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-local-dev-access-token-secret-change-me}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-local-dev-refresh-token-secret-change-me}
+      # AWS / Bedrock judge.
       AWS_REGION: ${AWS_REGION:-eu-west-2}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-eu-west-2}
+      JUDGE_BEDROCK_REGION: ${JUDGE_BEDROCK_REGION:-${AWS_REGION:-eu-west-2}}
+      # Optional: override the judge model id.
+      JUDGE_MODEL_ID: ${JUDGE_MODEL_ID:-}
+      # Optional extra judge providers (left empty unless you set them in .env).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      # Paths inside the container.
+      SCENARIOS_DIR: /app/state/scenarios
+      EVAL_REPORT_OUTPUT_DIR: /app/state/reports
       # When running with --profile bedrock, point at the proxy container.
-      # Remove or override this if using a deployed AWS API Gateway instead.
-      BEDROCK_LAMBDA_ENDPOINT: ${BEDROCK_LAMBDA_ENDPOINT:-http://bedrock-proxy:8000}
+      BEDROCK_LAMBDA_ENDPOINT: ${BEDROCK_LAMBDA_ENDPOINT:-}
     volumes:
-      # Scenarios — bind-mount so YAML changes are live without rebuild
-      - ./scenarios:/app/scenarios:ro
-      # Persistent state — mount host ./data directly as STATE_DIR
-      - ./data:/app/state
-      # AWS credentials for Bedrock access
+      # Persistent state (reports, transcripts) on a named volume.
+      - appstate:/app/state
+      # Bundled scenario packs, live-editable without a rebuild.
+      - ./scenarios:/app/state/scenarios:ro
+      # Host AWS credentials for the Bedrock judge (read-only).
       - ${HOME}/.aws:/root/.aws:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/scenarios', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
 
-  # ── Local Bedrock proxy ──────────────────────────────────────────────────────
-  # Wraps the Lambda handler as a plain HTTP server.
-  # Start with:  docker compose --profile bedrock up --build
-  #
-  # Configure via environment variables below or a .env file in this directory:
-  #   BEDROCK_MODEL_ID   — model ID or cross-region inference profile ARN
-  #   BEDROCK_REGION     — AWS region where the model is available
-  #   BEDROCK_SYSTEM_PROMPT — system prompt injected into every conversation
+  # ── Optional local Bedrock proxy ──────────────────────────────────────────────
+  # Wraps the Lambda handler as an HTTP server so the app can call Bedrock with
+  # your ~/.aws credentials. Start with:  docker compose --profile bedrock up --build
+  # Then set BEDROCK_LAMBDA_ENDPOINT=http://bedrock-proxy:8000 (in .env).
   bedrock-proxy:
     profiles: ["bedrock"]
     build:
@@ -72,13 +125,12 @@ services:
     environment:
       PORT: "8000"
       BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-eu.anthropic.claude-sonnet-4-5-20250929-v1:0}
-      BEDROCK_REGION: ${BEDROCK_REGION:-eu-west-2}
+      BEDROCK_REGION: ${AWS_REGION:-eu-west-2}
       SYSTEM_PROMPT: ${BEDROCK_SYSTEM_PROMPT:-You are a helpful AI assistant for customer service.}
       MAX_TOKENS: ${BEDROCK_MAX_TOKENS:-2048}
       ALLOWED_ORIGINS: "*"
       LOG_LEVEL: INFO
     volumes:
-      # Mount host AWS credentials so boto3 can authenticate
       - ${HOME}/.aws:/root/.aws:ro
     restart: unless-stopped
     healthcheck:
@@ -87,3 +139,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+volumes:
+  pgdata:
+  redisdata:
+  appstate:
