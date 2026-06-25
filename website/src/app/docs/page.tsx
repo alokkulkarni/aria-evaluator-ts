@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 
 import { CtaBand, PageHeader, Section, SectionHeading } from '@/components/marketing/ui'
 import { Reveal } from '@/components/motion/Reveal'
+import { GITHUB_URL } from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'ARIA Documentation',
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 }
 
 const docTracks = [
-  { title: 'Platform quick start', description: 'Set up your first workspace, connect your model endpoint, run baseline checks, and generate a shareable release report.', href: '/sign-up', cta: 'Start onboarding' },
+  { title: 'Platform quick start', description: 'Clone the repository, connect your model endpoint, run baseline checks, and generate a shareable release report.', href: GITHUB_URL, cta: 'View on GitHub' },
   { title: 'Deployment and infrastructure', description: 'Deploy control plane and evaluator environments with reproducible Terraform workflows, backend state controls, and environment separation.', href: '/security', cta: 'Review deployment security' },
   { title: 'Evaluation playbooks', description: 'Use structured scenario packs for bias, adversarial behavior, policy alignment, and regression prevention across releases.', href: '/community/ai-evaluation', cta: 'Explore community playbooks' },
   { title: 'Operations and incident response', description: 'Monitor run health, investigate failed checks, and apply escalation runbooks for production model incidents.', href: '/contact', cta: 'Contact support' },
@@ -46,7 +47,7 @@ export default function DocsPage() {
         eyebrow="Documentation"
         title="Everything you need to run ARIA in production"
         description="Learn how to deploy securely, evaluate consistently, and operate with confidence. These docs are built for platform, security, and product teams shipping AI systems in real environments."
-        primary={{ href: '/sign-up', label: 'Get started' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/contact', label: 'Request implementation help' }}
       />
 
@@ -126,7 +127,7 @@ export default function DocsPage() {
         eyebrow="Get hands on"
         title="Spin up a workspace and follow along"
         description="The fastest way to learn ARIA is to run your first evaluation. Create a free workspace and work through the quick start."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/contact', label: 'Contact support' }}
       />
     </div>

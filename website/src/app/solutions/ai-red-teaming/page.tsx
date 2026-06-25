@@ -5,6 +5,7 @@ import { ArrowRight, BadgeCheck, Bug, Crosshair, Lock, ShieldAlert } from 'lucid
 import { FeatureCard } from '@/components/marketing/FeatureCard'
 import { CtaBand, PageHeader, Section, SectionHeading } from '@/components/marketing/ui'
 import { Reveal } from '@/components/motion/Reveal'
+import { GITHUB_URL } from '@/lib/site'
 
 const DESCRIPTION =
   'Red-team your conversational AI agents before attackers do. ARIA runs prompt injection, jailbreak, and social-engineering attacks against your live agent — scored by a panel of judges with human review, mapped to OWASP LLM Top 10, NIST AI RMF, and FCA controls.'
@@ -51,7 +52,7 @@ export default function AiRedTeamingPage() {
         eyebrow="Solution"
         title="Red-team your conversational AI before it ships"
         description="ARIA runs prompt injection, jailbreak, and social-engineering attacks against your live agent — not just the model — and scores every attempt with a panel of judges and human review. Adversarial coverage and compliance evidence in one run."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/security', label: 'See our security posture' }}
         pills={['Prompt injection', 'Jailbreaks', 'Social engineering', 'Human-reviewed']}
       />
@@ -151,7 +152,7 @@ export default function AiRedTeamingPage() {
         eyebrow="Find the holes first"
         title="Attack your agent before someone else does"
         description="Connect your agent and run an adversarial suite across prompt injection, jailbreaks, and social engineering — free to start."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/contact', label: 'Talk to our team' }}
       />
     </div>

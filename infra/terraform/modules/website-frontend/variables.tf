@@ -35,27 +35,6 @@ variable "acm_certificate_arn_cloudfront" {
   description = "ACM cert ARN in us-east-1 for CloudFront."
 }
 
-# ── Auth Backend (ALB origin) ─────────────────────────────────────────────────
-
-variable "auth_backend_alb_dns" {
-  type        = string
-  default     = ""
-  description = "DNS name of the auth backend ALB. When empty, /api/* routes are not proxied."
-}
-
-variable "auth_backend_alb_https" {
-  type        = bool
-  default     = false
-  description = "Whether the auth backend ALB uses HTTPS."
-}
-
-variable "auth_backend_origin_secret" {
-  type        = string
-  default     = ""
-  sensitive   = true
-  description = "Shared secret for X-CF-Origin-Secret header to prevent direct ALB access."
-}
-
 # ── WAF ───────────────────────────────────────────────────────────────────────
 
 variable "waf_rate_limit" {

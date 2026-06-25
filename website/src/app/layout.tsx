@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
 
 import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics'
-import { SessionProvider } from '@/components/auth/SessionProvider'
 import { AppShell } from '@/components/shared/AppShell'
 import { JsonLd } from '@/components/shared/JsonLd'
 import { siteSchemaGraph } from '@/lib/schema'
@@ -65,9 +64,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className={`${spaceGrotesk.variable} ${inter.variable} font-sans text-slate-800`}>
         <JsonLd data={siteSchemaGraph} />
         <GoogleAnalytics />
-        <SessionProvider>
-          <AppShell>{children}</AppShell>
-        </SessionProvider>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   )

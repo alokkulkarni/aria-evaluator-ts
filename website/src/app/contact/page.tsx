@@ -3,6 +3,7 @@ import Link from 'next/link'
 
 import { PageHeader, Section, SectionHeading } from '@/components/marketing/ui'
 import { Reveal } from '@/components/motion/Reveal'
+import { GITHUB_URL } from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'Contact ARIA Evaluator',
@@ -30,7 +31,7 @@ export default function ContactPage() {
         eyebrow="Contact"
         title="Get in touch with the ARIA team"
         description="Whether you're evaluating rollout options, planning a pilot, or handling a production incident, we'll connect you with the right team quickly."
-        primary={{ href: 'mailto:sales@ariaeval.io?subject=ARIA%20Evaluator%20Inquiry', label: 'Contact sales' }}
+        primary={{ href: 'mailto:sales@ariaeval.io?subject=ARIA%20Evaluator%20Inquiry', label: 'Email us' }}
         secondary={{ href: '/docs', label: 'Read docs first' }}
       />
 
@@ -107,8 +108,8 @@ export default function ContactPage() {
           </Reveal>
           <p className="mt-6 text-sm text-slate-500">
             Prefer self-serve?{' '}
-            <Link href="/sign-up" className="font-medium text-cyan-300 hover:text-cyan-200">
-              Create a free workspace
+            <Link href={GITHUB_URL} target="_blank" rel="noreferrer noopener" className="font-medium text-cyan-300 hover:text-cyan-200">
+              view it on GitHub
             </Link>{' '}
             and start evaluating in minutes.
           </p>

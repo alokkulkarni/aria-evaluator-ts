@@ -40,55 +40,10 @@ variable "host_port" {
   default = 3000
 }
 
-variable "nextauth_secret" {
-  description = "NextAuth secret — generate with: openssl rand -base64 32"
-  type        = string
-  sensitive   = true
-}
-
-variable "google_client_id" {
-  type    = string
-  default = ""
-}
-
-variable "google_client_secret" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "github_client_id" {
-  type    = string
-  default = ""
-}
-
-variable "github_client_secret" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "control_plane_url" {
-  type    = string
-  default = "http://host.docker.internal:4000"
-}
-
 variable "extra_environment_vars" {
   type = list(object({
     name  = string
     value = string
   }))
   default = []
-}
-
-variable "enable_auth_backend" {
-  description = "Run the auth backend as a separate container alongside the website"
-  type        = bool
-  default     = true
-}
-
-variable "auth_backend_host_port" {
-  description = "Host port for the auth backend container"
-  type        = number
-  default     = 3001
 }

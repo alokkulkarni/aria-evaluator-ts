@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { BLOG_POSTS, CATEGORY_META } from '@/lib/blog-data'
 import { JsonLd } from '@/components/shared/JsonLd'
 import { buildBlogPostingSchema } from '@/lib/schema'
+import { GITHUB_URL } from '@/lib/site'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -121,10 +122,12 @@ export default async function BlogPostPage({ params }: Props) {
               red-teaming, and full observability included.
             </p>
             <Link
-              href="/sign-up"
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer noopener"
               className="inline-block w-full rounded-full bg-gradient-to-r from-cyan-300 to-blue-400 px-4 py-2 text-center text-sm font-semibold text-slate-950 transition hover:brightness-110"
             >
-              Start for free
+              View on GitHub
             </Link>
           </div>
 

@@ -6,6 +6,7 @@ import { CtaBand, PageHeader, Section, SectionHeading } from '@/components/marke
 import { Reveal } from '@/components/motion/Reveal'
 import { JsonLd } from '@/components/shared/JsonLd'
 import { buildArticleSchema } from '@/lib/schema'
+import { GITHUB_URL } from '@/lib/site'
 
 const PUBLISHED = '2026-06-23'
 const DESCRIPTION =
@@ -156,7 +157,7 @@ export default function ConversationalAiRedTeamingPage() {
         eyebrow="Start red teaming"
         title="Run an adversarial suite on your own agent"
         description="Connect your agent and probe it for injection, jailbreaks, and social engineering — scored by a panel, free to start."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/solutions/ai-red-teaming', label: 'Explore the solution' }}
       />
     </div>

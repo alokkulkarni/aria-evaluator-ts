@@ -66,10 +66,10 @@ locals {
 
   # Evaluator stack (pooled multi-tenant evaluator) — needs to reach the internal
   # control-plane ALB for the SSO verify call (/auth/sso → /auth/verify-sso-token).
-  evaluator_vpc_id        = data.terraform_remote_state.evaluator.outputs.vpc_id
-  evaluator_vpc_cidr      = data.terraform_remote_state.evaluator.outputs.vpc_cidr
-  evaluator_rt_ids        = data.terraform_remote_state.evaluator.outputs.all_route_table_ids
-  evaluator_ecs_sg_id     = data.terraform_remote_state.evaluator.outputs.ecs_service_security_group_id
+  evaluator_vpc_id    = data.terraform_remote_state.evaluator.outputs.vpc_id
+  evaluator_vpc_cidr  = data.terraform_remote_state.evaluator.outputs.vpc_cidr
+  evaluator_rt_ids    = data.terraform_remote_state.evaluator.outputs.all_route_table_ids
+  evaluator_ecs_sg_id = data.terraform_remote_state.evaluator.outputs.ecs_service_security_group_id
 
   common_tags = merge(var.tags, {
     Project              = "aria-evaluator"

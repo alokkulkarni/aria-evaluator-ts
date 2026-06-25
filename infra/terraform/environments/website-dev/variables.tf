@@ -10,18 +10,6 @@ variable "force_destroy" {
   default     = true
 }
 
-variable "auth_backend_image_tag" {
-  description = "Docker image tag for the auth backend container"
-  type        = string
-  default     = "latest"
-}
-
-variable "control_plane_url" {
-  description = "Control plane API URL"
-  type        = string
-  default     = ""
-}
-
 variable "tags" {
   description = "Additional tags"
   type        = map(string)

@@ -7,6 +7,7 @@ import { VIDEO_CATEGORY_META, VIDEOS } from '@/lib/video-data'
 import type { VideoCategory } from '@/lib/video-data'
 import { cn } from '@/lib/utils'
 import { CtaBand, PageHeader, Section } from '@/components/marketing/ui'
+import { GITHUB_URL, DOCS_URL } from '@/lib/site'
 
 const ALL = 'all' as const
 type FilterValue = typeof ALL | VideoCategory
@@ -114,7 +115,7 @@ export default function VideosPage() {
         eyebrow="Videos"
         title="Curated video resources on AI safety and evaluation"
         description="Hand-picked talks, tutorials, and deep-dives from leading researchers covering LLM red-teaming, evaluation methodology, safety alignment, and production observability."
-        primary={{ href: '/sign-up', label: 'Get started' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
         secondary={{ href: '/blog', label: 'Read the blog' }}
       />
 
@@ -154,8 +155,8 @@ export default function VideosPage() {
         eyebrow="Learn by doing"
         title="Put these evaluation techniques into practice"
         description="ARIA gives you the infrastructure to run structured red-team programmes, multi-model judge pipelines, and continuous evaluation with full observability — everything the videos recommend."
-        primary={{ href: '/sign-up', label: 'Start for free' }}
-        secondary={{ href: '/pricing', label: 'Compare plans' }}
+        primary={{ href: GITHUB_URL, label: 'View on GitHub' }}
+        secondary={{ href: DOCS_URL, label: 'Read the docs' }}
       />
     </div>
   )

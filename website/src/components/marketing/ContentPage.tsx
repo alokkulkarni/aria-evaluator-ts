@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import { GITHUB_URL, DOCS_URL } from '@/lib/site'
+
 interface ContentPageProps {
   label: string
   title: string
@@ -14,8 +16,8 @@ export function ContentPage({
   title,
   description,
   highlights,
-  primaryCta = { href: '/sign-up', label: 'Get started' },
-  secondaryCta = { href: '/pricing', label: 'View pricing' },
+  primaryCta = { href: GITHUB_URL, label: 'View on GitHub' },
+  secondaryCta = { href: DOCS_URL, label: 'Read the docs' },
 }: ContentPageProps) {
   return (
     <div className="max-w-8xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
