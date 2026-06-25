@@ -230,26 +230,14 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  # ── _next/static/* behavior: long cache ──
-  ordered_cache_behavior {
-    path_pattern           = "/_next/static/*"
-    target_origin_id       = "s3-static"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl     = 31536000
-    default_ttl = 31536000
-    max_ttl     = 31536000
-  }
+  # NOTE: a dedicated `/_next/static/*` ordered_cache_behavior was removed. Despite
+  # being config-identical to the default behavior (same s3-static origin + OAC, no
+  # trusted signers/key groups, no origin path), it returned 403 from the origin for
+  # every request, so CloudFront served the 403→/index.html fallback for all hashed
+  # CSS/JS assets and the site rendered unstyled. The default behavior serves these
+  # static files correctly (verified for svg/xml/txt and deep HTML paths), so
+  # `/_next/static/*` now falls through to it. The hashed assets are immutable, so the
+  # default behavior's TTL is fine.
 
   # ── SPA fallback: serve index.html for client-side routes ──
   custom_error_response {
