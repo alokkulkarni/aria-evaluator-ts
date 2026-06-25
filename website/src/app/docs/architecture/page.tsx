@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { DocHeading } from '@/components/docs/DocHeading'
+import { ArchitectureDiagram } from '@/components/docs/ArchitectureDiagram'
 
 export const metadata: Metadata = {
   title: 'Architecture — ARIA Evaluator Docs',
@@ -17,7 +18,11 @@ export default function ArchitecturePage() {
         intro="ARIA is a single TypeScript application: an API and dashboard, an evaluation engine, pluggable adapters, and an LLM judge. Here's how the pieces fit together."
       />
 
-      <div className="docs-prose mt-8">
+      <div className="mt-8">
+        <ArchitectureDiagram />
+      </div>
+
+      <div className="docs-prose mt-10">
         <h2>The evaluation pipeline</h2>
         <p>A run is a straight line from a scenario to a report:</p>
         <pre><code>Scenario (YAML) → Adapter → Conversation runner → Transcript → LLM Judge → EvalResult → Reports / Dashboard</code></pre>
