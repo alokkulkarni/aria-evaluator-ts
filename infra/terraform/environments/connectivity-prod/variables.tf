@@ -5,15 +5,9 @@ variable "aws_region" {
 }
 
 variable "terraform_state_bucket" {
-  description = "S3 bucket holding the website-prod and control-plane-prod remote state"
+  description = "S3 bucket holding the control-plane-prod and evaluator-prod remote state"
   type        = string
   default     = "aria-evaluator-tf-state-194296"
-}
-
-variable "website_state_key" {
-  description = "Remote state key for the website-prod stack"
-  type        = string
-  default     = "website/prod/terraform.tfstate"
 }
 
 variable "control_plane_state_key" {
