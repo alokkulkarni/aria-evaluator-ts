@@ -26,7 +26,7 @@ export default function ArchitecturePage() {
       <div className="docs-prose mt-10">
         <h2>System architecture</h2>
         <p>
-          The diagram below shows how ARIA's internal components — the API server, evaluation engine,
+          The diagram below shows how ARIA&apos;s internal components — the API server, evaluation engine,
           adapter plane, and judge — are wired together.
         </p>
       </div>
