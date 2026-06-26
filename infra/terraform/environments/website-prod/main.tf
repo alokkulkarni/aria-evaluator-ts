@@ -13,11 +13,13 @@ locals {
     },
   )
 
-  # Route53 TXT records cap each character string at 255 bytes. Auto-chunk the
-  # DKIM key so Terraform sends it correctly regardless of key length. To rotate
-  # the DKIM key: update google_dkim_txt in terraform.tfvars and re-apply.
+  # Route53 TXT records cap each character string at 255 bytes. Split the DKIM
+  # key into ≤255-char chunks joined by `" "` (closing-quote space opening-quote).
+  # The AWS provider adds the outer pair of quotes, producing `"chunk1" "chunk2"`
+  # which Route53 parses as a single TXT record with two character strings.
+  # To rotate the DKIM key: update google_dkim_txt in terraform.tfvars and apply.
   dkim_chunks = chunklist(split("", var.google_dkim_txt), 255)
-  dkim_record = join(" ", [for chunk in local.dkim_chunks : "\"${join("", chunk)}\""])
+  dkim_record = join("\" \"", [for chunk in local.dkim_chunks : join("", chunk)])
 }
 
 # ── Build & deploy static website to S3 ───────────────────────────────────────
