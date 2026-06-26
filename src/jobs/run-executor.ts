@@ -12,6 +12,11 @@ import {
 
 import { prisma } from '../db/client.js';
 import { getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
+import {
+  buildProviderEnvOverlay,
+  getInstanceNickname,
+  ProviderInstanceNotFoundError,
+} from '../api/provider-instances.js';
 import { getJudgeWeights } from '../api/calibration-service.js';
 import { readFile } from 'node:fs/promises';
 import {
@@ -148,11 +153,42 @@ async function executeRunJobScoped(job: ClaimedRunJob): Promise<void> {
       payload.channel,
     ];
 
+    // Base env, then overlay the selected provider instance's config. The CLI's
+    // adapters read connection config straight from process.env, so a selected
+    // instance is just an env overlay here. When no instance is selected
+    // (providerInstanceId == null) we keep today's legacy env behavior.
+    const childEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...getRuntimeSettingsEnv(),
+      ...judgeWeightsEnv,
+    };
+    if (payload.providerInstanceId) {
+      let overlay;
+      try {
+        overlay = await buildProviderEnvOverlay(payload.provider, payload.providerInstanceId);
+      } catch (err) {
+        if (err instanceof ProviderInstanceNotFoundError) {
+          // Deleted between queue and claim — fail the run rather than silently
+          // falling back to a different (legacy) target.
+          throw new Error(
+            `Selected ${payload.provider} provider instance was removed before the run started. ` +
+            `Open Settings, re-select a provider instance, and run again.`,
+          );
+        }
+        throw err;
+      }
+      // Strip the provider's legacy keyspace first so a partial instance config
+      // doesn't inherit stale values from the global settings.
+      for (const key of overlay.stripKeys) delete childEnv[key];
+      Object.assign(childEnv, overlay.overlay);
+      publishLogEvent(`ℹ Using provider instance "${overlay.nickname}"`);
+    }
+
     // detached=true makes npm the leader of a new process group so we can
     // kill the entire group (npm + spawned children) in one shot.
     const child = spawn('npm', args, {
       cwd: PROJECT_ROOT,
-      env: { ...process.env, ...getRuntimeSettingsEnv(), ...judgeWeightsEnv },
+      env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     });
@@ -695,11 +731,17 @@ async function persistRunTelemetry(
     ? Math.max(0, completedAt.getTime() - job.startedAt.getTime())
     : null;
   const failureClass = status === 'failed' ? classifyFailure(errorMessage) : null;
+  const providerInstanceId = payload.providerInstanceId ?? null;
+  const providerInstanceName = providerInstanceId
+    ? await getInstanceNickname(providerInstanceId)
+    : null;
 
   await prisma.runTelemetry.upsert({
     where: { runId: job.runId },
     update: {
       provider: payload.provider,
+      providerInstanceId,
+      providerInstanceName,
       channel: payload.channel,
       status,
       latencyMs,
@@ -713,6 +755,8 @@ async function persistRunTelemetry(
     create: {
       runId: job.runId,
       provider: payload.provider,
+      providerInstanceId,
+      providerInstanceName,
       channel: payload.channel,
       status,
       latencyMs,

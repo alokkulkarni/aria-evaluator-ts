@@ -30,6 +30,8 @@ import { transcriptsRouter } from './routes/transcripts.js';
 import { reportsRouter } from './routes/reports.js';
 import { artifactRouter } from './routes/artifacts.js';
 import { settingsRouter } from './routes/settings.js';
+import { providerInstancesRouter } from './routes/provider-instances.js';
+import { ensureProviderInstancesSeeded } from './provider-instances.js';
 import { openapiRouter } from './routes/openapi.js';
 import { regressionRouter } from './routes/regression.js';
 import { experimentsRouter } from './routes/experiments.js';
@@ -207,6 +209,7 @@ app.use('/api/experiments', experimentsRouter);
 app.use('/api/transcripts', transcriptsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/provider-instances', providerInstancesRouter);
 app.use('/api/workspace', workspaceRouter);
 app.use('/api/usage', usageRouter);
 app.use('/api/users', usersRouter);
@@ -283,6 +286,8 @@ if (process.env['NODE_ENV'] !== 'test') {
     // propagate. Phase 4 (multi-instance state).
     await loadSettingsFromDb();
     setInterval(() => void loadSettingsFromDb(), 15_000).unref?.();
+    // One-time migration of legacy single-provider config into named instances.
+    await ensureProviderInstancesSeeded();
     await ensureDefaultAdminAccount();
     // Seed the GLOBAL scenario library from the bundled YAML. The DB is the source
     // of truth at request time; this import is idempotent (Phase 4 inversion).

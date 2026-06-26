@@ -16,6 +16,7 @@ import { recordAuditEventSafe } from '../audit-log.js';
 import { explainRunTurnShapley, listRunExplanations, ExplainError } from '../../judge/explain/explain-run.js';
 import { registerSseClient, unregisterSseClient } from '../sse-bus.js';
 import { getEffectiveSettings } from '../runtime-settings.js';
+import { resolveInstanceIdForRun, ProviderInstanceError } from '../provider-instances.js';
 import { checkRunQuota } from '../../shared/quota-enforcement.js';
 import { getUsageLimits } from '../../shared/usage-limits.js';
 
@@ -28,6 +29,7 @@ interface RunRequestBody {
   scenarioRefs?: string[];
   channel?: 'chat' | 'voice';
   provider?: RunProvider;
+  providerInstanceId?: string | null;
 }
 
 function sanitizeRelativePath(input: string): string | null {
@@ -604,9 +606,23 @@ runsRouter.post('/', async (req, res) => {
     scenarioRefs = [],
     channel = 'chat',
     provider: requestedProvider,
+    providerInstanceId: requestedInstanceId,
   } = req.body as RunRequestBody;
   const settings = getEffectiveSettings();
   const provider = normalizeProvider(requestedProvider ?? settings['EVAL_PROVIDER_DEFAULT'] ?? 'connect');
+
+  // Resolve the concrete provider instance now (explicit -> default -> first ->
+  // null legacy). Stored on the run so the executor loads it and overlays its
+  // config; secrets are never snapshotted into the payload.
+  let providerInstanceId: string | null;
+  try {
+    providerInstanceId = await resolveInstanceIdForRun(provider, requestedInstanceId ?? null);
+  } catch (err) {
+    if (err instanceof ProviderInstanceError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    return res.status(500).json({ error: (err as Error).message });
+  }
 
   const normalizedRefs = (scenarioRefs ?? [])
     .map((ref) => sanitizeScenarioRef(ref))
@@ -686,6 +702,7 @@ runsRouter.post('/', async (req, res) => {
         scenarioFiles: selectedFiles,
         scenarioCount: selectedScenarios.length,
         yamlContent,
+        providerInstanceId,
       },
       // Stored so "Re-run" reuses the exact selection (UI runs always submit refs).
       ...(normalizedRefs.length > 0 ? { scenarioRefs: [...new Set(normalizedRefs)] } : {}),

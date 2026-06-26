@@ -3,6 +3,7 @@ import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
 import { usePlanGate } from '../lib/plan-gate.js';
 import { formatTokenCount } from '../lib/format.js';
 import { parseScenarioRef, domainLabel } from '../../shared/domains.js';
+import { fetchProviderInstances, type ProviderInstance } from '../lib/provider-instances.js';
 import { StatusBadge } from './Dashboard.js';
 import {
   ChevronDownIcon,
@@ -53,6 +54,8 @@ interface Run {
   scenarioRefsJson?: string | null;
   telemetry?: {
     provider?: string;
+    providerInstanceId?: string | null;
+    providerInstanceName?: string | null;
     tokenInputEstimate?: number | null;
     tokenOutputEstimate?: number | null;
     tokenTotalEstimate?: number | null;
@@ -1025,6 +1028,7 @@ function NewRunModal({
   initialScenarioRefs,
   initialScenarioNames,
   initialProvider,
+  initialProviderInstanceId,
   initialChannel,
 }: {
   onClose: () => void;
@@ -1032,6 +1036,7 @@ function NewRunModal({
   initialScenarioRefs?: string[];
   initialScenarioNames?: string[];
   initialProvider?: string;
+  initialProviderInstanceId?: string | null;
   initialChannel?: 'chat' | 'voice';
 }) {
   const seededProvider = initialProvider && ALL_PROVIDERS.has(initialProvider.toLowerCase())
@@ -1043,6 +1048,8 @@ function NewRunModal({
   const [channel, setChannel] = useState<'chat' | 'voice'>(initialChannel ?? 'chat');
   const [provider, setProvider] = useState<Provider>(seededProvider ?? 'connect');
   const [providerSettings, setProviderSettings] = useState<Record<string, string>>({});
+  const [providerInstances, setProviderInstances] = useState<ProviderInstance[]>([]);
+  const [providerInstanceId, setProviderInstanceId] = useState<string | null>(initialProviderInstanceId ?? null);
   // Domain-first selection: one domain per run.
   const [selectedDomain, setSelectedDomain] = useState<string>('');
   const [running, setRunning] = useState(false);
@@ -1104,6 +1111,26 @@ function NewRunModal({
     }
   }, [provider, channel, providerSettings]);
 
+  // Load configured instances for the selected provider type and pick one
+  // (keep current if still valid -> seeded re-run instance -> default -> first).
+  useEffect(() => {
+    let cancelled = false;
+    fetchProviderInstances(provider)
+      .then((list) => {
+        if (cancelled) return;
+        setProviderInstances(list);
+        setProviderInstanceId((current) => {
+          const ids = new Set(list.map((i) => i.id));
+          if (current && ids.has(current)) return current;
+          if (initialProviderInstanceId && ids.has(initialProviderInstanceId)) return initialProviderInstanceId;
+          const chosen = list.find((i) => i.isDefault) ?? list[0];
+          return chosen ? chosen.id : null;
+        });
+      })
+      .catch(() => { if (!cancelled) setProviderInstances([]); });
+    return () => { cancelled = true; };
+  }, [provider, initialProviderInstanceId]);
+
   const filtered = options.filter((o) =>
     (o.channel === channel || (channel === 'voice' && o.channel === 'chat'))
     && (
@@ -1153,7 +1180,7 @@ function NewRunModal({
     try {
       const data = await apiFetch('/api/runs', {
         method: 'POST',
-        body: JSON.stringify({ scenarioRefs: selectedScenarioRefs, channel, provider }),
+        body: JSON.stringify({ scenarioRefs: selectedScenarioRefs, channel, provider, providerInstanceId }),
       }) as { runId: string };
       onStarted(data.runId);
       onClose();
@@ -1367,6 +1394,28 @@ function NewRunModal({
             </div>
           </div>
           <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-slate-500 font-medium">Instance:</span>
+              {providerInstances.length > 0 ? (
+                <select
+                  value={providerInstanceId ?? ''}
+                  onChange={(e) => setProviderInstanceId(e.target.value || null)}
+                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {providerInstances.map((inst) => (
+                    <option key={inst.id} value={inst.id}>
+                      {inst.nickname}{inst.isDefault ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs text-amber-600">
+                  No instances configured for this provider — using legacy settings. Add one in Settings → Provider Instances.
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500 font-medium">Channel:</span>
               {(supportedChannels(provider, providerSettings)).map((c) => (
@@ -1436,7 +1485,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
   const [loading, setLoading] = useState(true);
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [rerunSeed, setRerunSeed] = useState<{ refs: string[]; names?: string[]; provider?: string; channel?: 'chat' | 'voice' } | null>(null);
+  const [rerunSeed, setRerunSeed] = useState<{ refs: string[]; names?: string[]; provider?: string; providerInstanceId?: string | null; channel?: 'chat' | 'voice' } | null>(null);
   const [artifactModal, setArtifactModal] = useState<ArtifactModalState | null>(null);
   const [queueingRunId, setQueueingRunId] = useState<string | null>(null);
   const [queueMessage, setQueueMessage] = useState<{ runId: string; text: string; ok: boolean } | null>(null);
@@ -1510,6 +1559,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
       refs,
       names,
       provider: run.telemetry?.provider,
+      providerInstanceId: run.telemetry?.providerInstanceId ?? null,
       channel: run.channel === 'voice' ? 'voice' : 'chat',
     });
     setShowModal(true);
@@ -1632,6 +1682,7 @@ export function RunsPage({ autoOpenModal, onModalAutoOpened }: { autoOpenModal?:
           initialScenarioRefs={rerunSeed?.refs}
           initialScenarioNames={rerunSeed?.names}
           initialProvider={rerunSeed?.provider}
+          initialProviderInstanceId={rerunSeed?.providerInstanceId}
           initialChannel={rerunSeed?.channel}
         />
       )}

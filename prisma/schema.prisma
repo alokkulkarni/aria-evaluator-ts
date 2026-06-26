@@ -40,6 +40,25 @@ model RuntimeSettings {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+// A named, reusable configuration of one provider type (e.g. one of several
+// Amazon Connect instances or OpenAPI endpoints). Up to 5 per (tenant, type),
+// enforced in the API. `configJson` is a map of env-var key -> value (the same
+// keys adapters read from process.env); secrets live here but are redacted on
+// read by the API. Selecting an instance for a run overlays these onto the run
+// child process env. Scoped by the deployment's TENANT_ID env ("" for local).
+model ProviderInstance {
+  id           String   @id @default(cuid())
+  tenantId     String   @default("")
+  providerType String   // one of RUN_PROVIDERS (connect|lex|azure|...)
+  nickname     String
+  configJson   String   // JSON map of env-var key -> value (raw, incl. secrets)
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, providerType])
+}
+
 model User {
   id           String        @id @default(cuid())
   username     String        @unique
@@ -414,6 +433,8 @@ model RunTelemetry {
   runId              String   @unique
   run                Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
   provider           String
+  providerInstanceId String?  // which configured instance was used (null = legacy env)
+  providerInstanceName String? // denorm nickname for display / re-run seeding
   channel            String
   status             String   // completed|failed
   latencyMs          Int?
@@ -514,6 +535,7 @@ model Schedule {
   scenario          Scenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
   scenarioFile      String?  // path#index alternative
   provider          String   @default("connect")
+  providerInstanceId String? // chosen provider instance (null = type default at fire time)
   channel           String   @default("chat") // chat|voice
   customMetadata    String?  // JSON: arbitrary config
 
