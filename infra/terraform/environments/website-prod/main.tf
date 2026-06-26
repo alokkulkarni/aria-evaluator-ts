@@ -52,13 +52,42 @@ resource "null_resource" "build_and_deploy_website" {
   }
 }
 
+# ── Google Workspace MX ───────────────────────────────────────────────────────
+# Created manually; adopted into Terraform so it can't be dropped accidentally.
+# Import before the first apply:
+#   terraform import 'aws_route53_record.google_workspace_mx[0]' \
+#     '${var.route53_zone_id}_${var.domain_name}_MX'
+resource "aws_route53_record" "google_workspace_mx" {
+  count   = var.route53_zone_id != "" ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.domain_name
+  type    = "MX"
+  ttl     = 3600
+  records = ["1 SMTP.GOOGLE.COM"]
+}
+
+# ── Google Workspace DKIM TXT ─────────────────────────────────────────────────
+# Created manually; adopted into Terraform. If you rotate the DKIM key in Google
+# Admin, update google_dkim_txt in terraform.tfvars and re-apply.
+# Import before the first apply:
+#   terraform import 'aws_route53_record.google_dkim[0]' \
+#     '${var.route53_zone_id}_google._domainkey.${var.domain_name}_TXT'
+resource "aws_route53_record" "google_dkim" {
+  count   = var.route53_zone_id != "" && var.google_dkim_txt != "" ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = "google._domainkey.${var.domain_name}"
+  type    = "TXT"
+  ttl     = 3600
+  records = [var.google_dkim_txt]
+}
+
 # ── Google Search Console verification (DNS TXT) ──────────────────────────────
-# The site is already verified in Search Console via this apex TXT record, which
-# was created out-of-band. We adopt it into Terraform so it's codified:
+# Created out-of-band; adopted into Terraform so it's codified.
+# Import before the first apply:
 #   terraform import 'aws_route53_record.google_site_verification[0]' \
 #     '${var.route53_zone_id}_${var.domain_name}_TXT'
-# After import, `terraform plan` shows no change (value matches live DNS).
-# If SPF/DMARC TXT are later added at the apex, fold them into `records` (one TXT set per name).
+# If SPF/DMARC TXT are later needed at the apex, fold them into the `records`
+# list here — there can only be one TXT record set per name.
 resource "aws_route53_record" "google_site_verification" {
   count   = var.google_site_verification_txt != "" && var.route53_zone_id != "" ? 1 : 0
   zone_id = var.route53_zone_id

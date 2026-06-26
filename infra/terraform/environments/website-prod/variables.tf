@@ -59,6 +59,12 @@ variable "google_site_verification_txt" {
   default     = "nb9sd5DDMyx3ZnSxSXTZ0Z-5eZag-WaFPL9tbxFG6l8"
 }
 
+variable "google_dkim_txt" {
+  description = "Full DKIM public key value for the google._domainkey TXT record (Google Workspace). Created out-of-band; adopted via `terraform import`. Rotate via Google Admin → Apps → Gmail → Authenticate email, then update this value and re-apply."
+  type        = string
+  default     = "v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvRo5h7niw5r6LXsiKv0cCRaxWKRSYyInPV1la76Egwk02xaRNX6vo712/IxaAR0A8CamXBsQ4imxgqvk6u0egPAgo8Rx1exjZwvr8IfnKoCBINJgh7U3LD+inFFebk/pU1Sf2iTL2h6jZrHH/Vs6Q6AoOmB/O2UGd1dUy9p/uPxn8Jz89O1k4f9faULyMdYbSzuBAoD2J86EhCh18/rhuzd8TWVMv4YMwKQveiglS8JkxDtGL0o5GXcW5SCPCsetcWQNTW+nzQi0FDo8MLX3BH8dqUh+5QGuHzwBwvNRhWygEqo50jPJ/WmYE77d8VJKva2vJAnzBq75PcNO76+tMQIDAQAB"
+}
+
 variable "ga4_measurement_id" {
   description = "GA4 Measurement ID injected into the static site at build time as NEXT_PUBLIC_GA4_MEASUREMENT_ID. Public value (embedded in page HTML). Empty disables analytics. Collection is gated by Consent Mode v2 until the user opts in via the cookie banner."
   type        = string

@@ -65,6 +65,74 @@ extract_var() {
   fi
 }
 
+# ── Helper: read bootstrap outputs from the local state file (no terraform) ────
+#
+# Checks both the 'outputs' section (present after a full apply) and the raw
+# resource attributes (present even when outputs weren't recorded).  Prints
+# four lines: BUCKET / LOCKS / ECR / KMS (empty string when not found).
+read_state_outputs() {
+  local statefile="$BOOTSTRAP_DIR/terraform.tfstate"
+  [[ -f "$statefile" ]] || { printf '\n\n\n\n'; return; }
+  python3 - "$statefile" <<'PYEOF'
+import json, sys
+
+try:
+    state = json.load(open(sys.argv[1]))
+except Exception:
+    print('\n\n\n')
+    sys.exit(0)
+
+outputs = state.get('outputs', {})
+
+def out(key):
+    v = (outputs.get(key) or {}).get('value', '')
+    return v if v and str(v) not in ('None', 'null', '') else ''
+
+def rattr(rtype, rname, key):
+    for r in state.get('resources', []):
+        if r.get('type') == rtype and r.get('name') == rname:
+            for i in r.get('instances', []):
+                v = i.get('attributes', {}).get(key, '')
+                if v: return v
+    return ''
+
+bucket = out('state_bucket_name') or rattr('aws_s3_bucket', 'terraform_state', 'id')
+locks  = out('locks_table_name')  or rattr('aws_dynamodb_table', 'terraform_locks', 'name')
+ecr    = out('ecr_repository_url') or rattr('aws_ecr_repository', 'shared', 'repository_url')
+kms    = out('kms_key_arn')       or rattr('aws_kms_key', 'secrets', 'arn')
+
+print(bucket)
+print(locks)
+print(ecr)
+print(kms)
+PYEOF
+}
+
+# ── Helper: discover bootstrap resources from AWS directly ─────────────────────
+#
+# Accepts a bucket suffix; returns the same four-line format as read_state_outputs.
+# Returns non-zero if the state bucket does not exist in AWS.
+discover_aws_outputs() {
+  local suffix="$1"
+  local bucket="aria-evaluator-tf-state-${suffix}"
+  aws s3api head-bucket --bucket "$bucket" --region "$REGION" >/dev/null 2>&1 || return 1
+  local locks ecr kms
+  locks=$(aws dynamodb describe-table \
+    --table-name aria-evaluator-tf-locks --region "$REGION" \
+    --query 'Table.TableName' --output text 2>/dev/null || echo "aria-evaluator-tf-locks")
+  ecr=$(aws ecr describe-repositories \
+    --repository-names aria-evaluator --region "$REGION" \
+    --query 'repositories[0].repositoryUri' --output text 2>/dev/null || echo "")
+  # Try alias first, fall back to tag search
+  kms=$(aws kms describe-key \
+    --key-id "alias/aria-evaluator-shared-secrets" --region "$REGION" \
+    --query 'KeyMetadata.Arn' --output text 2>/dev/null || echo "")
+  echo "$bucket"
+  echo "${locks:-aria-evaluator-tf-locks}"
+  echo "$ecr"
+  echo "$kms"
+}
+
 # ── Extract bucket_suffix ──────────────────────────────────────────────────────
 
 REGION="${ARIA_TF_REGION:-eu-west-2}"
@@ -85,7 +153,7 @@ BOOTSTRAP_LOCKS="aria-evaluator-tf-locks"
 
 if [[ -z "$BUCKET_SUFFIX" || "$BUCKET_SUFFIX" == "REPLACE_WITH"* ]]; then
   echo ""
-  echo "🔍 No bucket_suffix found. Checking if bootstrap has been run..."
+  echo "🔍 No bucket_suffix found. Checking bootstrap state..."
 
   BOOTSTRAP_STATE="$BOOTSTRAP_DIR/terraform.tfstate"
   BOOTSTRAP_RAN=false
@@ -107,7 +175,31 @@ except:
     fi
   fi
 
-  # ── Run bootstrap if it hasn't been run ───────────────────────────────────
+  # ── Pre-check AWS before applying bootstrap ───────────────────────────────
+  #
+  # Even when the local state looks empty, the AWS resources may already exist
+  # (e.g. after a machine restart wiped the local state).  Attempting
+  # 'terraform apply' against pre-existing resources fails.  Derive the
+  # expected bucket name from the account ID and probe AWS first.
+  if [[ "$BOOTSTRAP_RAN" == "false" ]]; then
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+    if [[ -n "$ACCOUNT_ID" ]]; then
+      AUTO_SUFFIX="${ACCOUNT_ID: -6}"
+      PROBE_BUCKET="aria-evaluator-tf-state-${AUTO_SUFFIX}"
+      if aws s3api head-bucket --bucket "$PROBE_BUCKET" --region "$REGION" >/dev/null 2>&1; then
+        echo "☁️  Bootstrap resources already exist in AWS (bucket: $PROBE_BUCKET)"
+        echo "   Skipping terraform apply — reading details from AWS."
+        BOOTSTRAP_RAN=true
+        # Ensure bootstrap tfvars exists so subsequent terraform commands work
+        if [[ ! -f "$BOOTSTRAP_DIR/terraform.tfvars" ]]; then
+          echo "bucket_suffix = \"$AUTO_SUFFIX\"" > "$BOOTSTRAP_DIR/terraform.tfvars"
+          echo "📝 Created bootstrap/terraform.tfvars (bucket_suffix=$AUTO_SUFFIX)"
+        fi
+      fi
+    fi
+  fi
+
+  # ── Run bootstrap only when resources truly don't exist ───────────────────
   if [[ "$BOOTSTRAP_RAN" == "false" ]]; then
     echo ""
     echo "🏗️  Bootstrap has NOT been run yet. Running it now..."
@@ -116,7 +208,7 @@ except:
 
     # Ensure bootstrap has a terraform.tfvars with bucket_suffix
     if [[ ! -f "$BOOTSTRAP_DIR/terraform.tfvars" ]]; then
-      ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || "")
+      ACCOUNT_ID="${ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text 2>/dev/null || "")}"
       if [[ -z "$ACCOUNT_ID" ]]; then
         echo "❌ Cannot determine AWS account ID. Ensure AWS CLI is configured:"
         echo "   aws configure"
@@ -143,17 +235,64 @@ EOF
   fi
 
   # ── Read bootstrap outputs ────────────────────────────────────────────────
+  #
+  # Strategy (most to least reliable):
+  #   1. Parse the local state JSON directly — works even when .terraform is
+  #      absent and even when only some outputs were recorded.
+  #   2. Query AWS CLI — fills any gaps left by an incomplete state file.
+  #   3. Fall back to 'terraform output' (requires .terraform to be init'd).
   if [[ "$BOOTSTRAP_RAN" == "true" ]]; then
-    pushd "$BOOTSTRAP_DIR" > /dev/null
-    BOOTSTRAP_BUCKET=$(terraform output -raw state_bucket_name 2>/dev/null || echo "")
-    BOOTSTRAP_ECR=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
-    BOOTSTRAP_KMS=$(terraform output -raw kms_key_arn 2>/dev/null || echo "")
-    BOOTSTRAP_LOCKS=$(terraform output -raw locks_table_name 2>/dev/null || echo "aria-evaluator-tf-locks")
-    popd > /dev/null
+    echo ""
+    echo "📖 Reading bootstrap outputs..."
+
+    # Step 1 — state file
+    STATE_LINES=$(read_state_outputs 2>/dev/null) || STATE_LINES=""
+    BOOTSTRAP_BUCKET=$(echo "$STATE_LINES" | sed -n '1p')
+    BOOTSTRAP_LOCKS=$(echo  "$STATE_LINES" | sed -n '2p')
+    BOOTSTRAP_ECR=$(echo    "$STATE_LINES" | sed -n '3p')
+    BOOTSTRAP_KMS=$(echo    "$STATE_LINES" | sed -n '4p')
+
+    # Step 2 — AWS CLI (fills gaps when state is partial)
+    if [[ -z "$BOOTSTRAP_BUCKET" ]]; then
+      echo "   State file missing bucket — querying AWS..."
+      # Derive suffix: bootstrap tfvars → env var → account ID
+      FILL_SUFFIX=$(extract_var "bucket_suffix" "$BOOTSTRAP_DIR/terraform.tfvars" 2>/dev/null || echo "")
+      [[ -z "$FILL_SUFFIX" ]] && FILL_SUFFIX="${BUCKET_SUFFIX:-}"
+      if [[ -z "$FILL_SUFFIX" ]]; then
+        ACCOUNT_ID="${ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text 2>/dev/null || "")}"
+        [[ -n "$ACCOUNT_ID" ]] && FILL_SUFFIX="${ACCOUNT_ID: -6}"
+      fi
+
+      if [[ -n "$FILL_SUFFIX" ]]; then
+        AWS_LINES=$(discover_aws_outputs "$FILL_SUFFIX" 2>/dev/null) || AWS_LINES=""
+        if [[ -n "$AWS_LINES" ]]; then
+          echo "   ✅ Found existing bootstrap resources in AWS"
+          [[ -z "$BOOTSTRAP_BUCKET" ]] && BOOTSTRAP_BUCKET=$(echo "$AWS_LINES" | sed -n '1p')
+          [[ -z "$BOOTSTRAP_LOCKS"  ]] && BOOTSTRAP_LOCKS=$(echo  "$AWS_LINES" | sed -n '2p')
+          [[ -z "$BOOTSTRAP_ECR"    ]] && BOOTSTRAP_ECR=$(echo    "$AWS_LINES" | sed -n '3p')
+          [[ -z "$BOOTSTRAP_KMS"    ]] && BOOTSTRAP_KMS=$(echo    "$AWS_LINES" | sed -n '4p')
+        fi
+      fi
+    fi
+
+    # Step 3 — terraform output (last resort; auto-inits providers if needed)
+    if [[ -z "$BOOTSTRAP_BUCKET" ]]; then
+      echo "   Trying terraform output in bootstrap dir..."
+      pushd "$BOOTSTRAP_DIR" > /dev/null
+      if [[ ! -d ".terraform/providers" ]]; then
+        terraform init -input=false -backend=false >/dev/null 2>&1 || true
+      fi
+      BOOTSTRAP_BUCKET=$(terraform output -raw state_bucket_name 2>/dev/null || echo "")
+      [[ -z "$BOOTSTRAP_LOCKS" ]] && BOOTSTRAP_LOCKS=$(terraform output -raw locks_table_name 2>/dev/null || echo "aria-evaluator-tf-locks")
+      [[ -z "$BOOTSTRAP_ECR"   ]] && BOOTSTRAP_ECR=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
+      [[ -z "$BOOTSTRAP_KMS"   ]] && BOOTSTRAP_KMS=$(terraform output -raw kms_key_arn 2>/dev/null || echo "")
+      popd > /dev/null
+    fi
 
     if [[ -z "$BOOTSTRAP_BUCKET" ]]; then
-      echo "❌ Could not read bootstrap outputs. Check bootstrap state in:"
-      echo "   $BOOTSTRAP_DIR/terraform.tfstate"
+      echo "❌ Could not determine the Terraform state bucket."
+      echo "   Checked: local state file, AWS CLI, and terraform output."
+      echo "   Ensure AWS credentials are configured and the bootstrap has been run."
       exit 1
     fi
 
@@ -161,11 +300,11 @@ EOF
     BUCKET_SUFFIX="${BOOTSTRAP_BUCKET#aria-evaluator-tf-state-}"
 
     echo ""
-    echo "📦 Bootstrap outputs:"
+    echo "📦 Bootstrap details:"
     echo "   State bucket:  $BOOTSTRAP_BUCKET"
-    echo "   ECR repo:      $BOOTSTRAP_ECR"
-    echo "   KMS key:       $BOOTSTRAP_KMS"
-    echo "   Locks table:   $BOOTSTRAP_LOCKS"
+    echo "   ECR repo:      ${BOOTSTRAP_ECR:-(not found)}"
+    echo "   KMS key:       ${BOOTSTRAP_KMS:-(not found)}"
+    echo "   Locks table:   ${BOOTSTRAP_LOCKS:-aria-evaluator-tf-locks}"
 
     # ── Auto-populate terraform.tfvars with bootstrap outputs ───────────────
     if [[ -f terraform.tfvars ]]; then
