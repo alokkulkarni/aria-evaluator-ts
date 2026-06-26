@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import Link from 'next/link'
 
 import { DocHeading } from '@/components/docs/DocHeading'
@@ -21,6 +22,49 @@ export default function ArchitecturePage() {
       <div className="mt-8">
         <ArchitectureDiagram />
       </div>
+
+      <div className="docs-prose mt-10">
+        <h2>System architecture</h2>
+        <p>
+          The diagram below shows how ARIA's internal components — the API server, evaluation engine,
+          adapter plane, and judge — are wired together.
+        </p>
+      </div>
+
+      <figure className="not-prose my-6 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 sm:p-6">
+        <Image
+          src="/docs/aria-architecture.drawio.png"
+          alt="ARIA Evaluator system architecture diagram"
+          width={1600}
+          height={900}
+          className="w-full rounded-lg"
+          priority
+        />
+        <figcaption className="mt-3 text-center text-xs text-slate-500">
+          ARIA Evaluator — component architecture
+        </figcaption>
+      </figure>
+
+      <div className="docs-prose mt-10">
+        <h2>End-to-end flow</h2>
+        <p>
+          The diagram below traces a full evaluation from scenario input through the adapter and
+          conversation runner to the judge and final report.
+        </p>
+      </div>
+
+      <figure className="not-prose my-6 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 sm:p-6">
+        <Image
+          src="/docs/aria-e2e-architecture.drawio.png"
+          alt="ARIA Evaluator end-to-end evaluation flow diagram"
+          width={1600}
+          height={900}
+          className="w-full rounded-lg"
+        />
+        <figcaption className="mt-3 text-center text-xs text-slate-500">
+          ARIA Evaluator — end-to-end evaluation flow
+        </figcaption>
+      </figure>
 
       <div className="docs-prose mt-10">
         <h2>The evaluation pipeline</h2>
