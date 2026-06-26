@@ -12,6 +12,12 @@ locals {
       "aria:pricing_track" = "platform"
     },
   )
+
+  # Route53 TXT records cap each character string at 255 bytes. Auto-chunk the
+  # DKIM key so Terraform sends it correctly regardless of key length. To rotate
+  # the DKIM key: update google_dkim_txt in terraform.tfvars and re-apply.
+  dkim_chunks = chunklist(split("", var.google_dkim_txt), 255)
+  dkim_record = join(" ", [for chunk in local.dkim_chunks : "\"${join("", chunk)}\""])
 }
 
 # ── Build & deploy static website to S3 ───────────────────────────────────────
@@ -78,17 +84,7 @@ resource "aws_route53_record" "google_dkim" {
   name    = "google._domainkey.${var.domain_name}"
   type    = "TXT"
   ttl     = 3600
-  records = [var.google_dkim_txt]
-
-  # Route53 stores long TXT values as multiple ≤255-char chunks. Terraform cannot
-  # reconstruct the chunked representation from the plain variable string, causing
-  # a spurious diff and a CharacterStringTooLong error on every apply.
-  # The record already exists in AWS with the correct value (imported into state).
-  # To rotate the DKIM key: update Route53 manually, then remove this block
-  # temporarily, update google_dkim_txt, apply, and re-add the block.
-  lifecycle {
-    ignore_changes = [records]
-  }
+  records = [local.dkim_record]
 }
 
 # ── Google Search Console verification (DNS TXT) ──────────────────────────────
