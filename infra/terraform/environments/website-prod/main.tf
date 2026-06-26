@@ -79,6 +79,16 @@ resource "aws_route53_record" "google_dkim" {
   type    = "TXT"
   ttl     = 3600
   records = [var.google_dkim_txt]
+
+  # Route53 stores long TXT values as multiple ≤255-char chunks. Terraform cannot
+  # reconstruct the chunked representation from the plain variable string, causing
+  # a spurious diff and a CharacterStringTooLong error on every apply.
+  # The record already exists in AWS with the correct value (imported into state).
+  # To rotate the DKIM key: update Route53 manually, then remove this block
+  # temporarily, update google_dkim_txt, apply, and re-add the block.
+  lifecycle {
+    ignore_changes = [records]
+  }
 }
 
 # ── Google Search Console verification (DNS TXT) ──────────────────────────────
