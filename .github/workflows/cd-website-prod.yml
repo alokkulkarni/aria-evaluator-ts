@@ -1,0 +1,309 @@
+# ── CD: Website Prod ──────────────────────────────────────────────────────────
+# Triggers automatically when "CI: Website Prod" completes successfully on main.
+# Downloads the static-export artifact built by CI — the scanned, signed bytes
+# are exactly what gets deployed (no rebuild in CD).
+#
+# Smart routing (from deployment-manifest written by CI):
+#   code-only  → S3 sync + CloudFront invalidation
+#   infra-only → Terraform apply + CloudFront invalidation
+#   both       → Terraform apply + S3 sync + CloudFront invalidation
+#
+# Required GitHub secrets (environment: website-prod):
+#   AWS_DEPLOY_ROLE_ARN            OIDC role to assume for AWS access
+#   AWS_REGION                     e.g. eu-west-2
+#   TF_BUCKET_SUFFIX               unique suffix for aria-evaluator-tf-state-<suffix>
+#   DOMAIN_NAME                    e.g. ariaeval.io
+#   ROUTE53_ZONE_ID                Route53 hosted zone ID
+#   ACM_CERT_ARN_US_EAST_1         ACM cert ARN in us-east-1 for CloudFront
+#
+# Optional secrets (have safe defaults):
+#   GA4_MEASUREMENT_ID             defaults to G-3MJ8PK2F6Y
+#   ALARM_SNS_TOPIC_ARN            CloudWatch alarm notifications
+#   CLOUDTRAIL_KMS_KEY_ARN         KMS key for CloudTrail encryption
+
+name: "CD: Website Prod"
+
+on:
+  workflow_run:
+    workflows: ["CI: Website Prod"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: cd-website-prod
+  cancel-in-progress: false  # never cancel an in-flight deploy
+
+permissions:
+  contents: read
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+  # ── Gate: CI must have succeeded; parse deployment manifest ──────────────────
+  gate:
+    name: "Gate: CI passed"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      code-changed: ${{ steps.manifest.outputs.code_changed }}
+      infra-changed: ${{ steps.manifest.outputs.infra_changed }}
+      image-tag: ${{ steps.manifest.outputs.image_tag }}
+      head-sha: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Download deployment manifest
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-manifest
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Abort if manifest missing
+        if: steps.download.outcome == 'failure'
+        run: |
+          echo "::error::deployment-manifest artifact not found for run ${{ github.event.workflow_run.id }}"
+          echo "This usually means the CI gate job failed or did not run."
+          exit 1
+
+      - name: Parse manifest
+        id: manifest
+        run: |
+          cat manifest.json
+          echo "code_changed=$(jq -r .code_changed manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "infra_changed=$(jq -r .infra_changed manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$(jq -r .image_tag manifest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          echo "## Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SHA | \`${{ github.event.workflow_run.head_sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`$(jq -r .image_tag manifest.json)\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Code changed | \`$(jq -r .code_changed manifest.json)\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Infra changed | \`$(jq -r .infra_changed manifest.json)\` |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Pre-deploy image scan (block on CRITICAL before touching prod) ────────────
+  scan-image:
+    name: "Scan: Container Image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: gate
+    if: needs.gate.result == 'success' && needs.gate.outputs.code-changed == 'true'
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/website-prod:${{ needs.gate.outputs.image-tag }}
+        run: docker pull "$IMAGE"
+
+      - name: Trivy image scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/website-prod:${{ needs.gate.outputs.image-tag }}
+          format: sarif
+          output: trivy-cd-image.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-cd-image.sarif
+          category: trivy-cd-image-website-prod
+
+      - name: Gate on CRITICAL
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/website-prod:${{ needs.gate.outputs.image-tag }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL
+
+  # ── Deploy ────────────────────────────────────────────────────────────────────
+  deploy:
+    name: "Deploy → production"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [gate, scan-image]
+    # Run when gate passed AND (scan passed OR was skipped for infra-only) AND
+    # at least one layer changed (guards against workflow-file-only pushes).
+    if: |
+      always() &&
+      needs.gate.result == 'success' &&
+      (needs.scan-image.result == 'success' || needs.scan-image.result == 'skipped') &&
+      (needs.gate.outputs.code-changed == 'true' || needs.gate.outputs.infra-changed == 'true')
+
+    environment:
+      name: website-prod
+      url: https://ariaeval.io
+
+    permissions:
+      contents: read
+      packages: read
+      id-token: write   # OIDC
+      actions: read     # cross-run artifact download
+
+    env:
+      TF_DIR: infra/terraform/environments/website-prod
+
+    steps:
+      - name: Checkout at CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.head-sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-west-2' }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.6"
+          terraform_wrapper: false  # required: wrapper noise breaks `terraform output -raw`
+
+      # ── Terraform init — always; needed to read outputs even for code-only ──
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+        run: |
+          chmod +x "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+          "${GITHUB_WORKSPACE}/scripts/tf-init.sh"
+
+      # ── Terraform plan + apply (only when infra changed) ─────────────────────
+      - name: Terraform plan
+        if: needs.gate.outputs.infra-changed == 'true'
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+          TF_VAR_route53_zone_id: ${{ secrets.ROUTE53_ZONE_ID }}
+          TF_VAR_acm_certificate_arn_us_east_1: ${{ secrets.ACM_CERT_ARN_US_EAST_1 }}
+          TF_VAR_ga4_measurement_id: ${{ secrets.GA4_MEASUREMENT_ID || 'G-3MJ8PK2F6Y' }}
+          TF_VAR_skip_website_build: "true"
+          TF_VAR_alarm_sns_topic_arn: ${{ secrets.ALARM_SNS_TOPIC_ARN }}
+          TF_VAR_cloudtrail_kms_key_arn: ${{ secrets.CLOUDTRAIL_KMS_KEY_ARN }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform apply
+        if: needs.gate.outputs.infra-changed == 'true'
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_VAR_bucket_suffix: ${{ secrets.TF_BUCKET_SUFFIX }}
+          TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+          TF_VAR_route53_zone_id: ${{ secrets.ROUTE53_ZONE_ID }}
+          TF_VAR_acm_certificate_arn_us_east_1: ${{ secrets.ACM_CERT_ARN_US_EAST_1 }}
+          TF_VAR_ga4_measurement_id: ${{ secrets.GA4_MEASUREMENT_ID || 'G-3MJ8PK2F6Y' }}
+          TF_VAR_skip_website_build: "true"
+          TF_VAR_alarm_sns_topic_arn: ${{ secrets.ALARM_SNS_TOPIC_ARN }}
+          TF_VAR_cloudtrail_kms_key_arn: ${{ secrets.CLOUDTRAIL_KMS_KEY_ARN }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      # ── Read S3 bucket + CloudFront distribution from Terraform state ─────────
+      - name: Terraform outputs
+        id: tf
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          echo "s3=$(terraform output -raw s3_bucket_name 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+          echo "cf=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+
+      # ── Download the static export built (and scanned) by CI ─────────────────
+      - name: Download static export artifact
+        if: needs.gate.outputs.code-changed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: static-export
+          path: website/out
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Sync to S3 (two passes for per-path cache headers) ───────────────────
+      # Pass 1: hashed _next/static/ assets — content-addressed, safe to cache forever
+      - name: Sync hashed assets (_next/static → immutable)
+        if: needs.gate.outputs.code-changed == 'true' && steps.tf.outputs.s3 != ''
+        run: |
+          aws s3 sync website/out/_next/static/ \
+            "s3://${{ steps.tf.outputs.s3 }}/_next/static/" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable"
+
+      # Pass 2: HTML and other non-hashed files — always revalidate
+      - name: Sync HTML + other files (→ no-cache)
+        if: needs.gate.outputs.code-changed == 'true' && steps.tf.outputs.s3 != ''
+        run: |
+          aws s3 sync website/out/ \
+            "s3://${{ steps.tf.outputs.s3 }}/" \
+            --delete \
+            --cache-control "public,no-cache" \
+            --exclude "_next/static/*"
+
+      # ── CloudFront invalidation — always when anything deployed ───────────────
+      # Runs for both code-only and infra-only changes (CF config may have changed).
+      - name: Invalidate CloudFront cache
+        if: steps.tf.outputs.cf != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.tf.outputs.cf }}" \
+            --paths "/*"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Deploy: Website Prod" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Detail | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SHA | \`${{ needs.gate.outputs.head-sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`${{ needs.gate.outputs.image-tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Code deployed | \`${{ needs.gate.outputs.code-changed }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Infra applied | \`${{ needs.gate.outputs.infra-changed }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| S3 bucket | \`${{ steps.tf.outputs.s3 }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CloudFront | \`${{ steps.tf.outputs.cf }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| URL | [ariaeval.io](https://ariaeval.io) |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── CD Summary ────────────────────────────────────────────────────────────────
+  cd-summary:
+    name: "CD Summary"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [gate, scan-image, deploy]
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "## CD: Website Prod" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Job | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Gate | \`${{ needs.gate.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image Scan | \`${{ needs.scan-image.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Deploy | \`${{ needs.deploy.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if gate or deploy failed
+        if: needs.gate.result == 'failure' || needs.deploy.result == 'failure'
+        run: exit 1

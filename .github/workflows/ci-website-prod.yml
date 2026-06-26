@@ -1,0 +1,373 @@
+# ── CI: Website Prod ──────────────────────────────────────────────────────────
+# Runs on every push to main (covers merges) for website/** and website-prod
+# infra changes. No PR trigger — see "ci only runs for push and merge to main".
+#
+# Change detection:
+#   code  → website/**
+#   infra → infra/terraform/environments/website-prod/** + touched modules
+#
+# On success, publishes to GHCR:
+#   ghcr.io/<repo>/website-prod:sha-<short>   (signed, SBOM-attested)
+#
+# And uploads two artifacts for CD:
+#   static-export        — website/out/ built with prod env vars
+#   deployment-manifest  — {code_changed, infra_changed, image_tag, sha}
+
+name: "CI: Website Prod"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "infra/terraform/environments/website-prod/**"
+      - "infra/terraform/modules/website-frontend/**"
+      - "infra/terraform/modules/cloudfront/**"
+      - "infra/terraform/modules/waf/**"
+      - ".github/workflows/ci-website-prod.yml"
+      - ".github/workflows/reusable-ci-image.yml"
+
+concurrency:
+  group: ci-website-prod-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+  # ── 1. Detect which layer changed ────────────────────────────────────────────
+  detect-changes:
+    name: "Detect Changes"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - "website/**"
+            infra:
+              - "infra/terraform/environments/website-prod/**"
+              - "infra/terraform/modules/website-frontend/**"
+              - "infra/terraform/modules/cloudfront/**"
+              - "infra/terraform/modules/waf/**"
+
+  # ── 2. Lint + typecheck ───────────────────────────────────────────────────────
+  lint:
+    name: "Lint & Typecheck"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect-changes
+    if: needs.detect-changes.outputs.code == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Lint
+        working-directory: website
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: website
+        run: npx tsc --noEmit
+
+  # ── 3. Dependency audit ───────────────────────────────────────────────────────
+  audit:
+    name: "Dependency Audit"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect-changes
+    if: needs.detect-changes.outputs.code == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Audit (high + critical)
+        working-directory: website
+        run: npm audit --audit-level=high --omit=dev
+
+  # ── 4. Trivy filesystem scan ──────────────────────────────────────────────────
+  scan-fs:
+    name: "Scan: Filesystem"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect-changes
+    if: needs.detect-changes.outputs.code == 'true'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy FS scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: website
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs-website-prod
+
+      - name: Gate on CRITICAL
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: website
+          format: table
+          exit-code: "1"
+          severity: CRITICAL
+
+  # ── 5. Build container image → GHCR (signed + SBOM) ──────────────────────────
+  # Component name "website-prod" keeps this image separate from the generic
+  # "website" image built by ci-website.yml (different build-args / prod env).
+  build-image:
+    name: "Build Image (website-prod)"
+    needs: [detect-changes, lint, audit, scan-fs]
+    if: |
+      needs.detect-changes.outputs.code == 'true' &&
+      needs.lint.result == 'success' &&
+      needs.audit.result == 'success' &&
+      needs.scan-fs.result == 'success'
+    uses: ./.github/workflows/reusable-ci-image.yml
+    with:
+      component: website-prod
+      dockerfile: ./website/Dockerfile
+      context: ./website
+      build-args: NEXT_PUBLIC_SIGNUP_MODE=waitlist
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+  # ── 6. Trivy image scan (after push to GHCR) ──────────────────────────────────
+  scan-image:
+    name: "Scan: Container Image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build-image
+    if: needs.build-image.result == 'success'
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - name: Compute image ref
+        id: ref
+        run: echo "image=ghcr.io/${{ github.repository }}/website-prod:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull "${{ steps.ref.outputs.image }}"
+
+      - name: Trivy image scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image-website-prod
+
+      - name: Gate on CRITICAL
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL
+
+  # ── 7. Build static export → artifact (what CD actually deploys) ──────────────
+  # Runs in parallel with build-image; both need lint+audit+scan-fs to pass.
+  build-static:
+    name: "Build Static Export"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [detect-changes, lint, audit, scan-fs]
+    if: |
+      needs.detect-changes.outputs.code == 'true' &&
+      needs.lint.result == 'success' &&
+      needs.audit.result == 'success' &&
+      needs.scan-fs.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci --prefer-offline
+
+      - name: Build static export
+        working-directory: website
+        env:
+          NEXT_BUILD_MODE: export
+          NEXT_PUBLIC_SIGNUP_MODE: waitlist
+          NEXT_PUBLIC_GA4_MEASUREMENT_ID: ${{ secrets.GA4_MEASUREMENT_ID || 'G-3MJ8PK2F6Y' }}
+        run: npm run build
+
+      - name: Upload static export artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-export
+          path: website/out/
+          retention-days: 7
+          if-no-files-found: error
+
+  # ── 8. Terraform validate + fmt check ─────────────────────────────────────────
+  validate-infra:
+    name: "Terraform Validate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect-changes
+    if: needs.detect-changes.outputs.infra == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.6"
+
+      - name: Format check
+        working-directory: infra/terraform/environments/website-prod
+        run: terraform fmt -check -recursive
+
+      - name: Init (no backend)
+        working-directory: infra/terraform/environments/website-prod
+        run: terraform init -backend=false
+
+      - name: Validate
+        working-directory: infra/terraform/environments/website-prod
+        run: terraform validate
+
+  # ── 9. Trivy IaC security scan ────────────────────────────────────────────────
+  scan-infra:
+    name: "Scan: Terraform IaC"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect-changes
+    if: needs.detect-changes.outputs.infra == 'true'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy IaC scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: infra/terraform/environments/website-prod
+          format: sarif
+          output: trivy-tf.sarif
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-tf.sarif
+          category: trivy-iac-website-prod
+
+  # ── 10. CI Gate — summarise, fail fast, publish manifest ─────────────────────
+  ci-gate:
+    name: "CI Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - detect-changes
+      - lint
+      - audit
+      - scan-fs
+      - build-image
+      - scan-image
+      - build-static
+      - validate-infra
+      - scan-infra
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## CI: Website Prod" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Job | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lint | \`${{ needs.lint.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Audit | \`${{ needs.audit.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| FS Scan | \`${{ needs.scan-fs.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build Image | \`${{ needs.build-image.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image Scan | \`${{ needs.scan-image.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build Static | \`${{ needs.build-static.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| TF Validate | \`${{ needs.validate-infra.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| IaC Scan | \`${{ needs.scan-infra.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any job failed
+        if: contains(needs.*.result, 'failure')
+        run: exit 1
+
+      - name: Create deployment manifest
+        if: "!contains(needs.*.result, 'failure')"
+        run: |
+          jq -n \
+            --arg code  "${{ needs.detect-changes.outputs.code }}" \
+            --arg infra "${{ needs.detect-changes.outputs.infra }}" \
+            --arg tag   "sha-${GITHUB_SHA::7}" \
+            --arg sha   "${{ github.sha }}" \
+            '{code_changed:$code, infra_changed:$infra, image_tag:$tag, sha:$sha}' \
+            > manifest.json
+          cat manifest.json
+
+      - uses: actions/upload-artifact@v4
+        if: "!contains(needs.*.result, 'failure')"
+        with:
+          name: deployment-manifest
+          path: manifest.json
+          retention-days: 7

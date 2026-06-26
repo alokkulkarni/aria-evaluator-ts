@@ -5,6 +5,9 @@ Run structured scenarios against any AI agent, score every response with an inte
 
 Supports **Amazon Connect** (voice + chat), **AWS Lex**, **Azure Direct Line**, **Strands/AgentCore**, **GitHub Copilot Chat**, **OpenAPI** HTTP endpoints, and **WebSocket** bots.
 
+[![CI: Website Prod](https://github.com/alokkulkarni/aria-evaluator-ts/actions/workflows/ci-website-prod.yml/badge.svg)](https://github.com/alokkulkarni/aria-evaluator-ts/actions/workflows/ci-website-prod.yml)
+[![CD: Website Prod](https://github.com/alokkulkarni/aria-evaluator-ts/actions/workflows/cd-website-prod.yml/badge.svg)](https://github.com/alokkulkarni/aria-evaluator-ts/actions/workflows/cd-website-prod.yml)
+
 ---
 
 ## Table of Contents
