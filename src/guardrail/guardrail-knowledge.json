@@ -45,6 +45,90 @@
       }
     ]
   },
+  "banking:compliance": {
+    "required": [
+      {
+        "id": "regulatory-accuracy-grounding",
+        "type": "GROUNDING",
+        "title": "Ground regulatory statements in cited, current rule text",
+        "description": "Answer only from the cited handbook/rule source, surface the citation, and flag uncertainty rather than guessing.",
+        "rationale": "Confident but wrong compliance guidance creates regulatory and legal exposure.",
+        "regulations": ["FCA SYSC", "Sarbanes-Oxley Act (SOX)"]
+      },
+      {
+        "id": "no-definitive-regulatory-ruling",
+        "type": "TOPIC_DENIAL",
+        "title": "Do not issue definitive legal/regulatory rulings",
+        "description": "Frame output as informational analysis and defer binding determinations to a qualified compliance officer.",
+        "rationale": "Binding regulatory interpretation requires accountable human judgement.",
+        "regulations": ["FCA SYSC", "Sarbanes-Oxley Act (SOX)"]
+      },
+      {
+        "id": "immutable-audit-trail",
+        "type": "AUDIT_LOGGING",
+        "title": "Keep an immutable audit trail of queries and answers",
+        "description": "Record compliance interactions in tamper-evident storage for examination and supervision.",
+        "rationale": "Supervisors require a reconstructable record of advice and decisions.",
+        "regulations": ["Sarbanes-Oxley Act (SOX)", "SEC Rule 17a-4", "FCA SYSC 9"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "pii-internal-minimization",
+        "type": "PII_FILTER",
+        "title": "Minimise personal data in compliance analyses",
+        "description": "Strip customer PII not needed for the regulatory question being analysed.",
+        "rationale": "Data minimisation reduces breach impact even for internal tools.",
+        "regulations": ["GDPR Art. 5"]
+      }
+    ]
+  },
+  "banking:loan-application": {
+    "required": [
+      {
+        "id": "fair-lending-nondiscrimination",
+        "type": "BIAS_FAIRNESS",
+        "title": "Prevent discriminatory lending decisions and language",
+        "description": "Block use of protected characteristics (or close proxies) in eligibility reasoning and customer-facing language.",
+        "rationale": "Discriminatory credit decisions are unlawful and create disparate-impact liability.",
+        "regulations": ["ECOA (Reg B)", "Fair Housing Act", "Equality Act 2010", "EU AI Act (high-risk credit)"]
+      },
+      {
+        "id": "adverse-action-explainability",
+        "type": "DISCLOSURE",
+        "title": "Provide clear adverse-action reasons",
+        "description": "When credit is declined, surface specific, accurate principal reasons — no opaque denials.",
+        "rationale": "Applicants have a right to the specific reasons for an adverse credit decision.",
+        "regulations": ["ECOA (Reg B)", "FCRA", "EU AI Act"]
+      },
+      {
+        "id": "no-autonomous-credit-decision",
+        "type": "HUMAN_HANDOFF",
+        "title": "No autonomous approval or denial",
+        "description": "Route the actual approve/decline decision to a human underwriter; the agent only assists.",
+        "rationale": "Solely automated credit decisions with legal effect require human oversight and an appeal route.",
+        "regulations": ["GDPR Art. 22", "FCA CONC"]
+      },
+      {
+        "id": "pii-financial-data",
+        "type": "PII_FILTER",
+        "title": "Protect income, identity, and account data",
+        "description": "Mask SSNs, income, and account details in output and logs.",
+        "rationale": "Loan applications concentrate highly sensitive financial PII.",
+        "regulations": ["GLBA", "GDPR Art. 5"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "affordability-suitability",
+        "type": "CONTENT_POLICY",
+        "title": "Enforce affordability and suitability checks",
+        "description": "Do not encourage borrowing beyond demonstrated affordability.",
+        "rationale": "Responsible-lending rules require affordability assessment.",
+        "regulations": ["FCA CONC 5"]
+      }
+    ]
+  },
   "banking:bereavement": {
     "required": [
       {
@@ -72,6 +156,158 @@
         "description": "Prevent the agent from autonomously closing accounts or moving funds; escalate to a trained adviser.",
         "rationale": "High-impact, irreversible actions on sensitive accounts need human oversight.",
         "regulations": ["FCA Consumer Duty (PRIN 2A)"]
+      }
+    ]
+  },
+  "banking:fraud-detection": {
+    "required": [
+      {
+        "id": "no-fraud-accusation",
+        "type": "CONTENT_POLICY",
+        "title": "Surface risk signals, not accusations",
+        "description": "Present findings as risk indicators for human review; never assert a customer committed fraud.",
+        "rationale": "Definitive automated fraud accusations are defamatory and legally risky.",
+        "regulations": ["FCRA", "GDPR Art. 22"]
+      },
+      {
+        "id": "sar-case-confidentiality",
+        "type": "PII_FILTER",
+        "title": "Protect case data and never tip off the subject",
+        "description": "Keep suspicious-activity case material confidential and block any disclosure that would alert a subject.",
+        "rationale": "Tipping off and SAR disclosure are prohibited under anti-money-laundering law.",
+        "regulations": ["BSA/AML (SAR confidentiality)", "GDPR Art. 5"]
+      },
+      {
+        "id": "human-review-before-account-action",
+        "type": "HUMAN_HANDOFF",
+        "title": "Require human review before freezing or blocking accounts",
+        "description": "No autonomous account freezes/holds; a human authorises customer-impacting actions.",
+        "rationale": "Solely automated actions with significant effect on customers require oversight.",
+        "regulations": ["GDPR Art. 22", "FCA"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "fraud-bias-monitoring",
+        "type": "BIAS_FAIRNESS",
+        "title": "Monitor fraud flags for disparate impact",
+        "description": "Track whether flags fall disproportionately on protected groups.",
+        "rationale": "Biased fraud models can produce unlawful discrimination.",
+        "regulations": ["ECOA (Reg B)", "Equality Act 2010"]
+      }
+    ]
+  },
+  "banking:collections": {
+    "required": [
+      {
+        "id": "fair-debt-practices",
+        "type": "CONTENT_POLICY",
+        "title": "Enforce fair debt-collection conduct",
+        "description": "Block harassment, threats, undue pressure, and out-of-bounds contact; keep communications respectful and compliant.",
+        "rationale": "Abusive or deceptive collection practices are prohibited.",
+        "regulations": ["FDCPA", "FCA CONC 7"]
+      },
+      {
+        "id": "collections-vulnerability-care",
+        "type": "CONTENT_POLICY",
+        "title": "Detect financial difficulty and offer forbearance, not pressure",
+        "description": "Recognise vulnerability/hardship signals and route to forbearance options instead of escalating pressure.",
+        "rationale": "Customers in difficulty must be treated fairly under vulnerable-customer rules.",
+        "regulations": ["FCA Consumer Duty (PRIN 2A)", "FCA CONC 7", "FCA FG21/1"]
+      },
+      {
+        "id": "pii-debt-data",
+        "type": "PII_FILTER",
+        "title": "Protect debt and contact data; no third-party disclosure",
+        "description": "Never reveal the existence or details of a debt to third parties.",
+        "rationale": "Third-party disclosure of a consumer's debt is prohibited.",
+        "regulations": ["FDCPA", "GDPR Art. 5"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "no-misrepresented-consequences",
+        "type": "CONTENT_POLICY",
+        "title": "No false or exaggerated consequences",
+        "description": "Block threats of legal action or outcomes that are not actually intended or permitted.",
+        "rationale": "Misrepresenting consequences is a deceptive practice.",
+        "regulations": ["FDCPA", "FCA CONC 7"]
+      }
+    ]
+  },
+  "banking:kyc-onboarding": {
+    "required": [
+      {
+        "id": "identity-data-protection",
+        "type": "PII_FILTER",
+        "title": "Protect identity documents and biometrics",
+        "description": "Secure passports, IDs, and any biometric data captured during onboarding; minimise retention.",
+        "rationale": "Identity and biometric data are special-category and high-risk.",
+        "regulations": ["GDPR Art. 9", "BSA/AML"]
+      },
+      {
+        "id": "aml-screening-no-tipoff",
+        "type": "CONTENT_POLICY",
+        "title": "Screen against sanctions/PEP lists without tipping off",
+        "description": "Run required screening and never disclose screening or suspicious-activity status to the applicant.",
+        "rationale": "Sanctions/PEP screening is mandatory; revealing it can constitute tipping off.",
+        "regulations": ["BSA/AML", "OFAC sanctions", "FCA SYSC"]
+      },
+      {
+        "id": "human-decision-on-rejection",
+        "type": "HUMAN_HANDOFF",
+        "title": "No autonomous onboarding rejection",
+        "description": "Escalate declines to a human to avoid unfair financial exclusion from automated error.",
+        "rationale": "Solely automated rejections with significant effect require oversight and review.",
+        "regulations": ["GDPR Art. 22", "FCA"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "onboarding-bias-fairness",
+        "type": "BIAS_FAIRNESS",
+        "title": "Avoid discriminatory onboarding friction",
+        "description": "Ensure verification friction is not applied disproportionately to protected groups.",
+        "rationale": "Disparate onboarding barriers can be unlawful.",
+        "regulations": ["Equality Act 2010", "ECOA (Reg B)"]
+      }
+    ]
+  },
+  "banking:wealth-advisory": {
+    "required": [
+      {
+        "id": "suitability-appropriateness",
+        "type": "CONTENT_POLICY",
+        "title": "Enforce suitability/appropriateness before any recommendation",
+        "description": "Require know-your-customer suitability checks; give no personalised recommendation without authorisation and a completed assessment.",
+        "rationale": "Investment recommendations must be suitable and only made by authorised parties.",
+        "regulations": ["MiFID II", "FCA COBS 9A", "SEC Rule 15l-1 (Reg BI)"]
+      },
+      {
+        "id": "risk-cost-conflict-disclosure",
+        "type": "DISCLOSURE",
+        "title": "Disclose risks, costs, and conflicts; no guaranteed-return claims",
+        "description": "Always present risks/costs/conflicts and block 'guaranteed return' or misleading performance language.",
+        "rationale": "Communications must be fair, clear, and not misleading.",
+        "regulations": ["MiFID II", "FCA COBS 4"]
+      },
+      {
+        "id": "no-market-abuse-content",
+        "type": "TOPIC_DENIAL",
+        "title": "Block market-manipulation and insider-style content",
+        "description": "Refuse tips, rumours, or content that could facilitate market abuse or insider dealing.",
+        "rationale": "Facilitating market abuse is a serious offence.",
+        "regulations": ["Market Abuse Regulation (MAR)", "SEC"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "pii-portfolio",
+        "type": "PII_FILTER",
+        "title": "Protect portfolio and holdings data",
+        "description": "Mask holdings, balances, and positions in output and logs.",
+        "rationale": "Portfolio data is sensitive financial PII.",
+        "regulations": ["GDPR Art. 5", "GLBA"]
       }
     ]
   },
@@ -105,6 +341,120 @@
       }
     ]
   },
+  "legal:legal-research": {
+    "required": [
+      {
+        "id": "citation-verification",
+        "type": "GROUNDING",
+        "title": "Verify every case and statute citation",
+        "description": "Check each authority against the source and refuse to present unverifiable or fabricated citations.",
+        "rationale": "Fabricated case citations have led to sanctions and breach the duty of competence.",
+        "regulations": ["ABA Model Rule 1.1", "ABA Formal Opinion 512"]
+      },
+      {
+        "id": "research-not-advice",
+        "type": "TOPIC_DENIAL",
+        "title": "Distinguish research from legal advice",
+        "description": "Present findings as research with a disclaimer; do not issue advice or recommend a course of action.",
+        "rationale": "Research output must not cross into unauthorised legal advice.",
+        "regulations": ["ABA Model Rule 5.5"]
+      },
+      {
+        "id": "matter-confidentiality",
+        "type": "PII_FILTER",
+        "title": "Protect privileged matter information",
+        "description": "Keep matter facts and research context confidential and out of shared logs.",
+        "rationale": "Client matter information is confidential and may be privileged.",
+        "regulations": ["ABA Model Rule 1.6", "GDPR Art. 5"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "jurisdiction-currency",
+        "type": "GROUNDING",
+        "title": "Flag jurisdiction and currency of law",
+        "description": "State the jurisdiction and as-of date for any authority and warn when law may be superseded.",
+        "rationale": "Out-of-date or wrong-jurisdiction law misleads.",
+        "regulations": ["ABA Model Rule 1.1"]
+      }
+    ]
+  },
+  "legal:client-intake": {
+    "required": [
+      {
+        "id": "conflict-check-before-engagement",
+        "type": "CONTENT_POLICY",
+        "title": "No engagement or advice before a conflict check",
+        "description": "Collect intake information but withhold advice and any engagement until a conflicts check clears.",
+        "rationale": "Acting before conflicts clearance breaches professional-conduct duties.",
+        "regulations": ["ABA Model Rule 1.7", "ABA Model Rule 1.18"]
+      },
+      {
+        "id": "no-attorney-client-relationship-implied",
+        "type": "DISCLOSURE",
+        "title": "Clarify that no attorney-client relationship is formed",
+        "description": "Disclose that the intake assistant does not create an attorney-client relationship or guarantee representation.",
+        "rationale": "Prospective clients must not be misled about representation status.",
+        "regulations": ["ABA Model Rule 1.18"]
+      },
+      {
+        "id": "intake-pii-confidentiality",
+        "type": "PII_FILTER",
+        "title": "Protect prospective-client information",
+        "description": "Safeguard intake PII and matter details even when no engagement results.",
+        "rationale": "Prospective-client information is protected.",
+        "regulations": ["ABA Model Rule 1.18", "GDPR Art. 5"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "intake-no-legal-advice",
+        "type": "TOPIC_DENIAL",
+        "title": "Keep intake informational only",
+        "description": "Decline to assess case merits or give legal advice during intake.",
+        "rationale": "Avoids unauthorised practice and premature advice.",
+        "regulations": ["ABA Model Rule 5.5"]
+      }
+    ]
+  },
+  "legal:e-discovery": {
+    "required": [
+      {
+        "id": "privilege-preservation",
+        "type": "PII_FILTER",
+        "title": "Detect and withhold privileged / work-product material",
+        "description": "Identify privileged and work-product documents and keep them out of any production set.",
+        "rationale": "Inadvertent privilege waiver and improper disclosure carry serious consequences.",
+        "regulations": ["FRCP 26(b)", "ABA Model Rule 1.6"]
+      },
+      {
+        "id": "review-audit-trail",
+        "type": "AUDIT_LOGGING",
+        "title": "Maintain a defensible, immutable review audit trail",
+        "description": "Log review/coding decisions in tamper-evident storage to support defensibility and chain of custody.",
+        "rationale": "Spoliation and unreliable process can lead to sanctions.",
+        "regulations": ["FRCP 37", "FRE 901"]
+      },
+      {
+        "id": "bulk-pii-protection",
+        "type": "PII_FILTER",
+        "title": "Protect PII across bulk document sets",
+        "description": "Detect and control PII in large collections processed during review.",
+        "rationale": "Document sets routinely contain large volumes of personal data.",
+        "regulations": ["GDPR Art. 5", "CCPA"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "methodology-disclosure",
+        "type": "DISCLOSURE",
+        "title": "Document sampling / TAR methodology",
+        "description": "Record the technology-assisted-review or sampling approach for defensibility.",
+        "rationale": "Transparent methodology supports a defensible process.",
+        "regulations": ["FRCP 26"]
+      }
+    ]
+  },
   "healthcare:patient-support": {
     "required": [
       {
@@ -130,6 +480,592 @@
         "description": "Recognise red-flag/emergency symptoms and immediately route the patient to emergency services or a clinician.",
         "rationale": "Failure to escalate emergencies is a patient-safety and duty-of-care failure.",
         "regulations": ["HIPAA (45 CFR 164.506)", "EMTALA"]
+      }
+    ]
+  },
+  "healthcare:clinical-decision": {
+    "required": [
+      {
+        "id": "no-autonomous-diagnosis-treatment",
+        "type": "HUMAN_HANDOFF",
+        "title": "Decision support only — clinician makes the call",
+        "description": "Present options and evidence to a clinician; never finalise diagnosis or treatment autonomously.",
+        "rationale": "Clinical decisions require an accountable licensed clinician.",
+        "regulations": ["FDA Clinical Decision Support Guidance", "HIPAA"]
+      },
+      {
+        "id": "evidence-grounding",
+        "type": "GROUNDING",
+        "title": "Ground recommendations in cited evidence",
+        "description": "Tie suggestions to guidelines/evidence with citations and flag low-confidence or out-of-scope cases.",
+        "rationale": "Ungrounded clinical suggestions endanger patients.",
+        "regulations": ["FDA Clinical Decision Support Guidance"]
+      },
+      {
+        "id": "phi-protection-cds",
+        "type": "PII_FILTER",
+        "title": "Protect PHI in clinical context",
+        "description": "Secure and minimise PHI used to generate decision support.",
+        "rationale": "PHI must be protected under the HIPAA Privacy Rule.",
+        "regulations": ["HIPAA Privacy Rule (45 CFR 164.502)"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "clinical-equity-bias",
+        "type": "BIAS_FAIRNESS",
+        "title": "Monitor for biased recommendations across demographics",
+        "description": "Check that decision support does not systematically disadvantage protected groups.",
+        "rationale": "Biased clinical algorithms cause inequitable care.",
+        "regulations": ["HHS Section 1557"]
+      }
+    ]
+  },
+  "healthcare:scheduling": {
+    "required": [
+      {
+        "id": "phi-minimization-scheduling",
+        "type": "PII_FILTER",
+        "title": "Minimise PHI in scheduling and confirmations",
+        "description": "Avoid exposing diagnoses or clinical reasons in confirmations/reminders; share only what is needed to book.",
+        "rationale": "Only the minimum necessary PHI should be used or disclosed.",
+        "regulations": ["HIPAA Minimum Necessary (45 CFR 164.514)"]
+      },
+      {
+        "id": "emergency-redirect-scheduling",
+        "type": "HUMAN_HANDOFF",
+        "title": "Redirect urgent symptoms to care",
+        "description": "Detect urgent/emergency descriptions and route to clinical help rather than simply booking an appointment.",
+        "rationale": "Booking instead of escalating an emergency is a safety failure.",
+        "regulations": ["EMTALA"]
+      },
+      {
+        "id": "no-medical-advice-scheduling",
+        "type": "TOPIC_DENIAL",
+        "title": "No clinical advice — scheduling only",
+        "description": "Decline symptom interpretation or treatment guidance; stay within scheduling.",
+        "rationale": "Clinical advice is out of scope and unsafe for a scheduling agent.",
+        "regulations": ["FDA Clinical Decision Support Guidance", "HIPAA"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "communication-consent",
+        "type": "DISCLOSURE",
+        "title": "Honour communication consent for reminders",
+        "description": "Respect opt-in/opt-out preferences for SMS/voice reminders.",
+        "rationale": "Automated reminders are subject to consent rules.",
+        "regulations": ["TCPA", "HIPAA"]
+      }
+    ]
+  },
+  "healthcare:medical-billing": {
+    "required": [
+      {
+        "id": "coding-accuracy-no-upcoding",
+        "type": "CONTENT_POLICY",
+        "title": "Accurate coding — no upcoding or unbundling",
+        "description": "Assign codes supported by documentation; block upcoding, unbundling, or unsupported claims.",
+        "rationale": "Improper coding can constitute false claims and fraud.",
+        "regulations": ["False Claims Act", "CMS billing rules"]
+      },
+      {
+        "id": "phi-billing-protection",
+        "type": "PII_FILTER",
+        "title": "Protect PHI and payment data in billing",
+        "description": "Secure PHI and cardholder data handled during coding/billing.",
+        "rationale": "Billing combines PHI and payment data, both regulated.",
+        "regulations": ["HIPAA Privacy Rule (45 CFR 164.502)", "PCI DSS"]
+      },
+      {
+        "id": "billing-audit-trail",
+        "type": "AUDIT_LOGGING",
+        "title": "Keep an auditable record of coding decisions",
+        "description": "Log code assignments and their documentation basis for audit.",
+        "rationale": "Auditability is required to defend claims.",
+        "regulations": ["False Claims Act", "CMS billing rules"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "no-coverage-guarantee",
+        "type": "TOPIC_DENIAL",
+        "title": "No coverage or reimbursement guarantees",
+        "description": "Avoid promising payer coverage or reimbursement outcomes.",
+        "rationale": "Coverage determinations are the payer's, not the agent's.",
+        "regulations": ["HIPAA"]
+      }
+    ]
+  },
+  "hr:recruitment": {
+    "required": [
+      {
+        "id": "hiring-bias-fairness",
+        "type": "BIAS_FAIRNESS",
+        "title": "Prevent discrimination in screening and ranking",
+        "description": "Block use of protected characteristics or proxies in screening, scoring, and ranking of candidates.",
+        "rationale": "Automated hiring tools must not produce unlawful disparate impact.",
+        "regulations": ["Title VII", "ADA", "EEOC", "EU AI Act (high-risk employment)"]
+      },
+      {
+        "id": "aedt-bias-audit-disclosure",
+        "type": "DISCLOSURE",
+        "title": "Disclose automated employment decision tooling",
+        "description": "Notify candidates that an automated tool is used and meet bias-audit/disclosure obligations where applicable.",
+        "rationale": "Several jurisdictions mandate notice and bias auditing for automated hiring tools.",
+        "regulations": ["NYC Local Law 144", "Illinois AIVIA", "EU AI Act"]
+      },
+      {
+        "id": "candidate-pii-protection",
+        "type": "PII_FILTER",
+        "title": "Protect candidate personal data",
+        "description": "Secure applications, CVs, and assessment data; minimise retention.",
+        "rationale": "Candidate data is personal data with retention limits.",
+        "regulations": ["GDPR Art. 5", "CCPA"]
+      },
+      {
+        "id": "no-autonomous-rejection-hiring",
+        "type": "HUMAN_HANDOFF",
+        "title": "Human review of rejections",
+        "description": "No fully automated adverse hiring decision; a human reviews rejections.",
+        "rationale": "Solely automated decisions with significant effect require oversight.",
+        "regulations": ["GDPR Art. 22", "EEOC"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "no-prohibited-questions",
+        "type": "TOPIC_DENIAL",
+        "title": "Block prohibited interview questions",
+        "description": "Prevent questions about protected characteristics (age, marital status, health, religion, etc.).",
+        "rationale": "Such questions are unlawful or evidence of discrimination.",
+        "regulations": ["Title VII", "ADA", "GDPR Art. 9"]
+      }
+    ]
+  },
+  "hr:onboarding": {
+    "required": [
+      {
+        "id": "employee-pii-protection",
+        "type": "PII_FILTER",
+        "title": "Protect employee identity and financial data",
+        "description": "Secure SSNs, bank details, and right-to-work/immigration documents collected at onboarding.",
+        "rationale": "Onboarding gathers highly sensitive personal and special-category data.",
+        "regulations": ["GDPR Art. 9", "IRCA (Form I-9)"]
+      },
+      {
+        "id": "policy-grounding-onboarding",
+        "type": "GROUNDING",
+        "title": "Ground answers in current company policy",
+        "description": "Answer from the current authoritative policy set and flag uncertainty.",
+        "rationale": "Wrong onboarding/policy answers create compliance and trust issues.",
+        "regulations": ["GDPR Art. 5"]
+      },
+      {
+        "id": "no-legal-tax-advice-onboarding",
+        "type": "TOPIC_DENIAL",
+        "title": "No personalised legal, tax, or benefits advice",
+        "description": "Defer individualised legal/tax/benefits questions to qualified professionals or HR.",
+        "rationale": "Individualised benefits/tax advice carries professional and fiduciary risk.",
+        "regulations": ["ERISA"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "accommodation-routing",
+        "type": "CONTENT_POLICY",
+        "title": "Support reasonable-accommodation requests",
+        "description": "Recognise accommodation/accessibility needs and route them to the right process.",
+        "rationale": "Employers must handle accommodation requests appropriately.",
+        "regulations": ["ADA", "Equality Act 2010"]
+      }
+    ]
+  },
+  "hr:policy-qa": {
+    "required": [
+      {
+        "id": "policy-grounding-no-hallucination",
+        "type": "GROUNDING",
+        "title": "Answer only from current policy with citations",
+        "description": "Cite the policy source, and respond with an explicit 'not covered / check with HR' when unsure.",
+        "rationale": "Confident wrong policy answers create legal and fairness risk.",
+        "regulations": ["GDPR Art. 5"]
+      },
+      {
+        "id": "consistent-nondiscriminatory-guidance",
+        "type": "BIAS_FAIRNESS",
+        "title": "Give consistent, non-discriminatory guidance",
+        "description": "Provide the same policy interpretation regardless of who asks; avoid biased phrasing.",
+        "rationale": "Inconsistent policy guidance can produce discriminatory outcomes.",
+        "regulations": ["Title VII", "Equality Act 2010"]
+      },
+      {
+        "id": "confidential-reporting-routing",
+        "type": "HUMAN_HANDOFF",
+        "title": "Route grievance / whistleblower reports to humans",
+        "description": "Escalate harassment, discrimination, or whistleblowing reports confidentially to the proper channel.",
+        "rationale": "Protected reports require confidential, human handling.",
+        "regulations": ["EU Whistleblower Directive", "Title VII"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "policy-qa-pii-protection",
+        "type": "PII_FILTER",
+        "title": "Don't expose other employees' personal data",
+        "description": "Block disclosure of third parties' personal or HR-case data.",
+        "rationale": "Employee personal data must not leak via policy answers.",
+        "regulations": ["GDPR Art. 5"]
+      }
+    ]
+  },
+  "hr:performance-management": {
+    "required": [
+      {
+        "id": "evaluation-bias-fairness",
+        "type": "BIAS_FAIRNESS",
+        "title": "Prevent bias in ratings and feedback language",
+        "description": "Block protected-characteristic influence and biased language in assessments and summaries.",
+        "rationale": "Biased performance assessment is unlawful and unfair.",
+        "regulations": ["Title VII", "EEOC", "EU AI Act (high-risk employment)"]
+      },
+      {
+        "id": "human-decision-on-actions",
+        "type": "HUMAN_HANDOFF",
+        "title": "No autonomous termination, PIP, or promotion decisions",
+        "description": "Route consequential personnel decisions to an accountable human.",
+        "rationale": "Solely automated employment decisions with significant effect require oversight.",
+        "regulations": ["GDPR Art. 22"]
+      },
+      {
+        "id": "performance-data-confidentiality",
+        "type": "PII_FILTER",
+        "title": "Protect performance and related sensitive data",
+        "description": "Secure ratings, disciplinary, and any health-related performance data.",
+        "rationale": "Performance and health-related data are sensitive personal data.",
+        "regulations": ["GDPR Art. 9"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "assessment-explainability",
+        "type": "DISCLOSURE",
+        "title": "Keep assessments explainable and evidence-based",
+        "description": "Tie any rating or summary to concrete, documented evidence.",
+        "rationale": "Explainability supports fairness and contestability.",
+        "regulations": ["EU AI Act"]
+      }
+    ]
+  },
+  "insurance:claims": {
+    "required": [
+      {
+        "id": "no-autonomous-claim-denial",
+        "type": "HUMAN_HANDOFF",
+        "title": "No fully automated claim denials",
+        "description": "Route denials to a human with an appeal path; the agent assists but does not finally deny.",
+        "rationale": "Solely automated denials with significant effect require oversight and recourse.",
+        "regulations": ["GDPR Art. 22", "EU AI Act", "State unfair-claims-practices laws"]
+      },
+      {
+        "id": "fair-claims-handling",
+        "type": "CONTENT_POLICY",
+        "title": "Handle claims in good faith",
+        "description": "Avoid unfair delay, lowballing, or misleading statements about coverage and process.",
+        "rationale": "Unfair claims settlement practices are prohibited.",
+        "regulations": ["NAIC Unfair Claims Settlement Practices Act", "FCA ICOBS"]
+      },
+      {
+        "id": "claimant-pii-phi",
+        "type": "PII_FILTER",
+        "title": "Protect claimant PII and health data",
+        "description": "Secure claim documents that contain personal, financial, and health information.",
+        "rationale": "Claims frequently include sensitive and health data.",
+        "regulations": ["GDPR Art. 9", "HIPAA", "GLBA"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "fraud-flag-not-accusation",
+        "type": "CONTENT_POLICY",
+        "title": "Flag suspected fraud for review, don't accuse",
+        "description": "Refer suspicious claims to investigators rather than asserting fraud to the claimant.",
+        "rationale": "Premature fraud accusations are unfair and risky.",
+        "regulations": ["FCRA", "State insurance fraud laws"]
+      }
+    ]
+  },
+  "insurance:underwriting": {
+    "required": [
+      {
+        "id": "underwriting-fairness",
+        "type": "BIAS_FAIRNESS",
+        "title": "Prevent prohibited factors and proxy discrimination",
+        "description": "Block protected characteristics and unfair proxies from rating/eligibility decisions.",
+        "rationale": "Unfairly discriminatory underwriting is prohibited.",
+        "regulations": ["EU AI Act (high-risk)", "GDPR Art. 22", "Colorado SB21-169 (insurer AI/data use)"]
+      },
+      {
+        "id": "adverse-decision-explainability",
+        "type": "DISCLOSURE",
+        "title": "Explain declines and ratings",
+        "description": "Provide accurate reasons for declines/loadings and any required adverse-action notice.",
+        "rationale": "Applicants are entitled to the reasons for adverse decisions.",
+        "regulations": ["FCRA", "GDPR Art. 22"]
+      },
+      {
+        "id": "sensitive-data-controls",
+        "type": "PII_FILTER",
+        "title": "Control health and genetic data use",
+        "description": "Restrict and protect special-category data and bar prohibited use of genetic information.",
+        "rationale": "Health/genetic data is special-category and use is restricted.",
+        "regulations": ["GINA", "GDPR Art. 9", "HIPAA"]
+      },
+      {
+        "id": "human-sign-off-underwriting",
+        "type": "HUMAN_HANDOFF",
+        "title": "Require human underwriter sign-off",
+        "description": "A qualified underwriter approves consequential decisions.",
+        "rationale": "Solely automated consequential decisions require oversight.",
+        "regulations": ["GDPR Art. 22"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "actuarial-grounding",
+        "type": "GROUNDING",
+        "title": "Ground decisions in approved actuarial rules",
+        "description": "Base ratings on filed/approved actuarial criteria, not ad-hoc reasoning.",
+        "rationale": "Rates must follow approved actuarial bases.",
+        "regulations": ["NAIC model rating laws"]
+      }
+    ]
+  },
+  "insurance:customer-care": {
+    "required": [
+      {
+        "id": "no-coverage-misrepresentation",
+        "type": "CONTENT_POLICY",
+        "title": "No inaccurate coverage promises",
+        "description": "Keep statements about coverage, exclusions, and process clear, accurate, and not misleading.",
+        "rationale": "Misrepresenting coverage is an unfair practice.",
+        "regulations": ["FCA ICOBS", "State unfair-claims-practices laws"]
+      },
+      {
+        "id": "no-unlicensed-advice",
+        "type": "TOPIC_DENIAL",
+        "title": "No personalised insurance advice without a licence",
+        "description": "Avoid individualised recommendations that require a licensed producer.",
+        "rationale": "Personalised insurance advice requires licensing.",
+        "regulations": ["State producer licensing", "FCA"]
+      },
+      {
+        "id": "policyholder-pii",
+        "type": "PII_FILTER",
+        "title": "Protect policyholder data",
+        "description": "Secure policy, payment, and any health data in interactions and logs.",
+        "rationale": "Policyholder data is sensitive personal data.",
+        "regulations": ["GDPR Art. 5", "GLBA"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "insurance-vulnerable-customer",
+        "type": "CONTENT_POLICY",
+        "title": "Treat vulnerable customers fairly",
+        "description": "Detect vulnerability and adapt support; avoid pressure.",
+        "rationale": "Fair treatment of vulnerable customers is required.",
+        "regulations": ["FCA Consumer Duty (PRIN 2A)"]
+      }
+    ]
+  },
+  "insurance:fraud-investigation": {
+    "required": [
+      {
+        "id": "siu-no-false-accusation",
+        "type": "CONTENT_POLICY",
+        "title": "Surface risk signals, not accusations",
+        "description": "Provide indicators for SIU review; never assert fraud to the claimant.",
+        "rationale": "Definitive automated fraud accusations are defamatory and risky.",
+        "regulations": ["FCRA", "GDPR Art. 22", "State insurance fraud laws"]
+      },
+      {
+        "id": "siu-case-confidentiality",
+        "type": "PII_FILTER",
+        "title": "Protect investigation data and avoid tip-off",
+        "description": "Keep investigation material confidential and out of claimant-facing channels.",
+        "rationale": "Investigation confidentiality protects integrity and rights.",
+        "regulations": ["GDPR Art. 5"]
+      },
+      {
+        "id": "siu-human-review",
+        "type": "HUMAN_HANDOFF",
+        "title": "Human review before denial or referral",
+        "description": "Require human authorisation before adverse action or law-enforcement referral.",
+        "rationale": "Consequential decisions require oversight.",
+        "regulations": ["GDPR Art. 22"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "siu-bias-monitoring",
+        "type": "BIAS_FAIRNESS",
+        "title": "Monitor for disparate impact in fraud flags",
+        "description": "Check flags do not disproportionately target protected groups.",
+        "rationale": "Biased fraud detection can be discriminatory.",
+        "regulations": ["State anti-discrimination laws"]
+      }
+    ]
+  },
+  "retail:customer-service": {
+    "required": [
+      {
+        "id": "pii-order-account",
+        "type": "PII_FILTER",
+        "title": "Protect order, account, and payment data",
+        "description": "Mask payment and personal data; never echo full card numbers.",
+        "rationale": "Order/payment data is personal data and in PCI scope.",
+        "regulations": ["GDPR Art. 5", "PCI DSS", "CCPA"]
+      },
+      {
+        "id": "cs-prompt-injection-defense",
+        "type": "PROMPT_ATTACK",
+        "title": "Detect and block prompt injection / jailbreaks",
+        "description": "Filter attempts to override instructions or exfiltrate data via crafted inputs.",
+        "rationale": "Public-facing agents are prime prompt-injection targets.",
+        "regulations": ["OWASP LLM Top 10 (LLM01)", "NIST AI RMF"]
+      },
+      {
+        "id": "no-unauthorized-offers",
+        "type": "CONTENT_POLICY",
+        "title": "No invented discounts or refund promises",
+        "description": "Block commitments (discounts, refunds, price matches) beyond approved policy.",
+        "rationale": "Unauthorised promises are deceptive and costly.",
+        "regulations": ["FTC Act (unfair/deceptive)"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "cs-toxicity-filter",
+        "type": "CONTENT_FILTER",
+        "title": "Filter toxic or abusive content",
+        "description": "Apply input/output filters for hate, harassment, and profanity.",
+        "rationale": "Protects customers and brand.",
+        "regulations": ["FTC Act (unfair/deceptive)"]
+      }
+    ]
+  },
+  "retail:product-advisor": {
+    "required": [
+      {
+        "id": "truthful-claims-no-deception",
+        "type": "CONTENT_POLICY",
+        "title": "No false or unsubstantiated product claims",
+        "description": "Block deceptive, exaggerated, or unsubstantiated performance/health claims.",
+        "rationale": "Deceptive advertising harms consumers and is unlawful.",
+        "regulations": ["FTC Act (unfair/deceptive)", "EU UCPD"]
+      },
+      {
+        "id": "disclose-ai-and-sponsorship",
+        "type": "DISCLOSURE",
+        "title": "Disclose AI use and sponsored recommendations",
+        "description": "Tell users they're interacting with AI and clearly mark sponsored/affiliate recommendations.",
+        "rationale": "Material connections and AI use must be disclosed.",
+        "regulations": ["FTC Endorsement Guides", "EU AI Act"]
+      },
+      {
+        "id": "no-medical-safety-claims",
+        "type": "TOPIC_DENIAL",
+        "title": "No medical or safety claims for regulated products",
+        "description": "Avoid health/medical claims for supplements, cosmetics, or other regulated goods.",
+        "rationale": "Health claims on regulated products are restricted.",
+        "regulations": ["FDA", "FTC Act (unfair/deceptive)"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "advisor-pii-preferences",
+        "type": "PII_FILTER",
+        "title": "Protect preference and profile data",
+        "description": "Secure profiling/preference data used for recommendations.",
+        "rationale": "Profile data is personal data.",
+        "regulations": ["GDPR Art. 5", "CCPA"]
+      }
+    ]
+  },
+  "retail:order-returns": {
+    "required": [
+      {
+        "id": "policy-grounded-resolutions",
+        "type": "GROUNDING",
+        "title": "Ground refund/return decisions in policy",
+        "description": "Base outcomes on the actual return policy; do not invent entitlements or refuse statutory rights.",
+        "rationale": "Inconsistent or invented resolutions create disputes and legal risk.",
+        "regulations": ["FTC Act (unfair/deceptive)", "EU Consumer Rights Directive"]
+      },
+      {
+        "id": "returns-payment-data-protection",
+        "type": "PII_FILTER",
+        "title": "Protect payment and refund data",
+        "description": "Secure card and refund details; never echo full payment data.",
+        "rationale": "Refund flows handle in-scope payment data.",
+        "regulations": ["PCI DSS", "GDPR Art. 5"]
+      },
+      {
+        "id": "consumer-rights-disclosure",
+        "type": "DISCLOSURE",
+        "title": "Honour statutory return and refund rights",
+        "description": "Surface and respect statutory cooling-off/return rights where they apply.",
+        "rationale": "Consumers have non-waivable statutory rights.",
+        "regulations": ["EU Consumer Rights Directive", "UK Consumer Rights Act 2015"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "no-unauthorized-financial-action",
+        "type": "HUMAN_HANDOFF",
+        "title": "Guard large refunds and policy exceptions",
+        "description": "Route high-value refunds or out-of-policy exceptions to a human.",
+        "rationale": "High-impact financial actions need oversight.",
+        "regulations": ["FTC Act (unfair/deceptive)"]
+      }
+    ]
+  },
+  "retail:marketing-content": {
+    "required": [
+      {
+        "id": "truthful-advertising",
+        "type": "CONTENT_POLICY",
+        "title": "No deceptive or unsubstantiated advertising",
+        "description": "Block unsubstantiated claims, fake urgency, and misleading comparisons in generated copy.",
+        "rationale": "Deceptive advertising is unlawful.",
+        "regulations": ["FTC Act (unfair/deceptive)", "EU UCPD", "ASA CAP Code (UK)"]
+      },
+      {
+        "id": "ip-brand-safety",
+        "type": "CONTENT_POLICY",
+        "title": "Avoid IP infringement and unsafe brand content",
+        "description": "Prevent use of third-party trademarks/copyright and off-brand or unsafe content.",
+        "rationale": "Infringing or unsafe content creates legal and brand risk.",
+        "regulations": ["Copyright and trademark law"]
+      },
+      {
+        "id": "nondiscriminatory-targeting",
+        "type": "BIAS_FAIRNESS",
+        "title": "No discriminatory targeting or content",
+        "description": "Block protected-class exclusion in ad targeting and discriminatory messaging.",
+        "rationale": "Discriminatory ad targeting/content is unlawful in regulated categories.",
+        "regulations": ["Fair Housing Act (housing ads)", "ECOA (credit ads)", "GDPR Art. 5 (profiling)"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "disclose-ai-generated",
+        "type": "DISCLOSURE",
+        "title": "Label AI-generated and endorsement content",
+        "description": "Mark AI-generated creative and disclose material connections in endorsements.",
+        "rationale": "Transparency obligations apply to AI and endorsements.",
+        "regulations": ["FTC Endorsement Guides", "EU AI Act"]
       }
     ]
   },
