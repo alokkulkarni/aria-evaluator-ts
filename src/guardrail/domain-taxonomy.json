@@ -8,7 +8,10 @@
         { "id": "compliance",       "label": "Compliance Agent (Regulatory)" },
         { "id": "loan-application", "label": "Loan Application Agent" },
         { "id": "bereavement",      "label": "Bereavement / Sensitive Account Agent" },
-        { "id": "fraud-detection",  "label": "Fraud Detection & Prevention" }
+        { "id": "fraud-detection",  "label": "Fraud Detection & Prevention" },
+        { "id": "collections",      "label": "Collections & Debt Recovery Agent" },
+        { "id": "kyc-onboarding",   "label": "KYC / AML Onboarding Agent" },
+        { "id": "wealth-advisory",  "label": "Wealth & Investment Advisory Agent" }
       ]
     },
     {
@@ -17,7 +20,8 @@
       "subFunctions": [
         { "id": "contract-review",   "label": "Contract Review Agent" },
         { "id": "legal-research",    "label": "Legal Research Agent" },
-        { "id": "client-intake",     "label": "Client Intake Agent" }
+        { "id": "client-intake",     "label": "Client Intake Agent" },
+        { "id": "e-discovery",       "label": "E-Discovery & Document Review Agent" }
       ]
     },
     {
@@ -26,33 +30,38 @@
       "subFunctions": [
         { "id": "patient-support",   "label": "Patient Support Agent" },
         { "id": "clinical-decision", "label": "Clinical Decision Support" },
-        { "id": "scheduling",        "label": "Appointment Scheduling Agent" }
+        { "id": "scheduling",        "label": "Appointment Scheduling Agent" },
+        { "id": "medical-billing",   "label": "Medical Coding & Billing Agent" }
       ]
     },
     {
       "id": "hr",
       "label": "Human Resources",
       "subFunctions": [
-        { "id": "recruitment",   "label": "Recruitment Agent" },
-        { "id": "onboarding",    "label": "Employee Onboarding Agent" },
-        { "id": "policy-qa",     "label": "Policy Q&A Agent" }
+        { "id": "recruitment",            "label": "Recruitment Agent" },
+        { "id": "onboarding",             "label": "Employee Onboarding Agent" },
+        { "id": "policy-qa",              "label": "Policy Q&A Agent" },
+        { "id": "performance-management", "label": "Performance Management Agent" }
       ]
     },
     {
       "id": "insurance",
       "label": "Insurance",
       "subFunctions": [
-        { "id": "claims",        "label": "Claims Processing Agent" },
-        { "id": "underwriting",  "label": "Underwriting Agent" },
-        { "id": "customer-care", "label": "Customer Care Agent" }
+        { "id": "claims",              "label": "Claims Processing Agent" },
+        { "id": "underwriting",        "label": "Underwriting Agent" },
+        { "id": "customer-care",       "label": "Customer Care Agent" },
+        { "id": "fraud-investigation", "label": "Claims Fraud (SIU) Agent" }
       ]
     },
     {
       "id": "retail",
       "label": "Retail & E-Commerce",
       "subFunctions": [
-        { "id": "customer-service", "label": "Customer Service Agent" },
-        { "id": "product-advisor",  "label": "Product Advisor Agent" }
+        { "id": "customer-service",  "label": "Customer Service Agent" },
+        { "id": "product-advisor",   "label": "Product Advisor Agent" },
+        { "id": "order-returns",     "label": "Order & Returns Agent" },
+        { "id": "marketing-content", "label": "Marketing Content Agent" }
       ]
     }
   ]
