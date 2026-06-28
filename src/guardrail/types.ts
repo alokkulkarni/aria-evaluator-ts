@@ -75,6 +75,30 @@ export interface FormattedConfig {
   docsFreshAsOf: string;
 }
 
+// ─── Curated knowledge base (static JSON, Phase 1) ──────────────────────────────
+
+/** A single guardrail as stored in guardrail-knowledge.json (severity is implied
+ *  by which bucket it lives in). */
+export interface KnowledgeGuardrail {
+  id: string;
+  /** Guardrail category, e.g. TOPIC_DENIAL | PII_FILTER | CONTENT_FILTER. */
+  type: string;
+  title: string;
+  /** Optional richer description; falls back to `title` when absent. */
+  description?: string;
+  rationale: string;
+  regulations: string[];
+}
+
+/** A knowledge-base entry keyed by `domain:subFunction` (or `jurisdiction:CODE`). */
+export interface KnowledgeEntry {
+  required?: KnowledgeGuardrail[];
+  recommended?: KnowledgeGuardrail[];
+  optional?: KnowledgeGuardrail[];
+}
+
+export type GuardrailKnowledgeBase = Record<string, KnowledgeEntry>;
+
 // ─── Domain taxonomy (static JSON, Phase 1) ─────────────────────────────────────
 
 export interface SubFunction {
