@@ -1,19 +1,17 @@
 // Guardrail Advisor — platform documentation crawler (AWS Lambda, EventBridge
-// scheduled trigger). For each platform URL in DOC_TARGETS it fetches the page,
-// chunks + embeds the text, and upserts PlatformDocChunk rows — skipping pages
-// whose content is unchanged (contentHash). When a page changes, configs whose
-// citations reference it are marked stale (configGeneratedAt = null).
+// scheduled trigger). For each platform URL in DOC_TARGETS it crawls + chunks the
+// page (src/rag/crawler), embeds the chunks, and upserts PlatformDocChunk rows —
+// skipping pages whose content is unchanged (contentHash). When a page changes,
+// configs whose citations reference it are marked stale (configGeneratedAt = null).
 //
 // IMPORTANT: never log doc content (PII / ToS). Only counts, URLs, and errors.
 //
-// Build: this handler imports from src/ (chunker, embedder, doc-targets, prisma),
+// Build: this handler imports from src/ (crawler, embedder, doc-targets, prisma),
 // so it is bundled with its dependencies (e.g. esbuild + the Prisma engine) into a
 // deployment package referenced by infra/terraform/guardrail-rag.tf.
-import { createHash } from 'node:crypto';
-
 import { prisma } from '../../src/db/client.js';
 import { DOC_TARGETS } from '../../src/rag/doc-targets.js';
-import { chunkDocument } from '../../src/rag/chunker.js';
+import { crawlAndChunk } from '../../src/rag/crawler.js';
 import { embedText } from '../../src/rag/embedder.js';
 
 interface CrawlSummary {
@@ -22,28 +20,6 @@ interface CrawlSummary {
   updated: number;
   skipped: number;
   failed: number;
-}
-
-// Minimal HTML → text: strip script/style/markup and collapse whitespace.
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function hashContent(content: string): string {
-  return createHash('sha256').update(content).digest('hex');
-}
-
-async function fetchDoc(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { 'user-agent': 'aria-guardrail-doc-crawler' } });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return htmlToText(await res.text());
 }
 
 // Mark generated configs that cited a changed doc as stale so they get regenerated.
@@ -64,8 +40,7 @@ async function markConfigsStale(platform: string, docUrl: string): Promise<void>
 
 async function crawlUrl(platform: string, url: string, summary: CrawlSummary): Promise<void> {
   summary.checked += 1;
-  const text = await fetchDoc(url);
-  const contentHash = hashContent(text);
+  const { contentHash, chunks } = await crawlAndChunk(url);
 
   const existing = await prisma.platformDocChunk.findFirst({
     where: { docUrl: url },
@@ -76,19 +51,18 @@ async function crawlUrl(platform: string, url: string, summary: CrawlSummary): P
     return;
   }
 
-  const chunks = chunkDocument(text);
   // Replace this URL's chunks wholesale so a changed chunk count can't leave
   // stale rows (the [docUrl, chunkIndex] unique constraint also requires this).
   await prisma.platformDocChunk.deleteMany({ where: { docUrl: url } });
   for (let i = 0; i < chunks.length; i += 1) {
-    const content = chunks[i] ?? '';
-    const embedding = await embedText(content);
+    const chunkText = chunks[i] ?? '';
+    const embedding = await embedText(chunkText);
     await prisma.platformDocChunk.create({
       data: {
         platform,
         docUrl: url,
         chunkIndex: i,
-        content,
+        content: chunkText,
         contentHash,
         embeddingRaw: JSON.stringify(embedding),
       },
