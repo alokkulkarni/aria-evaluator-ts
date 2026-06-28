@@ -12,6 +12,7 @@ import { UsersPage } from './pages/UsersPage.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { AnalysisPage } from './pages/AnalysisPage.js';
 import { SchedulesPage } from './pages/SchedulesPage.js';
+import { GuardrailAdvisorPage } from './pages/GuardrailAdvisorPage.js';
 import { UsageBanner } from './components/UsageBanner.js';
 import { PlanGateProvider } from './lib/plan-gate.js';
 import {
@@ -26,10 +27,11 @@ import {
   NavSettingsIcon,
   NavTranscriptsIcon,
   NavReviewQueueIcon,
+  NavGuardrailIcon,
 } from './components/icons.js';
 import { apiFetch } from './lib/api.js';
 
-type Page = 'workspace' | 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'calibration' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'settings' | 'users';
+type Page = 'workspace' | 'dashboard' | 'scenarios' | 'runs' | 'review-queue' | 'calibration' | 'transcripts' | 'reports' | 'analysis' | 'schedules' | 'guardrail-advisor' | 'settings' | 'users';
 
 interface AuthenticatedUser {
   id: string;
@@ -133,7 +135,7 @@ const TOUR_STORAGE_PREFIX = 'aria-evaluator:dashboard-tour';
 function getRequestedPage(): Page | null {
   if (typeof window === 'undefined') return 'dashboard';
   const page = new URLSearchParams(window.location.search).get('page');
-  if (page === 'workspace' || page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'schedules' || page === 'settings' || page === 'users') {
+  if (page === 'workspace' || page === 'dashboard' || page === 'scenarios' || page === 'runs' || page === 'review-queue' || page === 'transcripts' || page === 'reports' || page === 'analysis' || page === 'schedules' || page === 'guardrail-advisor' || page === 'settings' || page === 'users') {
     return page;
   }
   return null;
@@ -336,6 +338,7 @@ const NAV: { id: Page; label: string; icon: React.ComponentType<{ className?: st
   { id: 'calibration', label: 'Calibration', icon: NavAnalysisIcon },
   { id: 'analysis', label: 'Analysis', icon: NavAnalysisIcon },
   { id: 'schedules', label: 'Schedules', icon: NavSchedulesIcon },
+  { id: 'guardrail-advisor', label: 'Guardrail Advisor', icon: NavGuardrailIcon },
   { id: 'transcripts', label: 'Transcripts', icon: NavTranscriptsIcon },
   { id: 'reports', label: 'Reports', icon: NavReportsIcon },
   { id: 'users', label: 'Team', icon: NavSettingsIcon },
@@ -527,6 +530,7 @@ export default function App() {
         {page === 'calibration' && <CalibrationPage />}
         {page === 'analysis' && <AnalysisPage />}
         {page === 'schedules' && <SchedulesPage />}
+      {page === 'guardrail-advisor' && <GuardrailAdvisorPage />}
         {page === 'transcripts' && <TranscriptsPage initialFilename={initialTranscriptFile} />}
         {page === 'reports' && <ReportsPage />}
         {page === 'users' && <UsersPage />}
