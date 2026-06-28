@@ -87,6 +87,9 @@ export function GuardrailAdvisorPage() {
 
   // Step 4
   const [configs, setConfigs] = useState<FormattedConfig[]>([]);
+  // The platform the currently-shown configs were generated for (may differ from
+  // `platform` once the user picks a new one to regenerate).
+  const [configsPlatform, setConfigsPlatform] = useState<PlatformId | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [openConfigId, setOpenConfigId] = useState<string | null>(null);
 
@@ -156,6 +159,7 @@ export function GuardrailAdvisorPage() {
         body: JSON.stringify({ platform, guardrailIds: [] }),
       })) as { platform: string; configs: FormattedConfig[] };
       setConfigs(data.configs ?? []);
+      setConfigsPlatform(platform);
       setOpenConfigId(data.configs?.[0]?.guardrailId ?? null);
       setStep(4);
     } catch (err) {
@@ -175,6 +179,7 @@ export function GuardrailAdvisorPage() {
     setAnswers({});
     setRecommendations([]);
     setConfigs([]);
+    setConfigsPlatform(null);
     setOpenConfigId(null);
   }, []);
 
@@ -469,16 +474,46 @@ export function GuardrailAdvisorPage() {
       {/* ── Step 4: Formatted configs ──────────────────────────────────────── */}
       {step === 4 && (
         <div className="space-y-5">
-          <div className="card flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">
-                {PLATFORMS.find((p) => p.id === platform)?.label ?? platform} configs
+                {PLATFORMS.find((p) => p.id === (configsPlatform ?? platform))?.label ?? platform} configs
               </h3>
-              <p className="text-sm text-slate-500">{configs.length} generated.</p>
+              <p className="text-sm text-slate-500">
+                {configs.length} generated. Switch platform to regenerate for the same guardrails.
+              </p>
             </div>
-            <button type="button" className="btn-secondary px-4 py-2 text-sm" onClick={startOver}>
-              Start over
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="platform-step4">
+                Platform
+              </label>
+              <select
+                id="platform-step4"
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value as PlatformId)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+              >
+                {PLATFORMS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-primary px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                disabled={busy || platform === configsPlatform}
+                onClick={generateConfigs}
+              >
+                {busy ? 'Generating…' : 'Regenerate'}
+              </button>
+              <button type="button" className="btn-secondary px-4 py-2 text-sm" onClick={() => setStep(3)}>
+                Back
+              </button>
+              <button type="button" className="btn-secondary px-4 py-2 text-sm" onClick={startOver}>
+                Start over
+              </button>
+            </div>
           </div>
 
           {configs.map((cfg) => {
