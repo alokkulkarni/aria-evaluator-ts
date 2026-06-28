@@ -40,6 +40,7 @@ import { schedulesRouter } from './routes/schedules.js';
 import { workspaceRouter } from './routes/workspace.js';
 import { usageRouter } from './routes/usage.js';
 import { usersRouter } from './routes/users.js';
+import { guardrailAdvisorRouter } from './routes/guardrail-advisor.js';
 import { startScheduleExecutor, stopScheduleExecutor } from '../jobs/schedule-executor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -197,6 +198,9 @@ app.use('/auth', tokenRouter);
 app.use('/api', attachAuthContext);
 app.use('/api/auth', authRouter);
 app.use('/api', enforceTrustedOrigin);
+// Mounted BEFORE the global requireAuth so GET /guardrail-advisor/domains stays
+// public (per spec); the router applies requireAuth per-route to its other endpoints.
+app.use('/api/guardrail-advisor', guardrailAdvisorRouter);
 app.use('/api', requireAuth);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/runs', runsRouter);
