@@ -1069,6 +1069,120 @@
       }
     ]
   },
+  "jurisdiction:US": {
+    "required": [
+      {
+        "id": "us-privacy-consumer-protection",
+        "type": "DISCLOSURE",
+        "title": "Honour US consumer-protection and state privacy rights",
+        "description": "Respect state privacy rights (access/delete/opt-out) and avoid unfair or deceptive practices in any US-facing interaction.",
+        "rationale": "US users are covered by the FTC Act and state privacy statutes.",
+        "regulations": ["FTC Act", "CCPA / CPRA", "CFPB UDAAP"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "us-breach-notification-readiness",
+        "type": "AUDIT_LOGGING",
+        "title": "Be ready for state breach-notification duties",
+        "description": "Log access to personal data sufficiently to support state breach-notification obligations.",
+        "rationale": "Most US states mandate breach notification within set timeframes.",
+        "regulations": ["US state breach-notification laws"]
+      }
+    ]
+  },
+  "jurisdiction:UK": {
+    "required": [
+      {
+        "id": "uk-data-protection",
+        "type": "PII_FILTER",
+        "title": "Comply with UK data-protection law",
+        "description": "Apply UK GDPR principles (lawfulness, minimisation, security) and support data-subject rights for UK users.",
+        "rationale": "UK personal data is governed by UK GDPR and the Data Protection Act 2018.",
+        "regulations": ["UK GDPR", "Data Protection Act 2018"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "uk-ai-transparency",
+        "type": "DISCLOSURE",
+        "title": "Follow ICO guidance on AI transparency",
+        "description": "Be transparent about automated processing and provide meaningful explanations per ICO expectations.",
+        "rationale": "The ICO sets expectations for transparency and fairness in AI systems.",
+        "regulations": ["ICO Guidance on AI and Data Protection"]
+      }
+    ]
+  },
+  "jurisdiction:HIPAA": {
+    "required": [
+      {
+        "id": "hipaa-phi-safeguards",
+        "type": "PII_FILTER",
+        "title": "Apply HIPAA safeguards to Protected Health Information",
+        "description": "Enforce minimum-necessary use, access controls, and encryption for any PHI handled.",
+        "rationale": "PHI is protected under the HIPAA Privacy and Security Rules.",
+        "regulations": ["HIPAA Privacy Rule (45 CFR 164.502)", "HIPAA Security Rule (45 CFR 164.306)"]
+      }
+    ]
+  },
+  "jurisdiction:APAC": {
+    "required": [
+      {
+        "id": "apac-data-protection",
+        "type": "PII_FILTER",
+        "title": "Respect applicable APAC data-protection laws",
+        "description": "Honour consent, purpose-limitation, and any data-localisation requirements in the relevant Asia-Pacific jurisdictions.",
+        "rationale": "APAC jurisdictions impose their own consent and localisation rules.",
+        "regulations": ["Singapore PDPA", "Australia Privacy Act 1988"]
+      }
+    ]
+  },
+  "autonomy:transactional": {
+    "required": [
+      {
+        "id": "human-approval-before-execution",
+        "type": "HUMAN_HANDOFF",
+        "title": "Require human approval before executing transactions or actions",
+        "description": "Gate any state-changing action (payments, trades, transfers, record updates) behind explicit human authorisation, with a reversal path.",
+        "rationale": "Solely automated actions with legal or financial effect require human oversight.",
+        "regulations": ["GDPR Art. 22", "EU AI Act", "NIST AI RMF"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "autonomous-action-audit",
+        "type": "AUDIT_LOGGING",
+        "title": "Log and rate-limit autonomous actions",
+        "description": "Record every autonomous action with inputs/outputs and apply rate and value limits.",
+        "rationale": "Auditability and limits contain the blast radius of automated actions.",
+        "regulations": ["NIST AI RMF", "EU AI Act"]
+      }
+    ]
+  },
+  "data:sensitive": {
+    "required": [
+      {
+        "id": "sensitive-data-controls-augment",
+        "type": "PII_FILTER",
+        "title": "Minimise, encrypt, and access-control sensitive data",
+        "description": "Apply data minimisation, encryption in transit and at rest, and least-privilege access to the sensitive categories handled.",
+        "rationale": "Sensitive personal, financial, or health data requires heightened technical and organisational controls.",
+        "regulations": ["GDPR Art. 5", "GDPR Art. 32"]
+      }
+    ]
+  },
+  "users:external": {
+    "recommended": [
+      {
+        "id": "ai-disclosure-to-users",
+        "type": "DISCLOSURE",
+        "title": "Disclose AI interaction to end users",
+        "description": "Tell external users they are interacting with an AI system and how to reach a human.",
+        "rationale": "Transparency obligations apply to consumer-facing AI.",
+        "regulations": ["EU AI Act (transparency)", "FTC Act"]
+      }
+    ]
+  },
   "jurisdiction:EU": {
     "required": [
       {

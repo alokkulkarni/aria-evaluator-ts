@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { appPaths } from '../runtime/paths.js';
-import { loadDomainTaxonomy } from './data.js';
+import { loadDomainTaxonomy, loadKnowledgeBase } from './data.js';
 import { getRecommendations } from './engine.js';
 
 // Every domain + sub-function offered in the taxonomy must resolve to a real,
@@ -36,6 +36,27 @@ describe('knowledge base completeness', () => {
       });
     }
   }
+
+  it('has well-formed guardrails in every entry, including augment entries', () => {
+    // The per-sub-function loop above only covers taxonomy keys; augment entries
+    // (jurisdiction:*, autonomy:*, data:*, users:*) are exercised here too.
+    const kb = loadKnowledgeBase();
+    for (const [key, entry] of Object.entries(kb)) {
+      const items = [
+        ...(entry.required ?? []),
+        ...(entry.recommended ?? []),
+        ...(entry.optional ?? []),
+      ];
+      expect(items.length, `entry ${key} has guardrails`).toBeGreaterThan(0);
+      for (const g of items) {
+        expect(g.id, `${key} id`).toBeTruthy();
+        expect(g.type, `${key}:${g.id} type`).toBeTruthy();
+        expect(g.title, `${key}:${g.id} title`).toBeTruthy();
+        expect(g.rationale, `${key}:${g.id} rationale`).toBeTruthy();
+        expect(Array.isArray(g.regulations) && g.regulations.length > 0, `${key}:${g.id} citations`).toBe(true);
+      }
+    }
+  });
 
   it('has no duplicate domain:subFunction keys in the raw JSON (parse silently drops dups)', () => {
     const raw = readFileSync(

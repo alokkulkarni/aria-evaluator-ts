@@ -40,23 +40,40 @@ function entryToRecommendations(entry: KnowledgeEntry | undefined): GuardrailRec
   return out;
 }
 
-function answerValues(answers: ClarifyingAnswers, key: string): string[] {
-  const raw = answers[key];
-  if (Array.isArray(raw)) return raw.map((v) => v.toUpperCase());
-  if (typeof raw === 'string' && raw.length > 0) return [raw.toUpperCase()];
-  return [];
+// Flatten every clarifying answer value into one normalised, lowercased string so
+// signal detection works regardless of the (LLM-generated) question ids and is
+// robust to both canonical values ("uk") and natural-language ones ("United
+// Kingdom"). Hyphens/underscores/slashes become spaces ("account-numbers",
+// "trades/transfers").
+function normalizedAnswerText(answers: ClarifyingAnswers): string {
+  const parts: string[] = [];
+  for (const value of Object.values(answers)) {
+    if (Array.isArray(value)) parts.push(...value);
+    else if (typeof value === 'string') parts.push(value);
+  }
+  return parts.join(' | ').toLowerCase().replace(/[-_/]/g, ' ');
 }
 
-function isEuJurisdiction(answers: ClarifyingAnswers): boolean {
-  return answerValues(answers, 'jurisdiction').some(
-    (v) => v === 'EU' || v === 'GDPR' || v.includes('GDPR') || v.includes('EU'),
-  );
-}
+// Map a detected answer signal to a knowledge-base augment entry. The base entry
+// always applies; these add guardrails that genuinely depend on the answers so the
+// recommendation set changes (and grows) with the user's choices.
+const AUGMENT_SIGNALS: { key: string; test: (text: string) => boolean }[] = [
+  { key: 'jurisdiction:EU', test: (t) => /\beu\b|european|gdpr|\beea\b/.test(t) },
+  { key: 'jurisdiction:US', test: (t) => /\bus\b|\busa\b|united states|finra|\bsec\b|\bcfpb\b|ccpa|cpra/.test(t) },
+  { key: 'jurisdiction:UK', test: (t) => /\buk\b|\bgb\b|united kingdom|britain|\bfca\b|\bico\b/.test(t) },
+  { key: 'jurisdiction:HIPAA', test: (t) => /hipaa/.test(t) },
+  { key: 'jurisdiction:APAC', test: (t) => /\basia\b|pacific|\bapac\b|singapore|australia|\bpdpa\b/.test(t) },
+  { key: 'autonomy:transactional', test: (t) => /autonom|execut|transact|\btrade|transfer|agentic|hybrid|take action|act on behalf/.test(t) },
+  { key: 'data:sensitive', test: (t) => /\bssn\b|tax id|\baccount|\bhealth|\bbiometric|\bincome\b|\basset|investment|portfolio|medical|\bpii\b|personal data|card number|sort code/.test(t) },
+  { key: 'users:external', test: (t) => /retail|individual|customer|consumer|\bpublic\b|end user|\bclient|policyholder|patient|applicant|candidate|user base/.test(t) },
+];
 
 /**
- * Return guardrail recommendations for a domain + sub-function, augmented by the
- * clarifying answers (e.g. EU jurisdiction adds GDPR entries) and sorted
- * REQUIRED → RECOMMENDED → OPTIONAL (stable within each severity).
+ * Return guardrail recommendations for a domain + sub-function. The curated base
+ * entry always applies; clarifying answers add answer-specific guardrails
+ * (jurisdiction → regional rules, autonomy → human-in-the-loop, sensitive data →
+ * data controls, external users → AI disclosure). Sorted REQUIRED → RECOMMENDED →
+ * OPTIONAL (stable within each severity); ids are de-duplicated.
  */
 export async function getRecommendations(
   domain: string,
@@ -66,10 +83,15 @@ export async function getRecommendations(
   const kb = loadKnowledgeBase();
 
   const merged: GuardrailRecommendation[] = entryToRecommendations(kb[`${domain}:${subFunction}`]);
-  const seen = new Set(merged.map((r) => r.id));
+  // Only augment a recognised sub-function (don't synthesise recs from answers alone).
+  if (merged.length === 0) return merged;
 
-  if (isEuJurisdiction(clarifyingAnswers)) {
-    for (const rec of entryToRecommendations(kb['jurisdiction:EU'])) {
+  const seen = new Set(merged.map((r) => r.id));
+  const text = normalizedAnswerText(clarifyingAnswers);
+
+  for (const { key, test } of AUGMENT_SIGNALS) {
+    if (!test(text)) continue;
+    for (const rec of entryToRecommendations(kb[key])) {
       if (!seen.has(rec.id)) {
         merged.push(rec);
         seen.add(rec.id);
