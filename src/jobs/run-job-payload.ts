@@ -1,18 +1,9 @@
 import { z } from 'zod';
+import { RUN_PROVIDERS, type RunProvider } from '../shared/provider-fields.js';
 
-export const RUN_PROVIDERS = [
-  'connect',
-  'lex',
-  'azure',
-  'azure-openai',
-  'strands',
-  'copilot',
-  'custom',
-  'openapi',
-  'websocket',
-] as const;
-
-export type RunProvider = typeof RUN_PROVIDERS[number];
+// Re-exported from the shared provider taxonomy so existing importers keep working.
+export { RUN_PROVIDERS };
+export type { RunProvider };
 
 const runJobPayloadSchema = z.object({
   provider: z.enum(RUN_PROVIDERS),
@@ -20,6 +11,9 @@ const runJobPayloadSchema = z.object({
   scenarioFiles: z.array(z.string()),
   scenarioCount: z.number().int().nonnegative(),
   yamlContent: z.string().min(1),
+  // Concrete provider instance resolved at run-creation time. null/undefined =>
+  // legacy env-var fallback (back-compat). Resolved to env overlay at exec time.
+  providerInstanceId: z.string().nullish(),
 });
 
 export type RunJobPayload = z.infer<typeof runJobPayloadSchema>;

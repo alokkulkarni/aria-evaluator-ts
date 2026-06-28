@@ -40,6 +40,25 @@ model RuntimeSettings {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+// A named, reusable configuration of one provider type (e.g. one of several
+// Amazon Connect instances or OpenAPI endpoints). Up to 5 per (tenant, type),
+// enforced in the API. `configJson` is a map of env-var key -> value (the same
+// keys adapters read from process.env); secrets live here but are redacted on
+// read by the API. Selecting an instance for a run overlays these onto the run
+// child process env. Scoped by the deployment's TENANT_ID env ("" for local).
+model ProviderInstance {
+  id           String   @id @default(cuid())
+  tenantId     String   @default("")
+  providerType String   // one of RUN_PROVIDERS (connect|lex|azure|...)
+  nickname     String
+  configJson   String   // JSON map of env-var key -> value (raw, incl. secrets)
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, providerType])
+}
+
 model User {
   id           String        @id @default(cuid())
   username     String        @unique
@@ -414,6 +433,8 @@ model RunTelemetry {
   runId              String   @unique
   run                Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
   provider           String
+  providerInstanceId String?  // which configured instance was used (null = legacy env)
+  providerInstanceName String? // denorm nickname for display / re-run seeding
   channel            String
   status             String   // completed|failed
   latencyMs          Int?
@@ -514,6 +535,7 @@ model Schedule {
   scenario          Scenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
   scenarioFile      String?  // path#index alternative
   provider          String   @default("connect")
+  providerInstanceId String? // chosen provider instance (null = type default at fire time)
   channel           String   @default("chat") // chat|voice
   customMetadata    String?  // JSON: arbitrary config
 
@@ -673,4 +695,68 @@ model PairwiseCalibration {
 
   @@unique([judgeModelId, datasetId])
   @@index([judgeModelId])
+}
+
+// ─── Guardrail Advisor (Phase 1) ────────────────────────────────────────────────
+// RAG-backed advisor that recommends guardrails per domain + sub-function and
+// formats them for a target platform. See docs/GUARDRAIL_ADVISOR_PHASE1.md.
+
+// A single embedded chunk of a crawled platform documentation page.
+model PlatformDocChunk {
+  id          String   @id @default(cuid())
+  platform    String
+  docUrl      String
+  chunkIndex  Int
+  // `String` maps to PostgreSQL `text` (no length cap) — no @db.Text needed.
+  content     String
+  contentHash String
+  // Raw float array stored as a JSON string for SQLite dev compat. In prod
+  // (PostgreSQL) a future migration ALTERs this to a pgvector `vector(1536)`
+  // column and enables `CREATE EXTENSION IF NOT EXISTS vector;` for `<=>` search.
+  embeddingRaw String  @default("[]")
+  crawledAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([docUrl, chunkIndex])
+  @@index([platform])
+}
+
+// One advisor session: a domain/sub-function choice plus clarifying answers.
+model GuardrailAdvisorSession {
+  id            String   @id @default(cuid())
+  tenantId      String   @default("")
+  domain        String
+  subFunction   String
+  jurisdiction  String?
+  userFacing    Boolean  @default(true)
+  dataTypes     String   @default("[]")   // JSON array of PII types
+  autonomyLevel String?  // read-only | transactional | agentic
+  platform      String?  // set after platform selection step
+  rawAnswers    String   @default("{}")   // full clarifying answers JSON
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  recommendations GuardrailRecommendationRecord[]
+
+  @@index([tenantId])
+}
+
+// A persisted recommendation (and optionally its formatted platform config).
+model GuardrailRecommendationRecord {
+  id                String   @id @default(cuid())
+  sessionId         String
+  session           GuardrailAdvisorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guardrailId       String   // e.g. "topic-denial-financial-advice"
+  guardrailType     String   // TOPIC_DENIAL | PII_FILTER | CONTENT_FILTER | …
+  severity          String   // REQUIRED | RECOMMENDED | OPTIONAL
+  title             String
+  description       String
+  rationale         String
+  regulations       String   @default("[]")   // JSON array of citation strings
+  platformConfig    String?  // JSON — formatted config for chosen platform
+  sourceDocUrls     String   @default("[]")   // RAG source citations JSON array
+  configGeneratedAt DateTime?
+  createdAt         DateTime @default(now())
+
+  @@index([sessionId])
 }

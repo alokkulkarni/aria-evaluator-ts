@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
 import { usePlanGate } from '../lib/plan-gate.js';
+import { fetchProviderInstances, type ProviderInstance } from '../lib/provider-instances.js';
 import type { Scenario } from '../../types/scenario.js';
 import { ScenarioBuilderModal } from './ScenarioBuilderModal.js';
 import {
@@ -56,6 +57,8 @@ export function ScenariosPage() {
   const [selected, setSelected] = useState<Scenario | null>(null);
   const [channelFilter, setChannelFilter] = useState<'all' | 'chat' | 'voice'>('all');
   const [provider, setProvider] = useState<Provider>('connect');
+  const [providerInstances, setProviderInstances] = useState<ProviderInstance[]>([]);
+  const [providerInstanceId, setProviderInstanceId] = useState<string | null>(null);
   const [runState, setRunState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [runId, setRunId] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -96,6 +99,25 @@ export function ScenariosPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Load configured instances for the selected provider type, defaulting to the
+  // type's default (or first). null => legacy settings fallback.
+  useEffect(() => {
+    let cancelled = false;
+    fetchProviderInstances(provider)
+      .then((list) => {
+        if (cancelled) return;
+        setProviderInstances(list);
+        setProviderInstanceId((current) => {
+          const ids = new Set(list.map((i) => i.id));
+          if (current && ids.has(current)) return current;
+          const chosen = list.find((i) => i.isDefault) ?? list[0];
+          return chosen ? chosen.id : null;
+        });
+      })
+      .catch(() => { if (!cancelled) setProviderInstances([]); });
+    return () => { cancelled = true; };
+  }, [provider]);
+
   useEffect(() => {
     return () => {
       if (esRef.current) esRef.current.close();
@@ -135,7 +157,7 @@ export function ScenariosPage() {
 
     return apiFetch('/api/runs', {
       method: 'POST',
-      body: JSON.stringify({ scenarioFile: filePath, scenarioIndex: indexInFile, channel, provider }),
+      body: JSON.stringify({ scenarioFile: filePath, scenarioIndex: indexInFile, channel, provider, providerInstanceId }),
     }).then((raw) => {
       const data = raw as { runId: string };
       setRunId(data.runId);
@@ -391,6 +413,20 @@ export function ScenariosPage() {
               </button>
             ))}
           </div>
+          {providerInstances.length > 0 && (
+            <select
+              value={providerInstanceId ?? ''}
+              onChange={(e) => setProviderInstanceId(e.target.value || null)}
+              title="Provider instance"
+              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {providerInstances.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.nickname}{inst.isDefault ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
           {(['all', 'chat', 'voice'] as const).map((c) => (
             <button key={c} onClick={() => setChannelFilter(c)}
               className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${

@@ -28,6 +28,7 @@ import {
   Search,
   Settings2,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   SquareKanban,
   TriangleAlert,
@@ -64,6 +65,7 @@ export const NavSchedulesIcon = Clock3;
 export const NavTranscriptsIcon = MessageSquareText;
 export const NavReportsIcon = FileText;
 export const NavSettingsIcon = Settings2;
+export const NavGuardrailIcon = ShieldCheck;
 
 export const ScenarioConversationalIcon = Bot;
 export const ScenarioScriptedIcon = ListChecks;

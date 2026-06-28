@@ -831,12 +831,33 @@ authRouter.post('/change-password', async (req, res) => {
         lastLoginAt: new Date(),
       },
     });
+    // Capture revoked sessions' token hashes before deleting so we can also drop
+    // their cached auth contexts — otherwise a revoked session stays usable for up
+    // to the cache TTL.
+    const revokedSessions = await prisma.authSession.findMany({
+      where: { userId: user.id, id: { not: auth.sessionId } },
+      select: { tokenHash: true },
+    });
     await prisma.authSession.deleteMany({
       where: {
         userId: user.id,
         id: { not: auth.sessionId },
       },
     });
+    // Invalidate this session's cached auth context so the next request re-reads
+    // the now-permanent password hash from the DB. Without this, a just-rotated
+    // admin keeps hitting 428 "Password change required" until the ~60 s auth-session
+    // cache TTL expires. Best-effort: a Redis hiccup must not fail the change.
+    const currentToken = readSessionToken(req);
+    const cacheKeysToDrop = [
+      ...(currentToken ? [hashToken(currentToken)] : []),
+      ...revokedSessions.map((s) => s.tokenHash),
+    ];
+    await Promise.all(
+      cacheKeysToDrop.map((tokenHash) =>
+        invalidateCachedAuthSession(tokenHash).catch(() => {}),
+      ),
+    );
     await recordAuditEventSafe(req, 'auth.password_changed', user.id, {
       username: user.username,
       role: user.role,

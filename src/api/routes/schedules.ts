@@ -6,6 +6,7 @@ import { prisma } from '../../db/client.js';
 import { createQueuedRun } from '../../jobs/run-jobs.js';
 import type { RunJobPayload, RunProvider } from '../../jobs/run-job-payload.js';
 import { recordAuditEventSafe } from '../audit-log.js';
+import { resolveInstanceIdForRun, ProviderInstanceError } from '../provider-instances.js';
 import { checkRunQuota } from '../../shared/quota-enforcement.js';
 import { getUsageLimits } from '../../shared/usage-limits.js';
 import { addHours, addDays, addMonths, parseISO, isValid, addMinutes } from 'date-fns';
@@ -102,6 +103,7 @@ schedulesRouter.post('/', async (req, res) => {
       scenarioId,
       scenarioFile,
       provider = 'connect',
+      providerInstanceId = null,
       channel = 'chat',
       customMetadata,
     } = req.body;
@@ -137,6 +139,18 @@ schedulesRouter.post('/', async (req, res) => {
       return res.status(400).json({ error: 'channel must be chat or voice' });
     }
 
+    // Validate the pinned provider instance (matches the type / exists).
+    if (providerInstanceId) {
+      try {
+        await resolveInstanceIdForRun(provider, providerInstanceId);
+      } catch (err) {
+        if (err instanceof ProviderInstanceError) {
+          return res.status(err.statusCode).json({ error: err.message });
+        }
+        throw err;
+      }
+    }
+
     if (scenarioId) {
       const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId } });
       if (!scenario) {
@@ -165,6 +179,7 @@ schedulesRouter.post('/', async (req, res) => {
         scenarioId: scenarioId || null,
         scenarioFile: scenarioFile || null,
         provider,
+        providerInstanceId: providerInstanceId || null,
         channel,
         customMetadata: customMetadata ? JSON.stringify(customMetadata) : null,
         nextRunAt,
@@ -242,6 +257,7 @@ schedulesRouter.patch('/:id', async (req, res) => {
       timezone,
       scenarioId,
       provider,
+      providerInstanceId,
       channel,
       maxFailures,
     } = req.body;
@@ -249,6 +265,18 @@ schedulesRouter.patch('/:id', async (req, res) => {
     const schedule = await prisma.schedule.findFirst({ where: { id } });
     if (!schedule || schedule.deletedAt) {
       return res.status(404).json({ error: 'Schedule not found' });
+    }
+
+    // Validate the pinned provider instance against the effective provider type.
+    if (providerInstanceId) {
+      try {
+        await resolveInstanceIdForRun(provider || schedule.provider, providerInstanceId);
+      } catch (err) {
+        if (err instanceof ProviderInstanceError) {
+          return res.status(err.statusCode).json({ error: err.message });
+        }
+        throw err;
+      }
     }
 
     // Validate updates
@@ -299,6 +327,7 @@ schedulesRouter.patch('/:id', async (req, res) => {
         timezone: timezone || undefined,
         scenarioId: scenarioId !== undefined ? (scenarioId || null) : undefined,
         provider: provider || undefined,
+        providerInstanceId: providerInstanceId !== undefined ? (providerInstanceId || null) : undefined,
         channel: channel || undefined,
         maxFailures: maxFailures !== undefined ? maxFailures : undefined,
         nextRunAt,

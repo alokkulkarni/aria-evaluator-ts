@@ -5,6 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch, toApiUrl } from '../lib/api.js';
 import { NavSchedulesIcon, RunFailIcon, RunRunningIcon } from '../components/icons.js';
 import { usePlanGate } from '../lib/plan-gate.js';
+import { fetchProviderInstances, type ProviderInstance } from '../lib/provider-instances.js';
+import { RUN_PROVIDERS, providerTypeLabel } from '../../shared/provider-fields.js';
 
 interface Schedule {
   id: string;
@@ -78,8 +80,28 @@ export function SchedulesPage() {
     timezone: 'America/New_York',
     scenarioId: '',
     provider: 'connect',
+    providerInstanceId: '',
     channel: 'chat' as const,
   });
+  const [providerInstances, setProviderInstances] = useState<ProviderInstance[]>([]);
+
+  // Load instances for the form's provider type and pick the default (or first).
+  useEffect(() => {
+    let cancelled = false;
+    fetchProviderInstances(formData.provider)
+      .then((list) => {
+        if (cancelled) return;
+        setProviderInstances(list);
+        setFormData((prev) => {
+          const ids = new Set(list.map((i) => i.id));
+          if (prev.providerInstanceId && ids.has(prev.providerInstanceId)) return prev;
+          const chosen = list.find((i) => i.isDefault) ?? list[0];
+          return { ...prev, providerInstanceId: chosen ? chosen.id : '' };
+        });
+      })
+      .catch(() => { if (!cancelled) setProviderInstances([]); });
+    return () => { cancelled = true; };
+  }, [formData.provider]);
 
   const loadSchedules = async () => {
     try {
@@ -117,6 +139,7 @@ export function SchedulesPage() {
         timezone: 'America/New_York',
         scenarioId: '',
         provider: 'connect',
+        providerInstanceId: '',
         channel: 'chat',
       });
       await loadSchedules();
@@ -282,10 +305,26 @@ export function SchedulesPage() {
               onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
               className="h-11"
             >
-              <option value="connect">Connect</option>
-              <option value="lex">Lex</option>
-              <option value="azure">Azure</option>
-              <option value="custom">Custom</option>
+              {RUN_PROVIDERS.map((p) => (
+                <option key={p} value={p}>{providerTypeLabel(p)}</option>
+              ))}
+            </select>
+            <select
+              value={formData.providerInstanceId}
+              onChange={(e) => setFormData({ ...formData, providerInstanceId: e.target.value })}
+              title="Provider instance"
+              className="h-11"
+              disabled={providerInstances.length === 0}
+            >
+              {providerInstances.length === 0 ? (
+                <option value="">Legacy settings</option>
+              ) : (
+                providerInstances.map((inst) => (
+                  <option key={inst.id} value={inst.id}>
+                    {inst.nickname}{inst.isDefault ? ' (default)' : ''}
+                  </option>
+                ))
+              )}
             </select>
             <select
               value={formData.channel}

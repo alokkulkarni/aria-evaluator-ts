@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { addMinutes, addHours, addDays, addMonths } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { checkRunQuota } from '../shared/quota-enforcement.js';
+import { resolveInstanceIdForRun } from '../api/provider-instances.js';
 import { tryAcquireTickLock } from '../lib/cache.js';
 import { runWithTenant } from '../lib/tenant-context.js';
 
@@ -156,17 +157,25 @@ async function executeSchedule(
     return;
   }
 
+  // Resolve the provider instance once for this fire. A pinned instance is used
+  // as-is (the executor fails clearly if it was deleted); otherwise fall back to
+  // the type's default instance, then to legacy env config.
+  const providerInstanceId =
+    schedule.providerInstanceId ??
+    (await resolveInstanceIdForRun(schedule.provider, null).catch(() => null));
+
   // Queue run(s)
   const runIds: string[] = [];
   for (const scenario of targetScenarios) {
     const runId = randomUUID();
-    
+
     const payload: RunJobPayload = {
       provider: schedule.provider,
       channel: schedule.channel,
       scenarioFiles: [scenario.name],
       scenarioCount: 1,
       yamlContent: scenario.yamlContent,
+      providerInstanceId,
     };
 
     await createQueuedRun({

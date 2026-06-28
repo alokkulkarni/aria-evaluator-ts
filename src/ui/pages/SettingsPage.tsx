@@ -1,5 +1,18 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import {
+  PROVIDER_DEFS,
+  RUN_PROVIDERS,
+  MAX_INSTANCES_PER_PROVIDER,
+  type RunProvider,
+} from '../../shared/provider-fields.js';
+import {
+  fetchProviderInstances,
+  createProviderInstance,
+  updateProviderInstance,
+  deleteProviderInstance,
+  type ProviderInstance,
+} from '../lib/provider-instances.js';
 import {
   DEFAULT_JUDGE_MAX_TOKENS,
   DEFAULT_JUDGE_MODEL_ID,
@@ -37,13 +50,6 @@ interface FieldDef {
   sensitive?: boolean;
 }
 
-interface ProviderSectionDef {
-  id: string;
-  title: string;
-  icon: React.ComponentType<{ className?: string }>;
-  description: string;
-  fields: FieldDef[];
-}
 
 const JUDGE_MODEL_FIELD_KEY = 'JUDGE_MODEL_ID';
 const JUDGE_CUSTOM_MODEL_FIELD_KEY = 'JUDGE_CUSTOM_MODEL_ID';
@@ -103,523 +109,6 @@ function getJudgeSettingsSignature(settings: SettingsMap): string {
     .map((key) => `${key}=${settings[key] ?? ''}`)
     .join('\u001f');
 }
-
-// ── Provider sections ─────────────────────────────────────────────────────────
-
-const PROVIDER_SECTIONS: ProviderSectionDef[] = [
-  {
-    id: 'connect',
-    title: 'Amazon Connect',
-    icon: ProviderAwsIcon,
-    description: 'Connect your Amazon Connect instance for chat and voice evaluation. Requires an IAM user or role with connect:StartChatContact / connect:StartContactStreaming permissions.',
-    fields: [
-      {
-        key: 'CONNECT_INSTANCE_ID',
-        label: 'Instance ID',
-        placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-        hint: 'The Amazon Connect instance ID. Find it in the Connect console under Instance settings → Instance ARN (last segment).',
-        required: true,
-      },
-      {
-        key: 'CONNECT_REGION',
-        label: 'Connect Region',
-        placeholder: 'eu-west-2',
-        hint: 'AWS region where your Connect instance is deployed, e.g. eu-west-2 or us-east-1. Used for all Connect API calls.',
-      },
-      {
-        key: 'AWS_REGION',
-        label: 'AWS Region Override',
-        placeholder: 'eu-west-2',
-        hint: 'Override the global AWS SDK region for all service calls. Set this if CONNECT_REGION alone is not picked up.',
-      },
-      {
-        key: 'CONNECT_CONTACT_FLOW',
-        label: 'Contact Flow ID / ARN (chat)',
-        placeholder: 'arn:aws:connect:eu-west-2:123456789012:instance/.../contact-flow/...',
-        hint: 'The Contact Flow ID or full ARN to start chat sessions against. Required for chat evaluation.',
-        required: true,
-      },
-      {
-        key: 'CONNECT_CONTACT_FLOW_NAME',
-        label: 'Contact Flow Name (fallback)',
-        placeholder: 'BasicChatFlow',
-        hint: 'Fallback: provide the flow name to auto-resolve its ID. Used if Contact Flow ID/ARN is not set.',
-      },
-      {
-        key: 'CONNECT_WEBRTC_FLOW_ID',
-        label: 'WebRTC Flow ID (voice)',
-        placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-        hint: 'Contact Flow ID for WebRTC voice sessions. Only required when running voice evaluations.',
-      },
-      {
-        key: 'CONNECT_WEBRTC_CONNECT_ATTEMPTS',
-        label: 'WebRTC Connect Attempts',
-        placeholder: '2',
-        hint: 'How many times to retry a failed WebRTC connection before aborting. Defaults to 2.',
-      },
-      {
-        key: 'CONNECT_PHONE_NUMBER',
-        label: 'Phone Number',
-        placeholder: '+441234567890',
-        hint: 'E.164-format phone number associated with your Connect instance. Optional for most flows.',
-      },
-    ],
-  },
-  {
-    id: 'lex',
-    title: 'Amazon Lex',
-    icon: ProviderAwsIcon,
-    description: 'Evaluate a Lex V2 bot directly via the AWS SDK. Requires IAM credentials with lex:RecognizeText permission.',
-    fields: [
-      {
-        key: 'LEX_BOT_ID',
-        label: 'Bot ID',
-        placeholder: 'ABCDEFGHIJ',
-        hint: 'The Lex V2 Bot ID shown in the AWS console → Amazon Lex → Bots.',
-        required: true,
-      },
-      {
-        key: 'LEX_BOT_ALIAS_ID',
-        label: 'Bot Alias ID',
-        placeholder: 'TSTALIASID',
-        hint: 'The alias ID for your deployed Lex bot. Use TSTALIASID for the TestBotAlias, or create a named alias for production.',
-        required: true,
-      },
-      {
-        key: 'LEX_BOT_LOCALE_ID',
-        label: 'Bot Locale ID',
-        placeholder: 'en_GB',
-        hint: 'Locale of the Lex bot, e.g. en_GB, en_US, fr_FR. Must match a locale configured in the bot.',
-        required: true,
-      },
-      {
-        key: 'LEX_REGION',
-        label: 'Lex Region',
-        placeholder: 'eu-west-2',
-        hint: 'AWS region where the Lex bot is deployed. Defaults to eu-west-2 if not set.',
-      },
-    ],
-  },
-  {
-    id: 'azure',
-    title: 'Azure Bot (Direct Line)',
-    icon: ProviderMicrosoftIcon,
-    description: 'Connect to an Azure Bot Service via the Direct Line API. Supports any Azure-hosted bot including Power Virtual Agents.',
-    fields: [
-      {
-        key: 'AZURE_DIRECT_LINE_SECRET',
-        label: 'Direct Line Secret',
-        placeholder: 'xxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxx',
-        hint: 'Secret key from Azure Bot Service → Channels → Direct Line. Used to authenticate each conversation.',
-        required: true,
-        sensitive: true,
-      },
-      {
-        key: 'AZURE_DIRECT_LINE_ENDPOINT',
-        label: 'Direct Line Endpoint',
-        placeholder: 'https://directline.botframework.com/v3/directline',
-        hint: 'Direct Line API endpoint URL. Leave blank to use the default Microsoft global endpoint.',
-      },
-      {
-        key: 'AZURE_DIRECT_LINE_USER_ID',
-        label: 'User ID',
-        placeholder: 'aria-evaluator-user',
-        hint: 'User ID sent with each message for conversation tracking in bot analytics. Defaults to aria-evaluator-user.',
-      },
-    ],
-  },
-  {
-    id: 'azure-openai',
-    title: 'Azure OpenAI',
-    icon: ProviderMicrosoftIcon,
-    description: 'Test an agent built on an Azure OpenAI chat deployment. ARIA holds the conversation with your deployment, using the instructions you set below as the agent under test.',
-    fields: [
-      {
-        key: 'AZURE_OPENAI_AGENT_ENDPOINT',
-        label: 'Endpoint',
-        placeholder: 'https://my-resource.openai.azure.com',
-        hint: 'Your Azure OpenAI resource endpoint. Find it in the Azure portal under your resource → Keys and Endpoint.',
-        required: true,
-      },
-      {
-        key: 'AZURE_OPENAI_AGENT_API_KEY',
-        label: 'API Key',
-        placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-        hint: 'Key 1 or Key 2 from your Azure OpenAI resource → Keys and Endpoint.',
-        required: true,
-        sensitive: true,
-      },
-      {
-        key: 'AZURE_OPENAI_AGENT_DEPLOYMENT',
-        label: 'Deployment Name',
-        placeholder: 'gpt-4o',
-        hint: 'The name of your model deployment (Azure OpenAI Studio → Deployments) — this is the deployment name, not the base model name.',
-        required: true,
-      },
-      {
-        key: 'AZURE_OPENAI_AGENT_API_VERSION',
-        label: 'API Version',
-        placeholder: '2024-10-21',
-        hint: 'Azure OpenAI REST API version. Leave blank to use the default (2024-10-21).',
-      },
-      {
-        key: 'AZURE_OPENAI_AGENT_SYSTEM_PROMPT',
-        label: 'Agent Instructions',
-        placeholder: 'You are a helpful customer support agent for Acme Bank...',
-        hint: 'The system prompt that defines how your agent should behave. This is the agent under test that ARIA evaluates.',
-      },
-    ],
-  },
-  {
-    id: 'strands',
-    title: 'Strands / AgentCore',
-    icon: ProviderAwsIcon,
-    description: 'Evaluate an AWS Strands agent or Bedrock AgentCore endpoint over HTTP. Supports no-auth, Bearer token, and AWS SigV4 signing.',
-    fields: [
-      {
-        key: 'STRANDS_ENDPOINT',
-        label: 'Endpoint URL',
-        placeholder: 'https://runtime.agentcore.us-east-1.amazonaws.com/runtimes/.../invoke',
-        hint: 'HTTP(S) URL of your Strands or AgentCore endpoint. Receives POST requests with conversation payload.',
-        required: true,
-      },
-      {
-        key: 'STRANDS_METHOD',
-        label: 'HTTP Method',
-        placeholder: 'POST',
-        hint: 'HTTP verb to use when calling the endpoint. POST or PUT. Defaults to POST.',
-      },
-      {
-        key: 'STRANDS_AUTH_TYPE',
-        label: 'Auth Type',
-        placeholder: 'none',
-        hint: 'Authentication method: none (no auth), bearer (Authorization: Bearer <token>), or sigv4 (AWS Signature V4).',
-      },
-      {
-        key: 'STRANDS_AUTH_BEARER',
-        label: 'Bearer Token',
-        placeholder: 'eyJhbGciOiJSUzI1NiJ9...',
-        hint: 'Bearer token used when Auth Type is set to "bearer". Sent in the Authorization header.',
-        sensitive: true,
-      },
-      {
-        key: 'STRANDS_SIGV4_REGION',
-        label: 'SigV4 Region',
-        placeholder: 'eu-west-2',
-        hint: 'AWS region used for SigV4 request signing. Required when Auth Type is "sigv4".',
-      },
-      {
-        key: 'STRANDS_SIGV4_SERVICE',
-        label: 'SigV4 Service',
-        placeholder: 'bedrock-agentcore',
-        hint: 'AWS service name used for SigV4 signing, e.g. bedrock-agentcore or execute-api. Required when Auth Type is "sigv4".',
-      },
-      {
-        key: 'STRANDS_MESSAGE_FIELD',
-        label: 'Message Field',
-        placeholder: 'prompt',
-        hint: 'JSON request body field name for the user\'s message. Defaults to "prompt".',
-      },
-      {
-        key: 'STRANDS_RESPONSE_FIELD',
-        label: 'Response Field Path',
-        placeholder: 'result',
-        hint: 'Dot-path to extract the agent reply from the JSON response, e.g. "result" or "output.content[0].text".',
-      },
-      {
-        key: 'STRANDS_HISTORY_FIELD',
-        label: 'History Field',
-        placeholder: 'history',
-        hint: 'Request body field name for conversation history (turn array). Defaults to "history".',
-      },
-      {
-        key: 'STRANDS_SESSION_ID_FIELD',
-        label: 'Session ID Field',
-        placeholder: 'sessionId',
-        hint: 'Request body field name for the session identifier. Defaults to "sessionId".',
-      },
-      {
-        key: 'STRANDS_HEADERS_JSON',
-        label: 'Extra Headers JSON',
-        placeholder: '{"X-Api-Key":"abc123"}',
-        hint: 'Additional HTTP headers as a JSON object. These are merged with auth headers on every request.',
-      },
-    ],
-  },
-  {
-    id: 'copilot',
-    title: 'Microsoft Copilot',
-    icon: ProviderMicrosoftIcon,
-    description: 'Evaluate a Microsoft Copilot Studio agent via the Direct Line API.',
-    fields: [
-      {
-        key: 'COPILOT_DIRECT_LINE_SECRET',
-        label: 'Direct Line Secret',
-        placeholder: 'xxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxx',
-        hint: 'Direct Line secret from Microsoft Copilot Studio → Channels → Direct Line, or from Azure Bot Service.',
-        required: true,
-        sensitive: true,
-      },
-      {
-        key: 'COPILOT_DIRECT_LINE_ENDPOINT',
-        label: 'Direct Line Endpoint',
-        placeholder: 'https://directline.botframework.com/v3/directline',
-        hint: 'Direct Line endpoint URL. Leave blank for the default Microsoft endpoint. Power Platform bots may use a regional URL.',
-      },
-      {
-        key: 'COPILOT_DIRECT_LINE_USER_ID',
-        label: 'User ID',
-        placeholder: 'aria-evaluator-user',
-        hint: 'User ID sent with each message, shown in Copilot analytics and conversation logs.',
-      },
-    ],
-  },
-  {
-    id: 'custom-chat',
-    title: 'Custom Chat Provider',
-    icon: ProviderChatIcon,
-    description: 'Evaluate any HTTP-based chat endpoint. Each turn sends a POST/PUT with the message and conversation history.',
-    fields: [
-      {
-        key: 'CUSTOM_CHAT_ENDPOINT',
-        label: 'Chat Endpoint URL',
-        placeholder: 'https://api.example.com/chat',
-        hint: 'Full HTTP(S) URL of your chat endpoint. Must accept POST (or PUT) with a JSON body and return JSON.',
-        required: true,
-      },
-      {
-        key: 'CUSTOM_CHAT_METHOD',
-        label: 'HTTP Method',
-        placeholder: 'POST',
-        hint: 'HTTP verb: POST or PUT. Defaults to POST.',
-      },
-      {
-        key: 'CUSTOM_CHAT_AUTH_BEARER',
-        label: 'Bearer Token',
-        placeholder: 'sk-...',
-        hint: 'Bearer token sent in the Authorization header. Leave blank for unauthenticated endpoints.',
-        sensitive: true,
-      },
-      {
-        key: 'CUSTOM_CHAT_MESSAGE_FIELD',
-        label: 'Message Field',
-        placeholder: 'message',
-        hint: 'JSON body field name for the outgoing user message. Defaults to "message".',
-      },
-      {
-        key: 'CUSTOM_CHAT_RESPONSE_FIELD',
-        label: 'Response Field',
-        placeholder: 'reply',
-        hint: 'JSON response field path for the agent reply. Supports dot-notation, e.g. "data.reply". Defaults to "reply".',
-      },
-      {
-        key: 'CUSTOM_CHAT_HEADERS_JSON',
-        label: 'Extra Headers JSON',
-        placeholder: '{"X-Api-Key":"abc123"}',
-        hint: 'Additional HTTP headers sent on every request, as a JSON object.',
-      },
-    ],
-  },
-  {
-    id: 'custom-voice',
-    title: 'Custom Voice Provider',
-    icon: ProviderVoiceIcon,
-    description: 'Evaluate a voice agent over WebSocket. Supports Deepgram Voice Agent, AgentCore voice, or any generic JSON-over-WebSocket protocol.',
-    fields: [
-      {
-        key: 'CUSTOM_VOICE_PROTOCOL',
-        label: 'Voice Protocol',
-        placeholder: 'deepgram',
-        hint: 'Protocol to use: "deepgram" (Deepgram Voice Agent API), "agentcore" (AWS Bedrock AgentCore), or "generic-json" (custom JSON WebSocket).',
-        required: true,
-      },
-      {
-        key: 'DEEPGRAM_VOICE_WS_URL',
-        label: 'Deepgram WS URL',
-        placeholder: 'wss://agent.deepgram.com/agent',
-        hint: 'Deepgram Voice Agent WebSocket URL. Required when protocol is "deepgram".',
-      },
-      {
-        key: 'DEEPGRAM_API_KEY',
-        label: 'Deepgram API Key',
-        placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-        hint: 'Your Deepgram API key used as the authentication token. Required when protocol is "deepgram".',
-        sensitive: true,
-      },
-      {
-        key: 'DEEPGRAM_VOICE_SETTINGS_JSON',
-        label: 'Deepgram Settings JSON',
-        placeholder: '{"type":"Settings","audio":{...},"agent":{...}}',
-        hint: 'Override the default Deepgram Settings message sent after connection. Leave blank to use built-in defaults (nova-3 + gpt-4o-mini).',
-      },
-      {
-        key: 'CUSTOM_VOICE_WS_URL',
-        label: 'Generic Voice WS URL',
-        placeholder: 'wss://api.example.com/voice',
-        hint: 'WebSocket URL for generic-json or agentcore voice protocol. Required when protocol is not "deepgram".',
-      },
-      {
-        key: 'CUSTOM_VOICE_WS_AUTH_HEADER_NAME',
-        label: 'Generic WS Auth Header Name',
-        placeholder: 'Authorization',
-        hint: 'HTTP header name for WebSocket authentication, e.g. "Authorization" or "X-Api-Key".',
-      },
-      {
-        key: 'CUSTOM_VOICE_WS_AUTH_HEADER_VALUE',
-        label: 'Generic WS Auth Header Value',
-        placeholder: 'Bearer eyJ...',
-        hint: 'Value for the authentication header, e.g. "Bearer <token>" or your API key.',
-        sensitive: true,
-      },
-      {
-        key: 'CUSTOM_VOICE_WS_INIT_JSON',
-        label: 'Generic WS Init JSON',
-        placeholder: '{"type":"init","version":"1"}',
-        hint: 'JSON message sent immediately after the WebSocket connection opens (handshake/init). Leave blank if not required.',
-      },
-      {
-        key: 'CUSTOM_VOICE_WS_SEND_TEMPLATE',
-        label: 'Generic WS Send Template',
-        placeholder: '{"type":"message","content":"{{message}}"}',
-        hint: 'JSON template for outgoing messages. Use {{message}} as the placeholder; it will be JSON-string-escaped before insertion.',
-      },
-      {
-        key: 'CUSTOM_VOICE_WS_AGENT_EVENT_TYPES',
-        label: 'Agent Event Types',
-        placeholder: 'agent,assistant,message,ConversationText',
-        hint: 'Comma-separated list of event "type" values to treat as agent speech. Frames with other types are ignored.',
-      },
-      {
-        key: 'CUSTOM_VOICE_WS_MESSAGE_PATH',
-        label: 'Agent Message Path',
-        placeholder: 'content',
-        hint: 'Dot-notation path to extract the spoken text from the JSON event, e.g. "content" or "data.transcript".',
-      },
-    ],
-  },
-  {
-    id: 'openapi',
-    title: 'OpenAPI Chat Provider',
-    icon: ProviderOpenApiIcon,
-    description: 'Evaluate any chat endpoint described by an OpenAPI spec. Supports HTTP with bearer, API key, or basic authentication.',
-    fields: [
-      {
-        key: 'OPENAPI_SPEC_URL',
-        label: 'OpenAPI Spec URL',
-        placeholder: 'https://api.example.com/openapi.yaml',
-        hint: 'URL to fetch the OpenAPI 3.x spec. Used for documentation and field-name discovery only — not required at evaluation runtime.',
-      },
-      {
-        key: 'OPENAPI_ENDPOINT_URL',
-        label: 'Chat Endpoint URL',
-        placeholder: 'http://host.docker.internal:8765/chat',
-        hint: 'Full URL of the chat endpoint from the spec. This is the URL that receives each evaluation turn.',
-        required: true,
-      },
-      {
-        key: 'OPENAPI_METHOD',
-        label: 'HTTP Method',
-        placeholder: 'POST',
-        hint: 'HTTP verb to use: POST or PUT. Defaults to POST.',
-      },
-      {
-        key: 'OPENAPI_AUTH_TYPE',
-        label: 'Auth Type',
-        placeholder: 'none',
-        hint: 'Authentication mode: "none" (no auth), "bearer" (Authorization: Bearer), "apikey" (custom header), or "basic" (Base64 user:password).',
-      },
-      {
-        key: 'OPENAPI_AUTH_VALUE',
-        label: 'Auth Value',
-        placeholder: 'eyJhbGciOiJSUzI1NiJ9...',
-        hint: 'Credential for the selected auth type — token (bearer), API key value (apikey), or user:password string (basic).',
-        sensitive: true,
-      },
-      {
-        key: 'OPENAPI_AUTH_HEADER_NAME',
-        label: 'API Key Header Name',
-        placeholder: 'X-Api-Key',
-        hint: 'Header name for API key authentication, e.g. "X-Api-Key" or "X-Token". Used only when Auth Type is "apikey".',
-      },
-      {
-        key: 'OPENAPI_HEADERS_JSON',
-        label: 'Extra Headers JSON',
-        placeholder: '{"X-Custom":"value"}',
-        hint: 'Additional HTTP headers to include on every request, as a JSON object.',
-      },
-      {
-        key: 'OPENAPI_MESSAGE_FIELD',
-        label: 'Message Field',
-        placeholder: 'message',
-        hint: 'JSON body field name for the outgoing user message. Defaults to "message".',
-      },
-      {
-        key: 'OPENAPI_RESPONSE_FIELD',
-        label: 'Response Field Path',
-        placeholder: 'reply',
-        hint: 'Dot-notation path to extract the agent reply from the JSON response. Defaults to "reply".',
-      },
-    ],
-  },
-  {
-    id: 'websocket',
-    title: 'WebSocket Chat Provider (ws / wss)',
-    icon: ProviderWebSocketIcon,
-    description: 'Evaluate a chat agent over a persistent WebSocket connection. Supports plain ws:// and secure wss:// with optional authentication headers and custom JSON frame formats.',
-    fields: [
-      {
-        key: 'WS_CHAT_URL',
-        label: 'WebSocket URL',
-        placeholder: 'wss://api.example.com/chat',
-        hint: 'Full WebSocket endpoint URL using ws:// (plain) or wss:// (TLS) scheme.',
-        required: true,
-      },
-      {
-        key: 'WS_CHAT_AUTH_HEADER_NAME',
-        label: 'Auth Header Name',
-        placeholder: 'Authorization',
-        hint: 'HTTP header name sent during the WebSocket upgrade handshake for authentication, e.g. "Authorization" or "X-Api-Key".',
-      },
-      {
-        key: 'WS_CHAT_AUTH_HEADER_VALUE',
-        label: 'Auth Header Value',
-        placeholder: 'Bearer eyJ...',
-        hint: 'Value for the authentication header, e.g. "Bearer <token>" or your API key string.',
-        sensitive: true,
-      },
-      {
-        key: 'WS_CHAT_SUBPROTOCOL',
-        label: 'Sub-Protocol',
-        placeholder: 'chat',
-        hint: 'WebSocket Sec-WebSocket-Protocol header value, e.g. "chat" or "json". Only set if your server requires it.',
-      },
-      {
-        key: 'WS_CHAT_INIT_JSON',
-        label: 'Init JSON',
-        placeholder: '{"type":"init","version":"1"}',
-        hint: 'JSON payload sent immediately after the socket opens (handshake/session init). Leave blank if no init frame is needed.',
-      },
-      {
-        key: 'WS_CHAT_SEND_TEMPLATE',
-        label: 'Send Template',
-        placeholder: '{"type":"message","text":"{{message}}"}',
-        hint: 'JSON template for outgoing messages. Use {{message}} as the placeholder — the text is JSON-escaped before insertion. Leave blank to send raw text frames.',
-      },
-      {
-        key: 'WS_CHAT_AGENT_EVENT_TYPES',
-        label: 'Agent Event Types',
-        placeholder: 'agent,assistant,message',
-        hint: 'Comma-separated list of JSON "type" field values to accept as agent replies. Leave blank to accept all incoming frames.',
-      },
-      {
-        key: 'WS_CHAT_MESSAGE_PATH',
-        label: 'Response Message Path',
-        placeholder: 'body.text',
-        hint: 'Dot-notation path to extract reply text from JSON frames, e.g. "body.text" or "data.content". Leave blank to treat the entire frame as raw text.',
-      },
-    ],
-  },
-];
 
 // ── Non-provider (general) sections ──────────────────────────────────────────
 
@@ -776,73 +265,6 @@ function SettingsField({
   );
 }
 
-// ── Provider sub-section ──────────────────────────────────────────────────────
-
-function ProviderSubSection({
-  section,
-  settings,
-  onUpdate,
-}: {
-  section: ProviderSectionDef;
-  settings: SettingsMap;
-  onUpdate: (key: string, value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const filledRequired = section.fields.filter((f) => f.required && settings[f.key]?.trim()).length;
-  const totalRequired = section.fields.filter((f) => f.required).length;
-  const isConfigured = totalRequired === 0 || filledRequired === totalRequired;
-
-  return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors text-left"
-      >
-        <div className="flex items-center gap-2.5">
-          <section.icon className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
-          <span className="text-sm font-semibold text-slate-800">{section.title}</span>
-          {isConfigured && totalRequired > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
-              <RunPassIcon className="h-3 w-3" aria-hidden="true" />
-              configured
-            </span>
-          )}
-          {!isConfigured && (
-            <span className="text-[10px] bg-slate-100 text-slate-500 rounded-full px-2 py-0.5 font-medium">
-              {filledRequired}/{totalRequired} required
-            </span>
-          )}
-        </div>
-        <span
-          className="text-slate-400 transition-transform duration-200"
-          style={{ display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </span>
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 pt-1 bg-slate-50/50 border-t border-slate-100">
-          <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed">{section.description}</p>
-          <div className="grid md:grid-cols-2 gap-3">
-            {section.fields.map((field) => (
-              <SettingsField
-                key={field.key}
-                field={field}
-                value={settings[field.key] ?? ''}
-                onChange={(val) => onUpdate(field.key, val)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Judge committee (cross-vendor) ─────────────────────────────────────────────
 
 const JUDGE_PROVIDER_FIELDS: FieldDef[] = [
@@ -855,6 +277,236 @@ const JUDGE_PROVIDER_FIELDS: FieldDef[] = [
   { key: 'GEMINI_API_KEY', label: 'Google Gemini API key', placeholder: 'xxxxxxxx', sensitive: true, hint: 'Adds a Gemini judge — a third architecture family for ensembles.' },
   { key: 'HUGGINGFACE_TOKEN', label: 'HuggingFace token (calibration import)', placeholder: 'hf_...', sensitive: true, hint: 'Enables the "Import from LMSYS" button on the Calibration page to fetch the gated LMSYS Chatbot Arena pairwise dataset. Create a free token at huggingface.co/settings/tokens and accept the dataset terms.' },
 ];
+
+// ── Provider instances ────────────────────────────────────────────────────────
+
+const PROVIDER_ICONS: Record<RunProvider, React.ComponentType<{ className?: string }>> = {
+  connect: ProviderAwsIcon,
+  lex: ProviderAwsIcon,
+  azure: ProviderMicrosoftIcon,
+  'azure-openai': ProviderMicrosoftIcon,
+  strands: ProviderAwsIcon,
+  copilot: ProviderMicrosoftIcon,
+  custom: ProviderChatIcon,
+  openapi: ProviderOpenApiIcon,
+  websocket: ProviderWebSocketIcon,
+};
+
+interface InstanceEditorState {
+  providerType: RunProvider;
+  id: string | null;
+  nickname: string;
+  config: Record<string, string>;
+}
+
+function instanceSummary(inst: ProviderInstance): string {
+  const def = PROVIDER_DEFS[inst.providerType];
+  const parts: string[] = [];
+  for (const field of def.fields) {
+    if (field.sensitive) continue;
+    const v = inst.config[field.key];
+    if (v) parts.push(`${field.label}: ${v}`);
+    if (parts.length >= 2) break;
+  }
+  return parts.join('  ·  ') || 'No fields set yet';
+}
+
+function ProviderInstancesManager() {
+  const [instances, setInstances] = useState<ProviderInstance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editor, setEditor] = useState<InstanceEditorState | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      setError(null);
+      setInstances(await fetchProviderInstances());
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  function startCreate(type: RunProvider): void {
+    setError(null);
+    setEditor({ providerType: type, id: null, nickname: '', config: {} });
+  }
+  function startEdit(inst: ProviderInstance): void {
+    setError(null);
+    setEditor({ providerType: inst.providerType, id: inst.id, nickname: inst.nickname, config: { ...inst.config } });
+  }
+
+  async function saveEditor(): Promise<void> {
+    if (!editor) return;
+    if (!editor.nickname.trim()) { setError('Nickname is required'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      if (editor.id) {
+        await updateProviderInstance(editor.id, { nickname: editor.nickname, config: editor.config });
+      } else {
+        await createProviderInstance({ providerType: editor.providerType, nickname: editor.nickname, config: editor.config });
+      }
+      setEditor(null);
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeInstance(inst: ProviderInstance): Promise<void> {
+    if (!window.confirm(`Delete provider instance "${inst.nickname}"? Runs that reference it will fail until you re-select an instance.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteProviderInstance(inst.id);
+      if (editor?.id === inst.id) setEditor(null);
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function makeDefault(inst: ProviderInstance): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateProviderInstance(inst.id, { isDefault: true });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) return <div className="card text-sm text-slate-400">Loading provider instances…</div>;
+
+  return (
+    <div className="card p-0 overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-200/80 bg-white">
+        <div className="flex items-center gap-2">
+          <ProviderDefaultsIcon className="h-5 w-5 text-slate-500" aria-hidden="true" />
+          <div>
+            <h3 className="font-semibold text-base text-slate-900">Provider Instances</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Configure up to {MAX_INSTANCES_PER_PROVIDER} named connections per provider type. Select an instance
+              when launching runs or scheduling them.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="px-5 py-2 bg-red-50 border-b border-red-100 text-sm text-red-600 flex items-center gap-1">
+          <RunFailIcon className="h-4 w-4" aria-hidden="true" /> {error}
+        </div>
+      )}
+
+      <div className="divide-y divide-slate-100">
+        {RUN_PROVIDERS.map((type) => {
+          const def = PROVIDER_DEFS[type];
+          const Icon = PROVIDER_ICONS[type];
+          const list = instances.filter((i) => i.providerType === type);
+          const atMax = list.length >= MAX_INSTANCES_PER_PROVIDER;
+          const editingHere = editor?.providerType === type;
+          return (
+            <div key={type} className="px-4 py-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <Icon className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+                  <span className="text-sm font-semibold text-slate-800">{def.label}</span>
+                  <span className="text-[10px] bg-slate-100 text-slate-500 rounded-full px-2 py-0.5 font-medium">
+                    {list.length}/{MAX_INSTANCES_PER_PROVIDER}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => startCreate(type)}
+                  disabled={atMax || (editingHere && editor?.id === null)}
+                  className="text-xs font-medium rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50 disabled:opacity-40"
+                  title={atMax ? `Limit of ${MAX_INSTANCES_PER_PROVIDER} reached` : undefined}
+                >
+                  + Add instance
+                </button>
+              </div>
+
+              {list.length === 0 && !editingHere && (
+                <p className="mt-2 text-xs text-slate-400">No instances yet. Add one to evaluate {def.label}.</p>
+              )}
+
+              {list.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {list.map((inst) => (
+                    <div key={inst.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-800 truncate">{inst.nickname}</span>
+                          {inst.isDefault && (
+                            <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">default</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 truncate">{instanceSummary(inst)}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!inst.isDefault && (
+                          <button type="button" onClick={() => void makeDefault(inst)} disabled={busy} className="text-[11px] text-slate-500 hover:text-blue-700 disabled:opacity-40">Set default</button>
+                        )}
+                        <button type="button" onClick={() => startEdit(inst)} className="text-[11px] text-slate-500 hover:text-slate-900">Edit</button>
+                        <button type="button" onClick={() => void removeInstance(inst)} disabled={busy} className="text-[11px] text-red-500 hover:text-red-700 disabled:opacity-40">Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {editingHere && editor && (
+                <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+                  <p className="text-xs text-slate-500 mb-3 leading-relaxed">{def.description}</p>
+                  <label className="flex flex-col gap-1 mb-3 max-w-sm">
+                    <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                      Nickname <span className="text-red-500 font-bold" title="Required">*</span>
+                    </span>
+                    <input
+                      value={editor.nickname}
+                      onChange={(e) => setEditor({ ...editor, nickname: e.target.value })}
+                      placeholder="e.g. Production bot, Staging, EU instance"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-slate-200"
+                    />
+                  </label>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    {def.fields.map((field) => (
+                      <SettingsField
+                        key={field.key}
+                        field={field}
+                        value={editor.config[field.key] ?? ''}
+                        onChange={(val) => setEditor({ ...editor, config: { ...editor.config, [field.key]: val } })}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-4 flex items-center gap-2">
+                    <button type="button" onClick={() => void saveEditor()} disabled={busy} className="btn-primary text-sm disabled:opacity-50">
+                      {busy ? 'Saving…' : editor.id ? 'Save changes' : 'Create instance'}
+                    </button>
+                    <button type="button" onClick={() => setEditor(null)} disabled={busy} className="text-sm text-slate-500 hover:text-slate-800">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function JudgeCommitteeSection({
   settings,
@@ -1078,46 +730,28 @@ export function SettingsPage() {
 
       <JudgeCommitteeSection settings={settings} onUpdate={updateValue} />
 
-      {/* Providers group */}
-      <div className="card p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200/80 bg-white">
-          <div className="flex items-center gap-2">
-            <ProviderDefaultsIcon className="h-5 w-5 text-slate-500" aria-hidden="true" />
-            <div>
-              <h3 className="font-semibold text-base text-slate-900">Providers</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Configure connection settings for each evaluation provider. Expand a provider to view and edit its fields.</p>
-            </div>
-          </div>
-        </div>
-        <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4">
-          <label className="flex flex-col gap-1 max-w-xs">
-            <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
-              Default Provider
-              <HintTooltip hint="The provider pre-selected when starting a new run. Can be overridden per-run in the New Run modal." />
-            </span>
-            <select
-              value={settings['EVAL_PROVIDER_DEFAULT'] ?? 'connect'}
-              onChange={(e) => updateValue('EVAL_PROVIDER_DEFAULT', e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {PROVIDER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </label>
-          <p className="mt-3 text-xs text-slate-500">Sets the pre-selected provider in the New Run modal and Scenarios page.</p>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {PROVIDER_SECTIONS.map((section) => (
-            <ProviderSubSection
-              key={section.id}
-              section={section}
-              settings={settings}
-              onUpdate={updateValue}
-            />
-          ))}
-        </div>
+      {/* Default provider type */}
+      <div className="card">
+        <label className="flex flex-col gap-1 max-w-xs">
+          <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+            Default Provider
+            <HintTooltip hint="The provider type pre-selected when starting a new run. Can be overridden per-run in the New Run modal." />
+          </span>
+          <select
+            value={settings['EVAL_PROVIDER_DEFAULT'] ?? 'connect'}
+            onChange={(e) => updateValue('EVAL_PROVIDER_DEFAULT', e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {PROVIDER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
+        <p className="mt-3 text-xs text-slate-500">Sets the pre-selected provider type in the New Run modal and Scenarios page. Configure named connections per type below.</p>
       </div>
+
+      {/* Provider instances */}
+      <ProviderInstancesManager />
 
       {/* General sections */}
       {GENERAL_SECTIONS.map((section) => (

@@ -1,0 +1,59 @@
+{
+  "domains": [
+    {
+      "id": "banking",
+      "label": "Banking & Financial Services",
+      "subFunctions": [
+        { "id": "customer-support", "label": "Customer Support Agent" },
+        { "id": "compliance",       "label": "Compliance Agent (Regulatory)" },
+        { "id": "loan-application", "label": "Loan Application Agent" },
+        { "id": "bereavement",      "label": "Bereavement / Sensitive Account Agent" },
+        { "id": "fraud-detection",  "label": "Fraud Detection & Prevention" }
+      ]
+    },
+    {
+      "id": "legal",
+      "label": "Legal",
+      "subFunctions": [
+        { "id": "contract-review",   "label": "Contract Review Agent" },
+        { "id": "legal-research",    "label": "Legal Research Agent" },
+        { "id": "client-intake",     "label": "Client Intake Agent" }
+      ]
+    },
+    {
+      "id": "healthcare",
+      "label": "Healthcare",
+      "subFunctions": [
+        { "id": "patient-support",   "label": "Patient Support Agent" },
+        { "id": "clinical-decision", "label": "Clinical Decision Support" },
+        { "id": "scheduling",        "label": "Appointment Scheduling Agent" }
+      ]
+    },
+    {
+      "id": "hr",
+      "label": "Human Resources",
+      "subFunctions": [
+        { "id": "recruitment",   "label": "Recruitment Agent" },
+        { "id": "onboarding",    "label": "Employee Onboarding Agent" },
+        { "id": "policy-qa",     "label": "Policy Q&A Agent" }
+      ]
+    },
+    {
+      "id": "insurance",
+      "label": "Insurance",
+      "subFunctions": [
+        { "id": "claims",        "label": "Claims Processing Agent" },
+        { "id": "underwriting",  "label": "Underwriting Agent" },
+        { "id": "customer-care", "label": "Customer Care Agent" }
+      ]
+    },
+    {
+      "id": "retail",
+      "label": "Retail & E-Commerce",
+      "subFunctions": [
+        { "id": "customer-service", "label": "Customer Service Agent" },
+        { "id": "product-advisor",  "label": "Product Advisor Agent" }
+      ]
+    }
+  ]
+}
