@@ -144,6 +144,12 @@ guardrailAdvisorRouter.post('/sessions/:id/recommend', requireAuth, async (req, 
       });
     }
 
+    await recordAuditEventSafe(req, 'guardrail-advisor.recommend', id, {
+      domain: session.domain,
+      subFunction: session.subFunction,
+      count: recommendations.length,
+    });
+
     res.json({
       recommendations: recommendations.map((r) => ({
         id: r.id,
@@ -203,6 +209,10 @@ guardrailAdvisorRouter.post('/sessions/:id/format', requireAuth, async (req, res
     }
 
     await prisma.guardrailAdvisorSession.update({ where: { id }, data: { platform } });
+    await recordAuditEventSafe(req, 'guardrail-advisor.format', id, {
+      platform,
+      count: configs.length,
+    });
     res.json({ platform, configs });
   } catch (err) {
     fail(res, 500, (err as Error).message);

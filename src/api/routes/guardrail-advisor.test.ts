@@ -126,6 +126,12 @@ describe('guardrail-advisor routes', () => {
     expect(recs[0]!.severity).toBe('REQUIRED');
     expect(recs.map((r) => r.id)).toContain('gdpr-data-subject-rights');
     expect(mocks.prisma.guardrailRecommendationRecord.createMany).toHaveBeenCalled();
+    expect(mocks.recordAuditEventSafe).toHaveBeenCalledWith(
+      expect.anything(),
+      'guardrail-advisor.recommend',
+      'sess-1',
+      expect.anything(),
+    );
   });
 
   it('POST /sessions/:id/recommend returns 404 for an unknown session', async () => {
@@ -146,6 +152,12 @@ describe('guardrail-advisor routes', () => {
     expect(res.body.configs[0].sourceDocUrls).toEqual(['https://docs.aws.amazon.com/bedrock/guardrails.html']);
     expect(res.body.configs[0].language).toBe('yaml');
     expect(res.body.configs[0].docsFreshAsOf).toBeTruthy();
+    expect(mocks.recordAuditEventSafe).toHaveBeenCalledWith(
+      expect.anything(),
+      'guardrail-advisor.format',
+      'sess-1',
+      expect.anything(),
+    );
   });
 
   it('POST /sessions/:id/format with an invalid platform returns 400', async () => {
