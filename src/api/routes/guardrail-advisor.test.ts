@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // real curated knowledge base. ────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
   generateQuestions: vi.fn(),
+  suggestGuardrails: vi.fn(),
   formatGuardrailForPlatform: vi.fn(),
   recordAuditEventSafe: vi.fn(),
   prisma: {
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../guardrail/clarifier.js', () => ({ generateQuestions: mocks.generateQuestions }));
+vi.mock('../../guardrail/suggester.js', () => ({ suggestGuardrails: mocks.suggestGuardrails }));
 vi.mock('../../rag/formatter.js', () => ({ formatGuardrailForPlatform: mocks.formatGuardrailForPlatform }));
 vi.mock('../audit-log.js', () => ({
   recordAuditEventSafe: mocks.recordAuditEventSafe,
@@ -62,6 +64,7 @@ beforeEach(() => {
     { id: 'user-facing', text: 'Who?', type: 'single-choice', options: [{ value: 'customers', label: 'Customers' }, { value: 'staff', label: 'Staff' }] },
     { id: 'notes', text: 'Notes?', type: 'text' },
   ]);
+  mocks.suggestGuardrails.mockResolvedValue([]); // default: no AI suggestions (keeps curated assertions stable)
   mocks.prisma.guardrailAdvisorSession.create.mockResolvedValue({ id: 'sess-1', domain: 'banking', subFunction: 'customer-support' });
   mocks.prisma.guardrailAdvisorSession.findUnique.mockResolvedValue({ id: 'sess-1', domain: 'banking', subFunction: 'customer-support' });
   mocks.prisma.guardrailAdvisorSession.update.mockResolvedValue({ id: 'sess-1' });
@@ -132,6 +135,36 @@ describe('guardrail-advisor routes', () => {
       'sess-1',
       expect.anything(),
     );
+    // Every recommendation is labelled with its source; curated by default.
+    expect(recs.every((r) => (r as { source?: string }).source === 'curated')).toBe(true);
+  });
+
+  it('POST /sessions/:id/recommend merges AI-suggested guardrails with a source flag', async () => {
+    mocks.suggestGuardrails.mockResolvedValue([
+      {
+        id: 'ai-cross-border-transfers',
+        guardrailType: 'CONTENT_POLICY',
+        severity: 'RECOMMENDED',
+        title: 'Cross-border data-transfer safeguards',
+        description: 'd',
+        rationale: 'r',
+        regulations: ['GDPR Chapter V'],
+        source: 'ai-suggested',
+      },
+    ]);
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/sessions/sess-1/recommend')
+      .send({ answers: {} });
+    expect(res.status).toBe(200);
+    const recs = res.body.recommendations as { id: string; source: string }[];
+    expect(recs.some((r) => r.source === 'curated')).toBe(true);
+    const ai = recs.find((r) => r.id === 'ai-cross-border-transfers');
+    expect(ai?.source).toBe('ai-suggested');
+    // Persisted too (so Step 4 can format them and provenance survives reload).
+    const createArgs = mocks.prisma.guardrailRecommendationRecord.createMany.mock.calls[0]?.[0] as {
+      data: { guardrailId: string }[];
+    };
+    expect(createArgs.data.some((d) => d.guardrailId === 'ai-cross-border-transfers')).toBe(true);
   });
 
   it('POST /sessions/:id/recommend returns 404 for an unknown session', async () => {

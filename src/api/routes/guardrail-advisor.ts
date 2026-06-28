@@ -4,7 +4,13 @@ import { prisma } from '../../db/client.js';
 import { loadDomainTaxonomy } from '../../guardrail/data.js';
 import { getRecommendations } from '../../guardrail/engine.js';
 import { generateQuestions } from '../../guardrail/clarifier.js';
-import type { ClarifyingAnswers, GuardrailRecommendation, GuardrailSeverity } from '../../guardrail/types.js';
+import { suggestGuardrails } from '../../guardrail/suggester.js';
+import {
+  AI_SUGGESTED_ID_PREFIX,
+  type ClarifyingAnswers,
+  type GuardrailRecommendation,
+  type GuardrailSeverity,
+} from '../../guardrail/types.js';
 import { formatGuardrailForPlatform } from '../../rag/formatter.js';
 import {
   createSessionSchema,
@@ -77,6 +83,8 @@ function rowToRecommendation(row: RecommendationRecordRow): GuardrailRecommendat
     description: row.description,
     rationale: row.rationale,
     regulations: safeJsonArray(row.regulations),
+    // Derived from the id prefix, so source survives persistence with no extra column.
+    source: row.guardrailId.startsWith(AI_SUGGESTED_ID_PREFIX) ? 'ai-suggested' : 'curated',
   };
 }
 
@@ -122,7 +130,14 @@ guardrailAdvisorRouter.post('/sessions/:id/recommend', requireAuth, async (req, 
       return;
     }
 
-    const recommendations = await getRecommendations(session.domain, session.subFunction, answers);
+    // Curated, deterministic core (always present) + LLM-suggested expansion
+    // (fails closed to [] — never blocks the recommend response).
+    const curated = await getRecommendations(session.domain, session.subFunction, answers);
+    const suggested =
+      curated.length > 0
+        ? await suggestGuardrails(session.domain, session.subFunction, answers, curated)
+        : [];
+    const recommendations = [...curated, ...suggested];
 
     await prisma.guardrailAdvisorSession.update({
       where: { id },
@@ -156,8 +171,10 @@ guardrailAdvisorRouter.post('/sessions/:id/recommend', requireAuth, async (req, 
         guardrailType: r.guardrailType,
         severity: r.severity,
         title: r.title,
+        description: r.description,
         rationale: r.rationale,
         regulations: r.regulations,
+        source: r.source,
       })),
     });
   } catch (err) {
@@ -253,6 +270,7 @@ guardrailAdvisorRouter.get('/sessions/:id', requireAuth, async (req, res) => {
         description: r.description,
         rationale: r.rationale,
         regulations: safeJsonArray(r.regulations),
+        source: r.guardrailId.startsWith(AI_SUGGESTED_ID_PREFIX) ? 'ai-suggested' : 'curated',
         platformConfig: r.platformConfig ? (JSON.parse(r.platformConfig) as unknown) : null,
         sourceDocUrls: safeJsonArray(r.sourceDocUrls),
         configGeneratedAt: r.configGeneratedAt,
