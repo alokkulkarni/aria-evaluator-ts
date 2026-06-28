@@ -696,3 +696,67 @@ model PairwiseCalibration {
   @@unique([judgeModelId, datasetId])
   @@index([judgeModelId])
 }
+
+// ─── Guardrail Advisor (Phase 1) ────────────────────────────────────────────────
+// RAG-backed advisor that recommends guardrails per domain + sub-function and
+// formats them for a target platform. See docs/GUARDRAIL_ADVISOR_PHASE1.md.
+
+// A single embedded chunk of a crawled platform documentation page.
+model PlatformDocChunk {
+  id          String   @id @default(cuid())
+  platform    String
+  docUrl      String
+  chunkIndex  Int
+  // `String` maps to PostgreSQL `text` (no length cap) — no @db.Text needed.
+  content     String
+  contentHash String
+  // Raw float array stored as a JSON string for SQLite dev compat. In prod
+  // (PostgreSQL) a future migration ALTERs this to a pgvector `vector(1536)`
+  // column and enables `CREATE EXTENSION IF NOT EXISTS vector;` for `<=>` search.
+  embeddingRaw String  @default("[]")
+  crawledAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([docUrl, chunkIndex])
+  @@index([platform])
+}
+
+// One advisor session: a domain/sub-function choice plus clarifying answers.
+model GuardrailAdvisorSession {
+  id            String   @id @default(cuid())
+  tenantId      String   @default("")
+  domain        String
+  subFunction   String
+  jurisdiction  String?
+  userFacing    Boolean  @default(true)
+  dataTypes     String   @default("[]")   // JSON array of PII types
+  autonomyLevel String?  // read-only | transactional | agentic
+  platform      String?  // set after platform selection step
+  rawAnswers    String   @default("{}")   // full clarifying answers JSON
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  recommendations GuardrailRecommendationRecord[]
+
+  @@index([tenantId])
+}
+
+// A persisted recommendation (and optionally its formatted platform config).
+model GuardrailRecommendationRecord {
+  id                String   @id @default(cuid())
+  sessionId         String
+  session           GuardrailAdvisorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guardrailId       String   // e.g. "topic-denial-financial-advice"
+  guardrailType     String   // TOPIC_DENIAL | PII_FILTER | CONTENT_FILTER | …
+  severity          String   // REQUIRED | RECOMMENDED | OPTIONAL
+  title             String
+  description       String
+  rationale         String
+  regulations       String   @default("[]")   // JSON array of citation strings
+  platformConfig    String?  // JSON — formatted config for chosen platform
+  sourceDocUrls     String   @default("[]")   // RAG source citations JSON array
+  configGeneratedAt DateTime?
+  createdAt         DateTime @default(now())
+
+  @@index([sessionId])
+}
