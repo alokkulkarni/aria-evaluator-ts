@@ -164,6 +164,12 @@ variable "bedrock_lambda_enabled" {
   default     = false
 }
 
+variable "guardrail_crawler_enabled" {
+  description = "Set to true to deploy the Guardrail Advisor doc-crawler Lambda + weekly schedule (requires a built Lambda bundle and VPC egress to Bedrock + doc URLs)"
+  type        = bool
+  default     = false
+}
+
 variable "bedrock_model_id" {
   description = <<-EOT
     Bedrock model to invoke. Accepts a bare model ID, cross-region inference

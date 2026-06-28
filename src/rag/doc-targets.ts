@@ -20,6 +20,7 @@ export const DOC_TARGETS: Record<Platform, string[]> = {
     'https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/content-filtering',
   ],
   strands: [
-    'https://strandsagents.com/latest/documentation/docs/safety-privacy/',
+    'https://strandsagents.com/docs/user-guide/safety-security/guardrails/',
+    'https://strandsagents.com/docs/user-guide/safety-security/responsible-ai/',
   ],
 };
