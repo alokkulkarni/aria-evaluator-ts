@@ -238,6 +238,26 @@ module "bedrock_lambda" {
   tags         = local.common_tags
 }
 
+# ── Guardrail Advisor doc crawler ─────────────────────────────────────────────
+# Weekly EventBridge → Lambda that refreshes the platform-doc RAG corpus. Gated
+# off by default; enable once a Lambda bundle is built and the private subnets
+# have egress to Bedrock + the doc URLs. Uses the ECS service SG so Aurora admits it.
+module "guardrail_crawler" {
+  source = "../../modules/guardrail-rag"
+
+  enabled     = var.guardrail_crawler_enabled
+  app_name    = var.app_name
+  environment = var.environment
+
+  bedrock_region          = var.bedrock_region
+  database_url_secret_arn = module.aurora.database_url_secret_arn
+  subnet_ids              = module.networking.private_subnet_ids
+  security_group_ids      = [module.networking.ecs_service_security_group_id]
+
+  log_retention_days = var.log_retention_days
+  tags               = local.common_tags
+}
+
 # ── CloudFront ────────────────────────────────────────────────────────────────
 
 module "cloudfront" {

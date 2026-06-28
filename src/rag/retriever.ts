@@ -1,9 +1,10 @@
 // Similarity search over crawled platform-doc chunks.
 //
-// Dev (SQLite): cosine similarity is computed in TypeScript over the JSON vectors
-// stored in `embeddingRaw`. Prod (PostgreSQL): the pgvector `<=>` operator is used
-// via $queryRaw against an `embedding vector(1024)` column added by a prod-only
-// migration. The path is chosen from DATABASE_URL.
+// Default (all DBs): cosine similarity is computed in TypeScript over the JSON
+// vectors stored in `embeddingRaw` — works on Postgres and SQLite alike and needs
+// no extension. The pgvector `<=>` path (via $queryRaw) is an opt-in optimisation
+// gated on GUARDRAIL_USE_PGVECTOR=true; it requires an `embedding vector(1024)`
+// column + the `vector` extension added by a future migration.
 import { prisma } from '../db/client.js';
 import { embedText } from './embedder.js';
 
@@ -18,7 +19,7 @@ export interface DocChunk {
 }
 
 function usePgVector(): boolean {
-  return (process.env['DATABASE_URL'] ?? '').startsWith('postgresql');
+  return process.env['GUARDRAIL_USE_PGVECTOR'] === 'true';
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {

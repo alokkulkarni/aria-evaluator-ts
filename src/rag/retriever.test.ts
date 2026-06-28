@@ -34,8 +34,8 @@ function row(id: string, platform: string, embedding: number[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Force the dev (SQLite/TS-cosine) retrieval path, not the prod pgvector path.
-  process.env['DATABASE_URL'] = 'file:./dev.db';
+  // Default (TS-cosine) retrieval path; pgvector is opt-in and off here.
+  delete process.env['GUARDRAIL_USE_PGVECTOR'];
   // Query vector points along the first axis.
   mocks.embedText.mockResolvedValue([1, 0, 0]);
 });
