@@ -42,6 +42,18 @@ interface FormattedConfig {
   sourceDocUrls: string[];
   docsFreshAsOf: string;
 }
+interface CitationVerdict {
+  citation: string;
+  status: 'verified' | 'corrected' | 'not-found' | 'unverified';
+  sourceUrl?: string;
+  correctedCitation?: string;
+  note?: string;
+}
+interface VerifyState {
+  loading: boolean;
+  results?: CitationVerdict[];
+  error?: string;
+}
 
 const PLATFORMS: { id: PlatformId; label: string }[] = [
   { id: 'bedrock', label: 'AWS Bedrock Guardrails' },
@@ -93,6 +105,9 @@ export function GuardrailAdvisorPage() {
   const [configsPlatform, setConfigsPlatform] = useState<PlatformId | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [openConfigId, setOpenConfigId] = useState<string | null>(null);
+
+  // Per-AI-guardrail citation verification (keyed by guardrail id).
+  const [verifications, setVerifications] = useState<Record<string, VerifyState>>({});
 
   useEffect(() => {
     apiFetch('/api/guardrail-advisor/domains')
@@ -214,6 +229,26 @@ export function GuardrailAdvisorPage() {
       })
       .catch(() => {});
   };
+
+  const verifyRecCitations = useCallback(
+    async (rec: Recommendation) => {
+      if (rec.regulations.length === 0) return;
+      setVerifications((prev) => ({ ...prev, [rec.id]: { loading: true } }));
+      try {
+        const data = (await apiFetch('/api/guardrail-advisor/verify', {
+          method: 'POST',
+          body: JSON.stringify({
+            citations: rec.regulations,
+            context: `${domainId ?? ''}/${subFunctionId ?? ''} — ${rec.title}`.slice(0, 500),
+          }),
+        })) as { results: CitationVerdict[] };
+        setVerifications((prev) => ({ ...prev, [rec.id]: { loading: false, results: data.results ?? [] } }));
+      } catch (err) {
+        setVerifications((prev) => ({ ...prev, [rec.id]: { loading: false, error: errorMessage(err) } }));
+      }
+    },
+    [domainId, subFunctionId],
+  );
 
   return (
     <div className="space-y-6">
@@ -482,19 +517,76 @@ export function GuardrailAdvisorPage() {
                     </div>
                     <p className="text-sm leading-6 text-slate-600">{rec.rationale}</p>
                     {rec.regulations.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[11px] font-medium uppercase tracking-wide text-amber-600">
-                          Unverified basis:
-                        </span>
-                        {rec.regulations.map((reg) => (
-                          <span
-                            key={reg}
-                            title="AI-suggested citation — verify before relying on it"
-                            className="inline-flex items-center rounded-full border border-dashed border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+                      <div className="space-y-2 pt-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {!verifications[rec.id]?.results && (
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-amber-600">
+                              Unverified basis:
+                            </span>
+                          )}
+                          {rec.regulations.map((reg) => {
+                            const verdict = verifications[rec.id]?.results?.find((v) => v.citation === reg);
+                            if (!verdict) {
+                              return (
+                                <span
+                                  key={reg}
+                                  title="AI-suggested citation — verify before relying on it"
+                                  className="inline-flex items-center rounded-full border border-dashed border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+                                >
+                                  {reg}?
+                                </span>
+                              );
+                            }
+                            const cls =
+                              verdict.status === 'verified'
+                                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200/70'
+                                : verdict.status === 'corrected'
+                                  ? 'bg-amber-50 text-amber-700 ring-amber-200/70'
+                                  : verdict.status === 'not-found'
+                                    ? 'bg-rose-50 text-rose-700 ring-rose-200/70'
+                                    : 'bg-slate-100 text-slate-600 ring-slate-200/70';
+                            const label =
+                              verdict.status === 'verified'
+                                ? `${reg} ✓`
+                                : verdict.status === 'corrected'
+                                  ? `${reg} → ${verdict.correctedCitation ?? 'see source'}`
+                                  : verdict.status === 'not-found'
+                                    ? `${reg} ✗ not found`
+                                    : `${reg} — unverified`;
+                            const pill = (
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${cls}`}
+                                title={verdict.note}
+                              >
+                                {label}
+                              </span>
+                            );
+                            return verdict.sourceUrl ? (
+                              <a key={reg} href={verdict.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:opacity-80">
+                                {pill}
+                              </a>
+                            ) : (
+                              <span key={reg}>{pill}</span>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="rounded-md border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+                            disabled={verifications[rec.id]?.loading}
+                            onClick={() => verifyRecCitations(rec)}
                           >
-                            {reg}?
-                          </span>
-                        ))}
+                            {verifications[rec.id]?.loading
+                              ? 'Verifying…'
+                              : verifications[rec.id]?.results
+                                ? 'Re-verify citations'
+                                : 'Verify citations'}
+                          </button>
+                          {verifications[rec.id]?.error && (
+                            <span className="text-[11px] text-rose-600">{verifications[rec.id]?.error}</span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

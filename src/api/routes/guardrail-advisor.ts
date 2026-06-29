@@ -5,6 +5,7 @@ import { loadDomainTaxonomy } from '../../guardrail/data.js';
 import { getRecommendations } from '../../guardrail/engine.js';
 import { generateQuestions } from '../../guardrail/clarifier.js';
 import { suggestGuardrails } from '../../guardrail/suggester.js';
+import { verifyCitations } from '../../guardrail/citation-verifier.js';
 import {
   AI_SUGGESTED_ID_PREFIX,
   type ClarifyingAnswers,
@@ -16,6 +17,7 @@ import {
   createSessionSchema,
   formatSchema,
   recommendSchema,
+  verifyCitationsSchema,
 } from '../../shared/guardrail-advisor.js';
 import { recordAuditEventSafe } from '../audit-log.js';
 import { getRequestAuth, requireAuth } from '../auth.js';
@@ -231,6 +233,25 @@ guardrailAdvisorRouter.post('/sessions/:id/format', requireAuth, async (req, res
       count: configs.length,
     });
     res.json({ platform, configs });
+  } catch (err) {
+    fail(res, 500, (err as Error).message);
+  }
+});
+
+// POST /verify — verify an AI-suggested guardrail's citations against authoritative
+// web sources (LLM proposes the source, server fetches it, match → grounded verdict).
+guardrailAdvisorRouter.post('/verify', requireAuth, async (req, res) => {
+  const parsed = verifyCitationsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    fail(res, 400, 'citations (1–12 non-empty strings) are required');
+    return;
+  }
+  try {
+    const results = await verifyCitations(parsed.data.citations, parsed.data.context ?? '');
+    await recordAuditEventSafe(req, 'guardrail-advisor.verify-citations', undefined, {
+      count: parsed.data.citations.length,
+    });
+    res.json({ results });
   } catch (err) {
     fail(res, 500, (err as Error).message);
   }
