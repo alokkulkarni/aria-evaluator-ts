@@ -52,6 +52,12 @@ export interface ClarifyingQuestion {
 /** Raw clarifying answers keyed by question id. Multi-choice answers are arrays. */
 export type ClarifyingAnswers = Record<string, string | string[]>;
 
+/** Where a recommendation came from: the curated knowledge base, or LLM-suggested. */
+export type GuardrailSource = 'curated' | 'ai-suggested';
+
+/** Prefix on AI-suggested guardrail ids — lets `source` be derived after persistence. */
+export const AI_SUGGESTED_ID_PREFIX = 'ai-';
+
 /** A guardrail recommendation returned by the engine for a domain + sub-function. */
 export interface GuardrailRecommendation {
   id: string;
@@ -62,6 +68,8 @@ export interface GuardrailRecommendation {
   description: string;
   rationale: string;
   regulations: string[];
+  /** 'curated' = verified knowledge base; 'ai-suggested' = LLM-proposed (verify citations). */
+  source: GuardrailSource;
 }
 
 /** A platform-specific formatted config produced by the RAG formatter. */

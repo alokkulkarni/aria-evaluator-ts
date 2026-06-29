@@ -34,6 +34,7 @@ function entryToRecommendations(entry: KnowledgeEntry | undefined): GuardrailRec
         description: g.description ?? g.title,
         rationale: g.rationale,
         regulations: g.regulations ?? [],
+        source: 'curated',
       });
     }
   }
