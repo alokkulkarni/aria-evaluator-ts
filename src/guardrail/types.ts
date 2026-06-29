@@ -52,6 +52,18 @@ export interface ClarifyingQuestion {
 /** Raw clarifying answers keyed by question id. Multi-choice answers are arrays. */
 export type ClarifyingAnswers = Record<string, string | string[]>;
 
+/**
+ * Free-text context for a user-defined (custom) domain / sub-function. Threaded
+ * into the clarifier and the AI suggester so they can reason about an agent that
+ * isn't in the curated taxonomy. All fields optional; absent for curated selections.
+ */
+export interface GuardrailContext {
+  domainLabel?: string;
+  domainDescription?: string;
+  subFunctionLabel?: string;
+  subFunctionDescription?: string;
+}
+
 /** Where a recommendation came from: the curated knowledge base, or LLM-suggested. */
 export type GuardrailSource = 'curated' | 'ai-suggested';
 

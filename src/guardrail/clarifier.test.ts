@@ -90,4 +90,24 @@ describe('generateQuestions', () => {
     const qs = await generateQuestions('insurance', 'claims');
     expect(qs).toEqual(FALLBACK_QUESTIONS);
   });
+
+  it('threads custom domain/function label + description into the prompt', async () => {
+    await generateQuestions('custom-education', 'custom-tutor', {
+      domainLabel: 'Education',
+      domainDescription: 'K-12 online learning platform',
+      subFunctionLabel: 'AI Tutor',
+      subFunctionDescription: 'Helps students with maths homework',
+    });
+    const userPrompt = mocks.complete.mock.calls[0]![0].userPrompt as string;
+    expect(userPrompt).toContain('Education');
+    expect(userPrompt).toContain('K-12 online learning platform');
+    expect(userPrompt).toContain('AI Tutor');
+    expect(userPrompt).toContain('Helps students with maths homework');
+  });
+
+  it('omits the description lines when no context is given', async () => {
+    await generateQuestions('banking', 'customer-support');
+    const userPrompt = mocks.complete.mock.calls[0]![0].userPrompt as string;
+    expect(userPrompt).not.toContain('description');
+  });
 });

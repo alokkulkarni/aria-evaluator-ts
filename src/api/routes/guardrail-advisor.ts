@@ -9,6 +9,7 @@ import { verifyCitations } from '../../guardrail/citation-verifier.js';
 import {
   AI_SUGGESTED_ID_PREFIX,
   type ClarifyingAnswers,
+  type GuardrailContext,
   type GuardrailRecommendation,
   type GuardrailSeverity,
 } from '../../guardrail/types.js';
@@ -102,13 +103,30 @@ guardrailAdvisorRouter.post('/sessions', requireAuth, async (req, res) => {
     fail(res, 400, 'domain and subFunction are required');
     return;
   }
-  const { domain, subFunction } = parsed.data;
+  const { domain, subFunction, domainLabel, domainDescription, subFunctionLabel, subFunctionDescription } =
+    parsed.data;
+  // Free-text context for a user-defined (custom) domain/function — grounds the
+  // clarifier now and the AI suggester at /recommend (persisted on the session).
+  const context: GuardrailContext = {
+    domainLabel,
+    domainDescription,
+    subFunctionLabel,
+    subFunctionDescription,
+  };
   const auth = getRequestAuth(req);
   try {
     const session = await prisma.guardrailAdvisorSession.create({
-      data: { domain, subFunction, tenantId: auth?.tenantId ?? '' },
+      data: {
+        domain,
+        subFunction,
+        tenantId: auth?.tenantId ?? '',
+        domainLabel: domainLabel ?? null,
+        domainDescription: domainDescription ?? null,
+        subFunctionLabel: subFunctionLabel ?? null,
+        subFunctionDescription: subFunctionDescription ?? null,
+      },
     });
-    const questions = await generateQuestions(domain, subFunction);
+    const questions = await generateQuestions(domain, subFunction, context);
     await recordAuditEventSafe(req, 'guardrail-advisor.session.create', session.id, { domain, subFunction });
     res.status(201).json({ sessionId: session.id, questions });
   } catch (err) {
@@ -132,12 +150,25 @@ guardrailAdvisorRouter.post('/sessions/:id/recommend', requireAuth, async (req, 
       return;
     }
 
-    // Curated, deterministic core (always present) + LLM-suggested expansion
-    // (fails closed to [] — never blocks the recommend response).
-    const curated = await getRecommendations(session.domain, session.subFunction, answers);
+    // Curated, deterministic core (always present for taxonomy entries) + LLM-suggested
+    // expansion (fails closed to [] — never blocks the recommend response). A custom
+    // domain/function has no curated entry, so the suggester is its ONLY source — run it
+    // even when curated is empty, grounded by the session's free-text descriptions.
+    const context: GuardrailContext = {
+      domainLabel: session.domainLabel ?? undefined,
+      domainDescription: session.domainDescription ?? undefined,
+      subFunctionLabel: session.subFunctionLabel ?? undefined,
+      subFunctionDescription: session.subFunctionDescription ?? undefined,
+    };
+    const isCustom = Boolean(session.subFunctionDescription || session.domainDescription);
+    // A custom session is driven entirely by its description — skip the curated lookup so a
+    // user-chosen id that happens to collide with a curated KB key can't inject unrelated
+    // recs. (For a genuinely custom domain:subFunction there's no entry anyway, so this is a
+    // no-op on the happy path.) The suggester then always runs in its from-scratch mode.
+    const curated = isCustom ? [] : await getRecommendations(session.domain, session.subFunction, answers);
     const suggested =
-      curated.length > 0
-        ? await suggestGuardrails(session.domain, session.subFunction, answers, curated)
+      curated.length > 0 || isCustom
+        ? await suggestGuardrails(session.domain, session.subFunction, answers, curated, context)
         : [];
     const recommendations = [...curated, ...suggested];
 

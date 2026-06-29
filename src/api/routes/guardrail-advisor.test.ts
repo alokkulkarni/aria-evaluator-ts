@@ -123,6 +123,33 @@ describe('guardrail-advisor routes', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /sessions rejects a non-slug domain id (path-traversal guard)', async () => {
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/sessions')
+      .send({ domain: '../etc/passwd', subFunction: 'customer-support' });
+    expect(res.status).toBe(400);
+    expect(mocks.prisma.guardrailAdvisorSession.create).not.toHaveBeenCalled();
+  });
+
+  it('POST /sessions rejects a custom label with no description', async () => {
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/sessions')
+      .send({ domain: 'custom-x', subFunction: 'custom-y', subFunctionLabel: 'My Agent' });
+    expect(res.status).toBe(400);
+    expect(mocks.prisma.guardrailAdvisorSession.create).not.toHaveBeenCalled();
+  });
+
+  it('POST /sessions rejects an over-length custom description', async () => {
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/sessions')
+      .send({
+        domain: 'custom-x',
+        subFunction: 'custom-y',
+        subFunctionDescription: 'a'.repeat(2001),
+      });
+    expect(res.status).toBe(400);
+  });
+
   it('POST /sessions/:id/recommend returns recommendations grouped by severity', async () => {
     const res = await request(makeApp())
       .post('/api/guardrail-advisor/sessions/sess-1/recommend')
@@ -170,6 +197,75 @@ describe('guardrail-advisor routes', () => {
       data: { guardrailId: string }[];
     };
     expect(createArgs.data.some((d) => d.guardrailId === 'ai-cross-border-transfers')).toBe(true);
+  });
+
+  it('POST /sessions persists custom descriptions and passes context to the clarifier', async () => {
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/sessions')
+      .send({
+        domain: 'custom-education',
+        subFunction: 'custom-tutor',
+        domainLabel: 'Education',
+        domainDescription: 'K-12 online learning platform',
+        subFunctionLabel: 'AI Tutor',
+        subFunctionDescription: 'Helps students with maths homework',
+      });
+    expect(res.status).toBe(201);
+    const createArgs = mocks.prisma.guardrailAdvisorSession.create.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createArgs.data.domainDescription).toBe('K-12 online learning platform');
+    expect(createArgs.data.subFunctionDescription).toBe('Helps students with maths homework');
+    expect(mocks.generateQuestions).toHaveBeenCalledWith(
+      'custom-education',
+      'custom-tutor',
+      expect.objectContaining({ subFunctionDescription: 'Helps students with maths homework' }),
+    );
+  });
+
+  it('POST /sessions/:id/recommend runs the AI suggester for a custom session with no curated entry', async () => {
+    mocks.prisma.guardrailAdvisorSession.findUnique.mockResolvedValueOnce({
+      id: 'sess-custom',
+      domain: 'custom-education',
+      subFunction: 'custom-tutor',
+      domainDescription: 'K-12 online learning platform',
+      subFunctionDescription: 'AI maths tutor',
+    });
+    mocks.suggestGuardrails.mockResolvedValueOnce([
+      {
+        id: 'ai-no-medical-advice',
+        guardrailType: 'TOPIC_DENIAL',
+        severity: 'REQUIRED',
+        title: 'No medical advice',
+        description: 'd',
+        rationale: 'r',
+        regulations: [],
+        source: 'ai-suggested',
+      },
+    ]);
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/sessions/sess-custom/recommend')
+      .send({ answers: {} });
+    expect(res.status).toBe(200);
+    expect(mocks.suggestGuardrails).toHaveBeenCalled();
+    const callArgs = mocks.suggestGuardrails.mock.calls[0]!;
+    expect(callArgs[3]).toEqual([]); // curated set is empty for a custom entry
+    expect(callArgs[4]).toEqual(expect.objectContaining({ subFunctionDescription: 'AI maths tutor' }));
+    expect((res.body.recommendations as { id: string }[]).map((r) => r.id)).toContain('ai-no-medical-advice');
+  });
+
+  it('POST /sessions/:id/recommend does NOT run the suggester for an unknown, non-custom sub-function', async () => {
+    mocks.prisma.guardrailAdvisorSession.findUnique.mockResolvedValueOnce({
+      id: 'sess-unknown',
+      domain: 'banking',
+      subFunction: 'does-not-exist',
+    });
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/sessions/sess-unknown/recommend')
+      .send({ answers: {} });
+    expect(res.status).toBe(200);
+    expect(mocks.suggestGuardrails).not.toHaveBeenCalled();
+    expect(res.body.recommendations).toEqual([]);
   });
 
   it('POST /sessions/:id/recommend returns 404 for an unknown session', async () => {

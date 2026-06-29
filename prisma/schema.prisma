@@ -727,6 +727,13 @@ model GuardrailAdvisorSession {
   tenantId      String   @default("")
   domain        String
   subFunction   String
+  // User-defined (custom) domain/function: free-text label + description used to
+  // ground the clarifier and AI suggester when there's no curated KB entry. Null
+  // for curated taxonomy selections; presence of a description marks a custom session.
+  domainLabel            String?
+  domainDescription      String?
+  subFunctionLabel       String?
+  subFunctionDescription String?
   jurisdiction  String?
   userFacing    Boolean  @default(true)
   dataTypes     String   @default("[]")   // JSON array of PII types

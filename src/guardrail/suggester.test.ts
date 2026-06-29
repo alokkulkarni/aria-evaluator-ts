@@ -102,3 +102,48 @@ describe('suggestGuardrails', () => {
     expect(mocks.complete).not.toHaveBeenCalled();
   });
 });
+
+const EIGHT_UNIQUE = JSON.stringify(
+  Array.from({ length: 8 }, (_, i) => ({
+    type: 'CONTENT_POLICY',
+    title: `Custom guardrail ${i + 1}`,
+    description: 'd',
+    rationale: 'r',
+    regulations: [],
+    severity: 'RECOMMENDED',
+  })),
+);
+
+describe('suggestGuardrails — from-scratch (custom domain) mode', () => {
+  it('allows up to 8 suggestions when there is no curated set', async () => {
+    mocks.complete.mockResolvedValue({ text: EIGHT_UNIQUE, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } });
+    const out = await suggestGuardrails('custom-education', 'custom-tutor', {}, []);
+    expect(out).toHaveLength(8);
+    for (const r of out) expect(r.source).toBe('ai-suggested');
+  });
+
+  it('uses a from-scratch system prompt (no "do NOT restate") when existing is empty', async () => {
+    await suggestGuardrails('custom-education', 'custom-tutor', {}, []);
+    const systemPrompt = mocks.complete.mock.calls[0]![0].systemPrompt as string;
+    expect(systemPrompt).not.toMatch(/do NOT restate/i);
+    expect(systemPrompt).toMatch(/comprehensive/i);
+  });
+
+  it('threads the custom domain/function description into the prompt', async () => {
+    await suggestGuardrails('custom-education', 'custom-tutor', {}, [], {
+      domainDescription: 'K-12 online learning platform',
+      subFunctionDescription: 'AI maths tutor for students',
+    });
+    const userPrompt = mocks.complete.mock.calls[0]![0].userPrompt as string;
+    expect(userPrompt).toContain('K-12 online learning platform');
+    expect(userPrompt).toContain('AI maths tutor for students');
+  });
+
+  it('still caps at 4 and keeps the ADDITIONAL framing when a curated set exists', async () => {
+    mocks.complete.mockResolvedValue({ text: EIGHT_UNIQUE, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } });
+    const out = await suggestGuardrails('banking', 'wealth-advisory', {}, CURATED);
+    expect(out).toHaveLength(4);
+    const systemPrompt = mocks.complete.mock.calls[0]![0].systemPrompt as string;
+    expect(systemPrompt).toMatch(/do NOT restate/i);
+  });
+});
