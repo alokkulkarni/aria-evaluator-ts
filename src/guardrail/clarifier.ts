@@ -75,6 +75,12 @@ const SYSTEM_PROMPT = [
   'Respond with ONLY a JSON array (no prose, no markdown fences). Each element must be:',
   '{ "id": string, "text": string, "type": "single-choice" | "multi-choice" | "text", "options"?: [{ "value": string, "label": string }] }',
   'single-choice and multi-choice questions MUST include at least 2 options. text questions omit options.',
+  'Phrase the question text and option labels naturally for the domain, but for these standard',
+  'dimensions the option `value` MUST come from this fixed vocabulary (the engine keys off it):',
+  '- jurisdiction → one of: eu, us, uk, hipaa, apac, other',
+  '- user type → one of: customers, staff, institutional',
+  '- data sensitivity → from: account-numbers, ssn, health, biometric, income, none',
+  '- autonomy → one of: read-only, advisory, transactional, agentic',
 ].join('\n');
 
 function buildUserPrompt(domain: string, subFunction: string): string {
