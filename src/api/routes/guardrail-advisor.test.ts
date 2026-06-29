@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => ({
   verifyCitations: vi.fn(),
   formatGuardrailForPlatform: vi.fn(),
   recordAuditEventSafe: vi.fn(),
+  listCustomEntries: vi.fn(),
+  createCustomDomain: vi.fn(),
+  createCustomFunction: vi.fn(),
+  deleteCustomDomain: vi.fn(),
+  deleteCustomFunction: vi.fn(),
   prisma: {
     guardrailAdvisorSession: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     guardrailRecommendationRecord: {
@@ -24,6 +29,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../guardrail/clarifier.js', () => ({ generateQuestions: mocks.generateQuestions }));
 vi.mock('../../guardrail/suggester.js', () => ({ suggestGuardrails: mocks.suggestGuardrails }));
 vi.mock('../../guardrail/citation-verifier.js', () => ({ verifyCitations: mocks.verifyCitations }));
+vi.mock('../../guardrail/custom-entries.js', () => ({
+  listCustomEntries: mocks.listCustomEntries,
+  createCustomDomain: mocks.createCustomDomain,
+  createCustomFunction: mocks.createCustomFunction,
+  deleteCustomDomain: mocks.deleteCustomDomain,
+  deleteCustomFunction: mocks.deleteCustomFunction,
+}));
 vi.mock('../../rag/formatter.js', () => ({ formatGuardrailForPlatform: mocks.formatGuardrailForPlatform }));
 vi.mock('../audit-log.js', () => ({
   recordAuditEventSafe: mocks.recordAuditEventSafe,
@@ -46,18 +58,20 @@ const STUB_AUTH = {
   suspended: false,
 };
 
-function makeApp(withAuth = true): Express {
+function makeApp(withAuth = true, auth: typeof STUB_AUTH = STUB_AUTH): Express {
   const app = express();
   app.use(express.json());
   if (withAuth) {
     app.use((req, _res, next) => {
-      (req as unknown as { auth: typeof STUB_AUTH }).auth = STUB_AUTH;
+      (req as unknown as { auth: typeof STUB_AUTH }).auth = auth;
       next();
     });
   }
   app.use('/api/guardrail-advisor', guardrailAdvisorRouter);
   return app;
 }
+
+const MEMBER_AUTH = { ...STUB_AUTH, role: 'member' };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -94,6 +108,11 @@ beforeEach(() => {
     sourceDocUrls: ['https://docs.aws.amazon.com/bedrock/guardrails.html'],
     docsFreshAsOf: '2026-06-01T00:00:00.000Z',
   });
+  mocks.listCustomEntries.mockResolvedValue({ domains: [], functions: [] });
+  mocks.createCustomDomain.mockResolvedValue({ id: 'custom-education', label: 'Education', description: 'K-12' });
+  mocks.createCustomFunction.mockResolvedValue({ id: 'custom-tutor', label: 'AI Tutor', description: 'd', domainId: 'custom-education' });
+  mocks.deleteCustomDomain.mockResolvedValue(undefined);
+  mocks.deleteCustomFunction.mockResolvedValue(undefined);
 });
 
 describe('guardrail-advisor routes', () => {
@@ -326,5 +345,80 @@ describe('guardrail-advisor routes', () => {
       .post('/api/guardrail-advisor/sessions')
       .send({ domain: 'banking', subFunction: 'customer-support' });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('guardrail-advisor — saved custom domains/functions', () => {
+  it('GET /custom-domains returns the tenant list (auth required)', async () => {
+    mocks.listCustomEntries.mockResolvedValueOnce({
+      domains: [{ id: 'custom-education', label: 'Education', description: 'K-12' }],
+      functions: [{ id: 'custom-tutor', label: 'AI Tutor', description: 'd', domainId: 'custom-education' }],
+    });
+    const res = await request(makeApp()).get('/api/guardrail-advisor/custom-domains');
+    expect(res.status).toBe(200);
+    expect(res.body.domains).toHaveLength(1);
+    expect(res.body.functions[0].domainId).toBe('custom-education');
+  });
+
+  it('GET /custom-domains is protected (401 without auth)', async () => {
+    const res = await request(makeApp(false)).get('/api/guardrail-advisor/custom-domains');
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /custom-domains saves a domain and audits it (any member)', async () => {
+    const res = await request(makeApp(true, MEMBER_AUTH))
+      .post('/api/guardrail-advisor/custom-domains')
+      .send({ label: 'Education', description: 'K-12 online learning platform' });
+    expect(res.status).toBe(201);
+    expect(res.body.domain.id).toBe('custom-education');
+    expect(mocks.createCustomDomain).toHaveBeenCalledWith('', 'u1', 'Education', 'K-12 online learning platform');
+    expect(mocks.recordAuditEventSafe).toHaveBeenCalledWith(
+      expect.anything(),
+      'guardrail-advisor.custom-domain.create',
+      'custom-education',
+      expect.anything(),
+    );
+  });
+
+  it('POST /custom-domains with no description returns 400', async () => {
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/custom-domains')
+      .send({ label: 'Education' });
+    expect(res.status).toBe(400);
+    expect(mocks.createCustomDomain).not.toHaveBeenCalled();
+  });
+
+  it('POST /custom-functions saves a function under a domain', async () => {
+    const res = await request(makeApp(true, MEMBER_AUTH))
+      .post('/api/guardrail-advisor/custom-functions')
+      .send({ domainId: 'banking', label: 'Mortgage Advisor', description: 'handles mortgages' });
+    expect(res.status).toBe(201);
+    expect(mocks.createCustomFunction).toHaveBeenCalledWith('', 'u1', 'banking', 'Mortgage Advisor', 'handles mortgages');
+  });
+
+  it('DELETE /custom-domains/:slug is admin-only — 403 for a member', async () => {
+    const res = await request(makeApp(true, MEMBER_AUTH)).delete(
+      '/api/guardrail-advisor/custom-domains/custom-education',
+    );
+    expect(res.status).toBe(403);
+    expect(mocks.deleteCustomDomain).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /custom-domains/:slug removes the domain for an admin', async () => {
+    const res = await request(makeApp()).delete('/api/guardrail-advisor/custom-domains/custom-education');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(mocks.deleteCustomDomain).toHaveBeenCalledWith('', 'custom-education');
+  });
+
+  it('DELETE /custom-functions/:domainId/:slug is admin-only and scoped', async () => {
+    const forbidden = await request(makeApp(true, MEMBER_AUTH)).delete(
+      '/api/guardrail-advisor/custom-functions/banking/custom-mortgage',
+    );
+    expect(forbidden.status).toBe(403);
+
+    const ok = await request(makeApp()).delete('/api/guardrail-advisor/custom-functions/banking/custom-mortgage');
+    expect(ok.status).toBe(200);
+    expect(mocks.deleteCustomFunction).toHaveBeenCalledWith('', 'banking', 'custom-mortgage');
   });
 });
