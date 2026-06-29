@@ -79,13 +79,18 @@ function sortBySeverity(recs: GuardrailRecommendation[]): GuardrailRecommendatio
 
 // Append answer-driven augment entries (jurisdiction → regional rules, autonomy →
 // human-in-the-loop, sensitive data → data controls, external users → AI disclosure),
-// de-duplicated by id. Mutates `merged`.
-function applyAnswerAugments(merged: GuardrailRecommendation[], clarifyingAnswers: ClarifyingAnswers): void {
+// de-duplicated by id. Mutates `merged`. `signals` lets callers restrict which augments
+// apply (the universal baseline already covers the generic ones — see below).
+function applyAnswerAugments(
+  merged: GuardrailRecommendation[],
+  clarifyingAnswers: ClarifyingAnswers,
+  signals: typeof AUGMENT_SIGNALS = AUGMENT_SIGNALS,
+): void {
   const kb = loadKnowledgeBase();
   const seen = new Set(merged.map((r) => r.id));
   const text = normalizedAnswerText(clarifyingAnswers);
 
-  for (const { key, test } of AUGMENT_SIGNALS) {
+  for (const { key, test } of signals) {
     if (!test(text)) continue;
     for (const rec of entryToRecommendations(kb[key])) {
       if (!seen.has(rec.id)) {
@@ -95,6 +100,14 @@ function applyAnswerAugments(merged: GuardrailRecommendation[], clarifyingAnswer
     }
   }
 }
+
+// The universal baseline already covers generic AI disclosure (universal-ai-disclosure)
+// and sensitive-data protection (universal-sensitive-data-protection), so the matching
+// generic augments would render near-duplicate cards. Skip them for the baseline path;
+// keep jurisdiction + autonomy augments, which add genuinely additive legal/operational
+// specifics (de-dup is by id, which can't catch these semantic overlaps).
+const BASELINE_SKIP_AUGMENT_KEYS = new Set(['users:external', 'data:sensitive']);
+const BASELINE_AUGMENT_SIGNALS = AUGMENT_SIGNALS.filter((s) => !BASELINE_SKIP_AUGMENT_KEYS.has(s.key));
 
 /** Knowledge-base key for the verified universal AI-safety baseline. */
 export const UNIVERSAL_BASELINE_KEY = 'universal:baseline';
@@ -131,6 +144,6 @@ export async function getRecommendations(
 export function getUniversalBaseline(clarifyingAnswers: ClarifyingAnswers): GuardrailRecommendation[] {
   const kb = loadKnowledgeBase();
   const merged = entryToRecommendations(kb[UNIVERSAL_BASELINE_KEY]);
-  applyAnswerAugments(merged, clarifyingAnswers);
+  applyAnswerAugments(merged, clarifyingAnswers, BASELINE_AUGMENT_SIGNALS);
   return sortBySeverity(merged);
 }

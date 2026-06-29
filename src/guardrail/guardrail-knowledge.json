@@ -1237,7 +1237,7 @@
         "title": "Block harmful and unsafe content",
         "description": "Filter hateful, harassing, violent, sexual, and self-harm content, and dangerous instructions, in both user inputs and model outputs.",
         "rationale": "Producing or acting on harmful content is an unacceptable failure mode regardless of domain.",
-        "regulations": ["OWASP Top 10 for LLM Applications — LLM05: Improper Output Handling", "NIST AI RMF (Measure)"]
+        "regulations": ["NIST AI RMF (Measure)", "ISO/IEC 42001"]
       }
     ],
     "recommended": [

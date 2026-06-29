@@ -72,6 +72,23 @@ describe('getUniversalBaseline', () => {
     expect(eu.map((r) => r.id)).toContain('gdpr-data-subject-rights');
   });
 
+  it('skips the generic disclosure/data augments the baseline already covers (avoids duplicate cards)', () => {
+    const recs = getUniversalBaseline({
+      'user-facing': 'customers',
+      'pii-types': ['ssn'],
+      jurisdiction: 'EU',
+    });
+    const ids = recs.map((r) => r.id);
+    // Generic augments are skipped — the baseline already covers disclosure + data protection.
+    expect(ids).not.toContain('ai-disclosure-to-users');
+    expect(ids).not.toContain('sensitive-data-controls-augment');
+    // The baseline's own generic guardrails are present…
+    expect(ids).toContain('universal-ai-disclosure');
+    expect(ids).toContain('universal-sensitive-data-protection');
+    // …and jurisdiction augments (additive legal specifics) still apply.
+    expect(ids).toContain('gdpr-data-subject-rights');
+  });
+
   it('is well-formed: every guardrail carries at least one citation', () => {
     for (const r of getUniversalBaseline({})) {
       expect(r.regulations.length).toBeGreaterThan(0);
