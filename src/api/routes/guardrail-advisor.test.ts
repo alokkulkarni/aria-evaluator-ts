@@ -223,7 +223,7 @@ describe('guardrail-advisor routes', () => {
     );
   });
 
-  it('POST /sessions/:id/recommend runs the AI suggester for a custom session with no curated entry', async () => {
+  it('POST /sessions/:id/recommend returns the universal baseline (curated) + AI domain-specific for a custom session', async () => {
     mocks.prisma.guardrailAdvisorSession.findUnique.mockResolvedValueOnce({
       id: 'sess-custom',
       domain: 'custom-education',
@@ -249,9 +249,14 @@ describe('guardrail-advisor routes', () => {
     expect(res.status).toBe(200);
     expect(mocks.suggestGuardrails).toHaveBeenCalled();
     const callArgs = mocks.suggestGuardrails.mock.calls[0]!;
-    expect(callArgs[3]).toEqual([]); // curated set is empty for a custom entry
+    // existing = the verified universal baseline (non-empty), in comprehensive mode.
+    expect((callArgs[3] as { id: string }[]).map((r) => r.id)).toContain('universal-prompt-injection-resistance');
     expect(callArgs[4]).toEqual(expect.objectContaining({ subFunctionDescription: 'AI maths tutor' }));
-    expect((res.body.recommendations as { id: string }[]).map((r) => r.id)).toContain('ai-no-medical-advice');
+    expect(callArgs[5]).toEqual({ comprehensive: true });
+    const recs = res.body.recommendations as { id: string; source: string }[];
+    // Verified universal baseline is curated; the domain-specific suggestion is ai-suggested.
+    expect(recs.find((r) => r.id === 'universal-prompt-injection-resistance')?.source).toBe('curated');
+    expect(recs.find((r) => r.id === 'ai-no-medical-advice')?.source).toBe('ai-suggested');
   });
 
   it('POST /sessions/:id/recommend does NOT run the suggester for an unknown, non-custom sub-function', async () => {

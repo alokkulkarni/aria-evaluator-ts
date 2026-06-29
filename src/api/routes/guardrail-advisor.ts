@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 
 import { prisma } from '../../db/client.js';
 import { loadDomainTaxonomy } from '../../guardrail/data.js';
-import { getRecommendations } from '../../guardrail/engine.js';
+import { getRecommendations, getUniversalBaseline } from '../../guardrail/engine.js';
 import { generateQuestions } from '../../guardrail/clarifier.js';
 import { suggestGuardrails } from '../../guardrail/suggester.js';
 import { verifyCitations } from '../../guardrail/citation-verifier.js';
@@ -150,10 +150,13 @@ guardrailAdvisorRouter.post('/sessions/:id/recommend', requireAuth, async (req, 
       return;
     }
 
-    // Curated, deterministic core (always present for taxonomy entries) + LLM-suggested
-    // expansion (fails closed to [] — never blocks the recommend response). A custom
-    // domain/function has no curated entry, so the suggester is its ONLY source — run it
-    // even when curated is empty, grounded by the session's free-text descriptions.
+    // Hybrid recommender: a verified curated core + an LLM-suggested expansion (which
+    // fails closed to [] — never blocks the recommend response).
+    //   • Taxonomy entry → curated core is its domain-specific knowledge-base set.
+    //   • Custom (user-defined) entry → no domain-specific set, so the curated core is
+    //     the verified UNIVERSAL baseline (applies to any agent), and the suggester runs
+    //     in "comprehensive" mode to generate the domain-specific guardrails on top
+    //     (grounded by the session's free-text description, de-duped against the baseline).
     const context: GuardrailContext = {
       domainLabel: session.domainLabel ?? undefined,
       domainDescription: session.domainDescription ?? undefined,
@@ -161,14 +164,14 @@ guardrailAdvisorRouter.post('/sessions/:id/recommend', requireAuth, async (req, 
       subFunctionDescription: session.subFunctionDescription ?? undefined,
     };
     const isCustom = Boolean(session.subFunctionDescription || session.domainDescription);
-    // A custom session is driven entirely by its description — skip the curated lookup so a
-    // user-chosen id that happens to collide with a curated KB key can't inject unrelated
-    // recs. (For a genuinely custom domain:subFunction there's no entry anyway, so this is a
-    // no-op on the happy path.) The suggester then always runs in its from-scratch mode.
-    const curated = isCustom ? [] : await getRecommendations(session.domain, session.subFunction, answers);
+    const curated = isCustom
+      ? getUniversalBaseline(answers)
+      : await getRecommendations(session.domain, session.subFunction, answers);
     const suggested =
       curated.length > 0 || isCustom
-        ? await suggestGuardrails(session.domain, session.subFunction, answers, curated, context)
+        ? await suggestGuardrails(session.domain, session.subFunction, answers, curated, context, {
+            comprehensive: isCustom,
+          })
         : [];
     const recommendations = [...curated, ...suggested];
 

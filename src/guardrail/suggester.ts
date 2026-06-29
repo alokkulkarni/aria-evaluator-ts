@@ -192,20 +192,25 @@ export async function suggestGuardrails(
   answers: ClarifyingAnswers,
   existing: GuardrailRecommendation[],
   context?: GuardrailContext,
+  opts?: { comprehensive?: boolean },
 ): Promise<GuardrailRecommendation[]> {
   if (!suggestionsEnabled()) return [];
-  const fromScratch = existing.length === 0;
-  const max = fromScratch ? MAX_FROM_SCRATCH : MAX_SUGGESTIONS;
-  // From-scratch generates the whole set (up to 8 detailed guardrails) and the parser
+  // "Comprehensive" mode generates the full domain-specific set (used for custom
+  // domains, where this is the main source) rather than a few additions on top of a
+  // curated core. Defaults to true when there's no `existing` set to expand on. The
+  // `existing` set is still used for de-duplication in either mode.
+  const comprehensive = opts?.comprehensive ?? existing.length === 0;
+  const max = comprehensive ? MAX_FROM_SCRATCH : MAX_SUGGESTIONS;
+  // Comprehensive generates the whole set (up to 8 detailed guardrails) and the parser
   // is all-or-nothing — a truncated JSON array parses to [] and the user gets nothing.
   // Give it headroom; the expansion path stays lean.
-  const maxTokens = fromScratch ? 2400 : 1200;
+  const maxTokens = comprehensive ? 2400 : 1200;
   try {
     const provider = new BedrockJudgeProvider();
     const resp = await withTimeout(
       provider.complete({
         modelId: SUGGESTER_MODEL_ID,
-        systemPrompt: fromScratch ? FROM_SCRATCH_SYSTEM_PROMPT : ADDITIONAL_SYSTEM_PROMPT,
+        systemPrompt: comprehensive ? FROM_SCRATCH_SYSTEM_PROMPT : ADDITIONAL_SYSTEM_PROMPT,
         userPrompt: buildUserPrompt(domain, subFunction, answers, existing, context),
         temperature: 0.3,
         maxTokens,

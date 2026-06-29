@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getRecommendations } from './engine.js';
+import { getRecommendations, getUniversalBaseline } from './engine.js';
 import type { GuardrailSeverity } from './types.js';
 
 const SEVERITY_RANK: Record<GuardrailSeverity, number> = {
@@ -49,6 +49,33 @@ describe('getRecommendations', () => {
   it('returns an empty array for an unknown domain:subFunction', async () => {
     const recs = await getRecommendations('unknown', 'nope', {});
     expect(recs).toEqual([]);
+  });
+});
+
+describe('getUniversalBaseline', () => {
+  it('returns a non-empty, verified (curated) set with a REQUIRED tier, sorted by severity', () => {
+    const recs = getUniversalBaseline({});
+
+    expect(recs.length).toBeGreaterThan(0);
+    expect(recs.every((r) => r.source === 'curated')).toBe(true);
+    expect(recs.some((r) => r.severity === 'REQUIRED')).toBe(true);
+    expect(recs.map((r) => r.id)).toContain('universal-prompt-injection-resistance');
+    for (let i = 0; i < recs.length - 1; i++) {
+      expect(SEVERITY_RANK[recs[i]!.severity]).toBeLessThanOrEqual(SEVERITY_RANK[recs[i + 1]!.severity]);
+    }
+  });
+
+  it('applies answer-driven augments (GDPR for EU) on top of the baseline', () => {
+    const base = getUniversalBaseline({});
+    const eu = getUniversalBaseline({ jurisdiction: 'EU' });
+    expect(eu.length).toBeGreaterThan(base.length);
+    expect(eu.map((r) => r.id)).toContain('gdpr-data-subject-rights');
+  });
+
+  it('is well-formed: every guardrail carries at least one citation', () => {
+    for (const r of getUniversalBaseline({})) {
+      expect(r.regulations.length).toBeGreaterThan(0);
+    }
   });
 });
 

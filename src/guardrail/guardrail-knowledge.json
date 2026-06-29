@@ -1204,5 +1204,75 @@
         "regulations": ["GDPR Art. 13-14", "GDPR Art. 22"]
       }
     ]
+  },
+  "universal:baseline": {
+    "required": [
+      {
+        "id": "universal-prompt-injection-resistance",
+        "type": "PROMPT_INJECTION",
+        "title": "Resist prompt injection and instruction override",
+        "description": "Reject inputs that try to override, leak, or alter the agent's system instructions, role, or safety rules — including indirect injection via retrieved or user-supplied content.",
+        "rationale": "Prompt injection is the top LLM application risk; if it succeeds, every other guardrail can be bypassed.",
+        "regulations": ["OWASP Top 10 for LLM Applications — LLM01: Prompt Injection", "NIST AI RMF (Manage)"]
+      },
+      {
+        "id": "universal-sensitive-data-protection",
+        "type": "PII_FILTER",
+        "title": "Minimise and protect personal data",
+        "description": "Collect only the personal data the task needs, mask sensitive identifiers in responses, and never echo full credentials, payment details, or government IDs.",
+        "rationale": "Data minimisation and protection of personal data is a baseline obligation for any agent that may handle user information.",
+        "regulations": ["OWASP Top 10 for LLM Applications — LLM02: Sensitive Information Disclosure", "ISO/IEC 27701"]
+      },
+      {
+        "id": "universal-scope-limitation",
+        "type": "SCOPE_LIMITATION",
+        "title": "Stay within the agent's defined scope",
+        "description": "Refuse or safely deflect requests outside the agent's stated purpose instead of improvising answers in unrelated areas.",
+        "rationale": "Scope creep is the most common cause of unsafe or non-compliant answers; bounding the agent contains its risk surface.",
+        "regulations": ["NIST AI RMF (Govern)", "ISO/IEC 42001"]
+      },
+      {
+        "id": "universal-harmful-content-filter",
+        "type": "CONTENT_FILTER",
+        "title": "Block harmful and unsafe content",
+        "description": "Filter hateful, harassing, violent, sexual, and self-harm content, and dangerous instructions, in both user inputs and model outputs.",
+        "rationale": "Producing or acting on harmful content is an unacceptable failure mode regardless of domain.",
+        "regulations": ["OWASP Top 10 for LLM Applications — LLM05: Improper Output Handling", "NIST AI RMF (Measure)"]
+      }
+    ],
+    "recommended": [
+      {
+        "id": "universal-hallucination-controls",
+        "type": "ACCURACY_AND_HALLUCINATION",
+        "title": "Ground answers and flag uncertainty",
+        "description": "Ground factual claims in retrieved sources where possible, avoid fabricating specifics (names, figures, citations), and express uncertainty rather than guessing.",
+        "rationale": "Over-reliance on confident but wrong output causes real-world harm; grounding and calibrated uncertainty reduce it.",
+        "regulations": ["OWASP Top 10 for LLM Applications — LLM09: Misinformation", "NIST AI RMF (Measure)"]
+      },
+      {
+        "id": "universal-human-escalation",
+        "type": "HUMAN_OVERSIGHT",
+        "title": "Provide a human escalation path",
+        "description": "Hand off to a human for high-stakes, ambiguous, or explicitly requested cases, and keep the escalation route discoverable.",
+        "rationale": "A reliable human fallback is the safety net for situations the agent cannot or should not handle alone.",
+        "regulations": ["NIST AI RMF (Govern)", "ISO/IEC 42001"]
+      },
+      {
+        "id": "universal-ai-disclosure",
+        "type": "DISCLOSURE",
+        "title": "Disclose that responses are AI-generated",
+        "description": "Tell users they are interacting with an automated agent and avoid implying human authorship.",
+        "rationale": "Transparency about automated interaction is an emerging baseline expectation and a trust requirement.",
+        "regulations": ["OECD AI Principles (Transparency)", "ISO/IEC 42001"]
+      },
+      {
+        "id": "universal-audit-logging",
+        "type": "AUDIT_AND_LOGGING",
+        "title": "Log interactions for accountability",
+        "description": "Retain an auditable record of prompts, decisions, and escalations (with appropriate data-protection controls) to support review and incident response.",
+        "rationale": "Traceability is needed to investigate failures, demonstrate compliance, and improve the agent over time.",
+        "regulations": ["NIST AI RMF (Manage)", "ISO/IEC 42001"]
+      }
+    ]
   }
 }

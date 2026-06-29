@@ -69,6 +69,36 @@ const AUGMENT_SIGNALS: { key: string; test: (text: string) => boolean }[] = [
   { key: 'users:external', test: (t) => /retail|individual|customer|consumer|\bpublic\b|end user|\bclient|policyholder|patient|applicant|candidate|user base/.test(t) },
 ];
 
+// Stable sort REQUIRED → RECOMMENDED → OPTIONAL (preserving input order within a severity).
+function sortBySeverity(recs: GuardrailRecommendation[]): GuardrailRecommendation[] {
+  return recs
+    .map((rec, index) => ({ rec, index }))
+    .sort((a, b) => SEVERITY_RANK[a.rec.severity] - SEVERITY_RANK[b.rec.severity] || a.index - b.index)
+    .map(({ rec }) => rec);
+}
+
+// Append answer-driven augment entries (jurisdiction → regional rules, autonomy →
+// human-in-the-loop, sensitive data → data controls, external users → AI disclosure),
+// de-duplicated by id. Mutates `merged`.
+function applyAnswerAugments(merged: GuardrailRecommendation[], clarifyingAnswers: ClarifyingAnswers): void {
+  const kb = loadKnowledgeBase();
+  const seen = new Set(merged.map((r) => r.id));
+  const text = normalizedAnswerText(clarifyingAnswers);
+
+  for (const { key, test } of AUGMENT_SIGNALS) {
+    if (!test(text)) continue;
+    for (const rec of entryToRecommendations(kb[key])) {
+      if (!seen.has(rec.id)) {
+        merged.push(rec);
+        seen.add(rec.id);
+      }
+    }
+  }
+}
+
+/** Knowledge-base key for the verified universal AI-safety baseline. */
+export const UNIVERSAL_BASELINE_KEY = 'universal:baseline';
+
 /**
  * Return guardrail recommendations for a domain + sub-function. The curated base
  * entry always applies; clarifying answers add answer-specific guardrails
@@ -87,21 +117,20 @@ export async function getRecommendations(
   // Only augment a recognised sub-function (don't synthesise recs from answers alone).
   if (merged.length === 0) return merged;
 
-  const seen = new Set(merged.map((r) => r.id));
-  const text = normalizedAnswerText(clarifyingAnswers);
+  applyAnswerAugments(merged, clarifyingAnswers);
+  return sortBySeverity(merged);
+}
 
-  for (const { key, test } of AUGMENT_SIGNALS) {
-    if (!test(text)) continue;
-    for (const rec of entryToRecommendations(kb[key])) {
-      if (!seen.has(rec.id)) {
-        merged.push(rec);
-        seen.add(rec.id);
-      }
-    }
-  }
-
-  return merged
-    .map((rec, index) => ({ rec, index }))
-    .sort((a, b) => SEVERITY_RANK[a.rec.severity] - SEVERITY_RANK[b.rec.severity] || a.index - b.index)
-    .map(({ rec }) => rec);
+/**
+ * Return the verified universal AI-safety baseline — guardrails that apply to ANY
+ * agent (prompt-injection resistance, data protection, scope limits, harmful-content
+ * filtering, hallucination controls, human oversight, AI disclosure, audit logging).
+ * Used as the curated core for custom (user-defined) domains/functions, which have no
+ * domain-specific knowledge-base entry. Answer-driven augments still apply.
+ */
+export function getUniversalBaseline(clarifyingAnswers: ClarifyingAnswers): GuardrailRecommendation[] {
+  const kb = loadKnowledgeBase();
+  const merged = entryToRecommendations(kb[UNIVERSAL_BASELINE_KEY]);
+  applyAnswerAugments(merged, clarifyingAnswers);
+  return sortBySeverity(merged);
 }

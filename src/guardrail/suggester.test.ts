@@ -148,4 +148,14 @@ describe('suggestGuardrails — from-scratch (custom domain) mode', () => {
     const systemPrompt = mocks.complete.mock.calls[0]![0].systemPrompt as string;
     expect(systemPrompt).toMatch(/do NOT restate/i);
   });
+
+  it('comprehensive: true generates the full set (up to 8) even with a non-empty existing set, and de-dups', async () => {
+    mocks.complete.mockResolvedValue({ text: EIGHT_UNIQUE, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } });
+    // existing = a verified baseline; comprehensive mode still generates domain-specific
+    // guardrails on top (used for custom domains), de-duped against the baseline.
+    const out = await suggestGuardrails('custom-x', 'custom-y', {}, CURATED, undefined, { comprehensive: true });
+    expect(out).toHaveLength(8);
+    const systemPrompt = mocks.complete.mock.calls[0]![0].systemPrompt as string;
+    expect(systemPrompt).toMatch(/comprehensive/i);
+  });
 });
