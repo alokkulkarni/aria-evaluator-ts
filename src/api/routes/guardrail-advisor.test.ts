@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   generateQuestions: vi.fn(),
   suggestGuardrails: vi.fn(),
+  verifyCitations: vi.fn(),
   formatGuardrailForPlatform: vi.fn(),
   recordAuditEventSafe: vi.fn(),
   prisma: {
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../guardrail/clarifier.js', () => ({ generateQuestions: mocks.generateQuestions }));
 vi.mock('../../guardrail/suggester.js', () => ({ suggestGuardrails: mocks.suggestGuardrails }));
+vi.mock('../../guardrail/citation-verifier.js', () => ({ verifyCitations: mocks.verifyCitations }));
 vi.mock('../../rag/formatter.js', () => ({ formatGuardrailForPlatform: mocks.formatGuardrailForPlatform }));
 vi.mock('../audit-log.js', () => ({
   recordAuditEventSafe: mocks.recordAuditEventSafe,
@@ -65,6 +67,9 @@ beforeEach(() => {
     { id: 'notes', text: 'Notes?', type: 'text' },
   ]);
   mocks.suggestGuardrails.mockResolvedValue([]); // default: no AI suggestions (keeps curated assertions stable)
+  mocks.verifyCitations.mockResolvedValue([
+    { citation: 'FCA COBS 9.2R', status: 'verified', sourceUrl: 'https://handbook.fca.org.uk/handbook/COBS/9/2', note: 'ok' },
+  ]);
   mocks.prisma.guardrailAdvisorSession.create.mockResolvedValue({ id: 'sess-1', domain: 'banking', subFunction: 'customer-support' });
   mocks.prisma.guardrailAdvisorSession.findUnique.mockResolvedValue({ id: 'sess-1', domain: 'banking', subFunction: 'customer-support' });
   mocks.prisma.guardrailAdvisorSession.update.mockResolvedValue({ id: 'sess-1' });
@@ -197,6 +202,21 @@ describe('guardrail-advisor routes', () => {
     const res = await request(makeApp())
       .post('/api/guardrail-advisor/sessions/sess-1/format')
       .send({ platform: 'not-a-platform', guardrailIds: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /verify returns per-citation verdicts', async () => {
+    const res = await request(makeApp())
+      .post('/api/guardrail-advisor/verify')
+      .send({ citations: ['FCA COBS 9.2R'], context: 'banking/wealth-advisory' });
+    expect(res.status).toBe(200);
+    expect(res.body.results[0].status).toBe('verified');
+    expect(res.body.results[0].sourceUrl).toContain('handbook.fca.org.uk');
+    expect(mocks.verifyCitations).toHaveBeenCalledWith(['FCA COBS 9.2R'], 'banking/wealth-advisory');
+  });
+
+  it('POST /verify with no citations returns 400', async () => {
+    const res = await request(makeApp()).post('/api/guardrail-advisor/verify').send({ citations: [] });
     expect(res.status).toBe(400);
   });
 

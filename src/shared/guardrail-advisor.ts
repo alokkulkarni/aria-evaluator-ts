@@ -16,6 +16,13 @@ export const formatSchema = z.object({
   guardrailIds: z.array(z.string()).default([]),
 });
 
+export const verifyCitationsSchema = z.object({
+  citations: z.array(z.string().min(1)).min(1).max(12),
+  // Optional context (e.g. "banking / wealth-advisory — <guardrail title>") to aid verification.
+  context: z.string().max(500).optional(),
+});
+
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 export type RecommendInput = z.infer<typeof recommendSchema>;
 export type FormatInput = z.infer<typeof formatSchema>;
+export type VerifyCitationsInput = z.infer<typeof verifyCitationsSchema>;
