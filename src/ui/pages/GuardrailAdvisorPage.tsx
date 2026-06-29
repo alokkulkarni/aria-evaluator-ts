@@ -816,6 +816,16 @@ export function GuardrailAdvisorPage() {
             </div>
           )}
 
+          {recommendations.length === 0 && (
+            <div className="card border-dashed text-center">
+              <p className="text-sm font-semibold text-slate-700">No recommendations were generated.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                For a custom domain the recommendations come from the AI suggester, which can return
+                nothing if it timed out or is disabled. Go back and try again, or refine the description.
+              </p>
+            </div>
+          )}
+
           <div className="flex justify-between">
             <button type="button" className="btn-secondary px-4 py-2 text-sm" onClick={() => setStep(2)}>
               Back
