@@ -86,6 +86,8 @@ const FROM_SCRATCH_SYSTEM_PROMPT = [
   'jurisdiction-specific obligations where relevant.',
   'Respond with ONLY a JSON array (no prose, no markdown fences). Each element:',
   '{ "type": string, "title": string, "description": string, "rationale": string, "regulations": string[], "severity": "REQUIRED"|"RECOMMENDED"|"OPTIONAL" }',
+  'Assign a deliberate severity spread: REQUIRED for legal/safety-critical controls, RECOMMENDED for',
+  'important best practices, OPTIONAL for nice-to-haves — do not mark everything the same.',
   `Return at most ${MAX_FROM_SCRATCH} of the most relevant, non-duplicative guardrails.`,
   'CITATIONS: only include a regulation in "regulations" if you are confident it genuinely applies.',
   'If unsure, leave "regulations" empty rather than guessing — these are flagged to the user as unverified.',

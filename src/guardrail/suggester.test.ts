@@ -127,6 +127,8 @@ describe('suggestGuardrails — from-scratch (custom domain) mode', () => {
     const systemPrompt = mocks.complete.mock.calls[0]![0].systemPrompt as string;
     expect(systemPrompt).not.toMatch(/do NOT restate/i);
     expect(systemPrompt).toMatch(/comprehensive/i);
+    // Asks for a deliberate severity spread so the UI's severity grouping is meaningful.
+    expect(systemPrompt).toMatch(/severity spread/i);
   });
 
   it('threads the custom domain/function description into the prompt', async () => {
