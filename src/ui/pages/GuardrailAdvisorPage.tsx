@@ -167,9 +167,10 @@ export function GuardrailAdvisorPage() {
     [recommendations],
   );
 
-  // AI-suggested guardrails grouped by severity too — for a custom domain this set is
-  // the whole baseline, so ranking it REQUIRED → RECOMMENDED → OPTIONAL gives the same
-  // hybrid layout as curated, while each card keeps its "verify citations" marker.
+  // AI-suggested guardrails grouped by severity too — for a custom domain these are the
+  // domain-specific expansion on top of the verified universal baseline. Ranking them
+  // REQUIRED → RECOMMENDED → OPTIONAL matches the curated layout, while each card keeps
+  // its "verify citations" marker (never relabelled as curated).
   const aiGrouped = useMemo(
     () =>
       SEVERITY_ORDER.map((severity) => ({
@@ -763,6 +764,13 @@ export function GuardrailAdvisorPage() {
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Recommended guardrails</h3>
               <p className="text-sm text-slate-500">{recommendations.length} guardrails, ranked by severity.</p>
+              {customSession && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Custom domain: a{' '}
+                  <span className="font-medium text-slate-700">verified universal AI-safety baseline</span> plus
+                  AI-generated, domain-specific suggestions below.
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <label className="text-sm text-slate-600" htmlFor="platform">
@@ -835,9 +843,9 @@ export function GuardrailAdvisorPage() {
                 </div>
                 {customSession && (
                   <p className="rounded-lg bg-violet-50/60 px-3 py-2 text-xs leading-5 text-violet-900/80 ring-1 ring-violet-200/60">
-                    <span className="font-semibold">Custom domain.</span> It isn't in our curated catalogue, so the
-                    whole baseline below is AI-generated and ranked by severity. Treat the citations as unverified
-                    until you check them.
+                    <span className="font-semibold">Domain-specific suggestions.</span> Generated from your
+                    description to complement the verified baseline above. Treat the citations as unverified until
+                    you check them.
                   </p>
                 )}
               </div>
