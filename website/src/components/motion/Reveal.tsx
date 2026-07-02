@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, type ElementType, type ReactNode } from 'react'
+import { useRef, type ElementType, type ReactNode, type Ref } from 'react'
 
 import { gsap, prefersReducedMotion, useGSAP } from './gsap'
 import { cn } from '@/lib/utils'
@@ -29,9 +29,13 @@ export function Reveal({
   delay = 0,
   duration = 0.9,
   stagger,
-  as: Tag = 'div',
+  as = 'div',
 }: RevealProps) {
   const ref = useRef<HTMLElement>(null)
+  // @react-three/fiber augments React's JSX types, which collapses the props
+  // of a JSX tag typed as the full ElementType union to `never`. Type-check
+  // against a single tag; `as` still picks the rendered element at runtime.
+  const Tag = as as 'div'
 
   useGSAP(
     () => {
@@ -62,7 +66,7 @@ export function Reveal({
   )
 
   return (
-    <Tag ref={ref} className={cn(className)}>
+    <Tag ref={ref as Ref<HTMLDivElement>} className={cn(className)}>
       {children}
     </Tag>
   )
