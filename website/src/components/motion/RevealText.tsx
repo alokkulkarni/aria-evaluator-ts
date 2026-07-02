@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, type ElementType } from 'react'
+import { useRef, type ElementType, type Ref } from 'react'
 
 import { gsap, prefersReducedMotion, useGSAP } from './gsap'
 import { cn } from '@/lib/utils'
@@ -21,12 +21,16 @@ interface RevealTextProps {
 export function RevealText({
   text,
   className,
-  as: Tag = 'h2',
+  as = 'h2',
   stagger = 0.055,
   gradient = false,
 }: RevealTextProps) {
   const ref = useRef<HTMLElement>(null)
   const words = text.split(' ')
+  // @react-three/fiber augments React's JSX types, which collapses the props
+  // of a JSX tag typed as the full ElementType union to `never`. Type-check
+  // against a single tag; `as` still picks the rendered element at runtime.
+  const Tag = as as 'h2'
 
   useGSAP(
     () => {
@@ -46,7 +50,7 @@ export function RevealText({
   )
 
   return (
-    <Tag ref={ref} className={cn(className)}>
+    <Tag ref={ref as Ref<HTMLHeadingElement>} className={cn(className)}>
       {words.map((word, i) => (
         <span
           key={i}

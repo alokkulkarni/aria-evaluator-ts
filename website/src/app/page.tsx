@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight, BarChart3, Bug, Github, Globe, MessageSquare, Scale, ShieldCheck, Star, Terminal } from 'lucide-react'
 
+import { DimensionsShowcase } from '@/components/marketing/DimensionsShowcase'
 import { Features } from '@/components/marketing/Features'
 import { FeatureCard } from '@/components/marketing/FeatureCard'
 import { CtaBand, Section, SectionHeading, StatCard } from '@/components/marketing/ui'
@@ -36,14 +37,6 @@ const quickFeatures = [
 ]
 
 const standards = ['OWASP LLM Top 10', 'NIST AI RMF', 'MITRE ATLAS', 'EU AI Act', 'FCA Consumer Duty', 'ISO 27001', 'SOC 2', 'HIPAA', 'GDPR', 'PCI DSS']
-
-const dimensionGroups = [
-  { category: 'Response Quality', count: 5, tone: 'bg-cyan-400', glow: 'shadow-[0_0_12px_rgba(34,211,238,0.8)]', dimensions: ['Correctness', 'Faithfulness', 'Helpfulness', 'Relevance', 'Conciseness'] },
-  { category: 'Task Completion', count: 2, tone: 'bg-blue-400', glow: 'shadow-[0_0_12px_rgba(59,130,246,0.8)]', dimensions: ['Goal Success', 'Task Completion Rate'] },
-  { category: 'Safety & Security', count: 3, tone: 'bg-rose-400', glow: 'shadow-[0_0_12px_rgba(244,63,94,0.8)]', dimensions: ['Guardrail Compliance', 'Prompt Injection Resistance', 'Bias & Fairness'] },
-  { category: 'Customer Experience', count: 2, tone: 'bg-emerald-400', glow: 'shadow-[0_0_12px_rgba(52,211,153,0.8)]', dimensions: ['Tone & Empathy', 'Clarity'] },
-  { category: 'Escalation & Vulnerability', count: 3, tone: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.8)]', dimensions: ['Escalation Appropriateness', 'Handover Quality', 'Vulnerability Detection'] },
-]
 
 const supportedPlatforms = [
   { name: 'Amazon Connect', detail: 'Voice & chat flows' },
@@ -188,9 +181,12 @@ export default function HomePage() {
           <Reveal delay={0.3} className="hidden lg:block">
             <div className="animate-float-y">
               <TiltCard max={6} className="rounded-[2rem]">
-                <div className="ring-conic glass-strong relative overflow-hidden rounded-[2rem] p-5">
-                  <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-                    <div className="flex items-center justify-between gap-3">
+                {/* Glass/ring chrome lives on a flat background layer: backdrop-blur
+                    and overflow-hidden would otherwise flatten the 3D depth below. */}
+                <div aria-hidden className="ring-conic glass-strong absolute inset-0 overflow-hidden rounded-[2rem]" />
+                <div className="relative p-5 [transform-style:preserve-3d]">
+                  <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5 [transform-style:preserve-3d]">
+                    <div className="flex items-center justify-between gap-3 [transform:translateZ(26px)]">
                       <div>
                         <p className="eyebrow">Observability cockpit</p>
                         <h2 className="mt-2 font-display text-2xl font-semibold text-white">Workspace health</h2>
@@ -200,7 +196,7 @@ export default function HomePage() {
                       </span>
                     </div>
 
-                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    <div className="mt-6 grid gap-3 sm:grid-cols-3 [transform:translateZ(36px)]">
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                         <p className="text-xs uppercase tracking-wide text-slate-400">Active runs</p>
                         <CountUp value={742} separator className="mt-2 block font-display text-2xl font-semibold text-white" />
@@ -215,7 +211,7 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    <div className="mt-6 space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <div className="mt-6 space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4 [transform:translateZ(20px)]">
                       <div className="flex items-center justify-between text-sm text-slate-200">
                         <span>Evaluation queue</span>
                         <span>86% processed</span>
@@ -391,91 +387,93 @@ export default function HomePage() {
 
         <div className="mt-12 grid gap-6 lg:grid-cols-2">
           <Reveal className="h-full">
-            <article className="glass relative h-full overflow-hidden rounded-[1.75rem]">
-              <div className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-                <span className="ml-3 text-xs text-slate-500">release-readiness.aria</span>
-              </div>
-              <div className="space-y-4 p-5">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="eyebrow">Executive summary</p>
-                      <h3 className="mt-1 font-display text-base font-semibold text-white">Release readiness snapshot</h3>
-                    </div>
-                    <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-300/30">
-                      Ship candidate
-                    </span>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {showcaseRuns.map((item) => (
-                      <div key={item.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                        <p className="text-[10px] uppercase tracking-wide text-slate-500">{item.label}</p>
-                        <div className="mt-2 flex items-center gap-1.5">
-                          <span className={`h-2 w-2 rounded-full ${item.tone}`} />
-                          <CountUp value={item.value} suffix={item.suffix} className="font-display text-lg font-semibold text-white" />
-                        </div>
+            <TiltCard max={4} className="h-full rounded-[1.75rem]">
+              <article className="glass relative h-full overflow-hidden rounded-[1.75rem]">
+                <div className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+                  <span className="ml-3 text-xs text-slate-500">release-readiness.aria</span>
+                </div>
+                <div className="space-y-4 p-5">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="eyebrow">Executive summary</p>
+                        <h3 className="mt-1 font-display text-base font-semibold text-white">Release readiness snapshot</h3>
                       </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>Scenario pack completeness</span>
-                      <span className="font-semibold text-white">43 / 45 critical tests</span>
+                      <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-300/30">
+                        Ship candidate
+                      </span>
                     </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-1.5 w-[95%] rounded-full bg-gradient-to-r from-cyan-400 to-blue-400" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <p className="eyebrow">Judge comparison</p>
-                    <h3 className="mt-1 text-sm font-semibold text-white">Consensus by scenario type</h3>
-                    <div className="mt-3 space-y-2.5">
-                      {[
-                        { label: 'Functional', score: 94, color: 'from-emerald-400 to-emerald-300' },
-                        { label: 'Adversarial', score: 88, color: 'from-cyan-400 to-blue-400' },
-                        { label: 'Escalation', score: 91, color: 'from-blue-400 to-indigo-400' },
-                      ].map((item) => (
-                        <div key={item.label}>
-                          <div className="mb-1 flex items-center justify-between text-xs">
-                            <span className="text-slate-400">{item.label}</span>
-                            <span className="font-semibold text-white">{item.score}%</span>
-                          </div>
-                          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                            <div className={`h-1.5 rounded-full bg-gradient-to-r ${item.color}`} style={{ width: `${item.score}%` }} />
+  
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      {showcaseRuns.map((item) => (
+                        <div key={item.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500">{item.label}</p>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className={`h-2 w-2 rounded-full ${item.tone}`} />
+                            <CountUp value={item.value} suffix={item.suffix} className="font-display text-lg font-semibold text-white" />
                           </div>
                         </div>
                       ))}
                     </div>
+  
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>Scenario pack completeness</span>
+                        <span className="font-semibold text-white">43 / 45 critical tests</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-1.5 w-[95%] rounded-full bg-gradient-to-r from-cyan-400 to-blue-400" />
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <p className="eyebrow">Region controls</p>
-                    <h3 className="mt-1 text-sm font-semibold text-white">Tenant isolation</h3>
-                    <div className="mt-3 space-y-2">
-                      {showcaseRegions.map((region) => (
-                        <div key={region.code} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
-                          <div>
-                            <p className="text-xs font-semibold text-white">{region.name}</p>
-                            <p className="text-[10px] text-slate-500">{region.code}</p>
+  
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="eyebrow">Judge comparison</p>
+                      <h3 className="mt-1 text-sm font-semibold text-white">Consensus by scenario type</h3>
+                      <div className="mt-3 space-y-2.5">
+                        {[
+                          { label: 'Functional', score: 94, color: 'from-emerald-400 to-emerald-300' },
+                          { label: 'Adversarial', score: 88, color: 'from-cyan-400 to-blue-400' },
+                          { label: 'Escalation', score: 91, color: 'from-blue-400 to-indigo-400' },
+                        ].map((item) => (
+                          <div key={item.label}>
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                              <span className="text-slate-400">{item.label}</span>
+                              <span className="font-semibold text-white">{item.score}%</span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                              <div className={`h-1.5 rounded-full bg-gradient-to-r ${item.color}`} style={{ width: `${item.score}%` }} />
+                            </div>
                           </div>
-                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-200">
-                            {region.status}
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                    </div>
+  
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="eyebrow">Region controls</p>
+                      <h3 className="mt-1 text-sm font-semibold text-white">Tenant isolation</h3>
+                      <div className="mt-3 space-y-2">
+                        {showcaseRegions.map((region) => (
+                          <div key={region.code} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
+                            <div>
+                              <p className="text-xs font-semibold text-white">{region.name}</p>
+                              <p className="text-[10px] text-slate-500">{region.code}</p>
+                            </div>
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-200">
+                              {region.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </article>
+              </article>
+            </TiltCard>
           </Reveal>
 
           <Reveal delay={0.1} className="h-full">
@@ -510,26 +508,8 @@ export default function HomePage() {
           subtitle="A panel of independent AI judges reviews each conversation across 15 dimensions — quality, safety, compliance, and escalation. When they agree, you get a confident score; when they don't, it goes to a person to decide. Every result comes with the reasoning behind it."
         />
 
-        <Reveal stagger={0.08} className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {dimensionGroups.map((group) => (
-            <article key={group.category} className="glass group rounded-2xl p-5 transition-colors hover:border-cyan-300/30">
-              <div className="flex items-center justify-between gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${group.tone} ${group.glow}`} />
-                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-slate-200">
-                  {group.count} {group.count === 1 ? 'dimension' : 'dimensions'}
-                </span>
-              </div>
-              <h3 className="mt-4 font-display text-sm font-semibold text-white">{group.category}</h3>
-              <ul className="mt-3 space-y-2">
-                {group.dimensions.map((dimension) => (
-                  <li key={dimension} className="flex items-center gap-2 text-xs leading-5 text-slate-400">
-                    <span className="h-1 w-1 rounded-full bg-slate-600" />
-                    {dimension}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          ))}
+        <Reveal className="mt-12">
+          <DimensionsShowcase />
         </Reveal>
       </Section>
 
