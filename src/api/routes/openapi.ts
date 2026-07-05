@@ -5,6 +5,8 @@
 import { Router } from 'express';
 import yaml from 'js-yaml';
 
+import { BlockedUrlError, safeFetch } from '../../lib/url-guard.js';
+
 export const openapiRouter = Router();
 
 interface SecurityScheme {
@@ -60,13 +62,19 @@ openapiRouter.post('/parse', async (req, res) => {
   let raw: string;
   try {
     if (url) {
-      const resp = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      // safeFetch blocks SSRF: non-HTTP schemes and hosts resolving to
+      // loopback/private/link-local/metadata addresses, and re-checks redirects.
+      const resp = await safeFetch(url, { signal: AbortSignal.timeout(10_000) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching spec`);
       raw = await resp.text();
     } else {
       raw = specText!;
     }
   } catch (err) {
+    if (err instanceof BlockedUrlError) {
+      res.status(400).json({ error: `Refusing to fetch spec URL: ${err.message}` });
+      return;
+    }
     res.status(502).json({ error: `Failed to fetch spec: ${String(err)}` });
     return;
   }
@@ -115,6 +123,8 @@ function extractSpecInfo(spec: Record<string, unknown>): ParseResult {
   const rawSchemes = (components?.['securitySchemes'] ?? swaggerSecDefs ?? {}) as Record<string, unknown>;
   const securitySchemes: Record<string, SecurityScheme> = {};
   for (const [key, val] of Object.entries(rawSchemes)) {
+    // Guard against prototype-pollution via attacker-controlled spec keys.
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
     securitySchemes[key] = val as SecurityScheme;
   }
 
