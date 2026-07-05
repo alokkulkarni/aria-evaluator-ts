@@ -7,7 +7,16 @@ const MAX_PERSISTED_LOG_LINES = Math.max(0, Number.isNaN(parsedMaxPersistedLogLi
 
 const runLogLineCounts = new Map<string, number>();
 
+// Run IDs are cuids ([a-z0-9]+). Because runId flows into a filesystem path
+// (and reaches these functions from req.params on log endpoints), reject any
+// value containing path separators or traversal so the resolved path can never
+// escape runLogsDir (CodeQL js/path-injection).
+const SAFE_RUN_ID = /^[A-Za-z0-9_-]+$/;
+
 export function runLogPath(runId: string): string {
+  if (typeof runId !== 'string' || !SAFE_RUN_ID.test(runId)) {
+    throw new Error(`Invalid run id: ${JSON.stringify(runId)}`);
+  }
   return resolve(join(runLogsDir, `run-${runId}.log`));
 }
 
@@ -39,7 +48,12 @@ export function appendRunLogLine(runId: string, line: string): number {
 }
 
 export function readRunLogLines(runId: string): string[] {
-  const path = runLogPath(runId);
+  let path: string;
+  try {
+    path = runLogPath(runId);
+  } catch {
+    return []; // invalid id → no logs (never a filesystem error)
+  }
   if (!existsSync(path)) return [];
 
   const text = readFileSync(path, 'utf-8');

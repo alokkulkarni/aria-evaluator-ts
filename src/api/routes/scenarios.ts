@@ -82,16 +82,6 @@ function joinMultiDoc(preamble: string, docs: string[]): string {
   return `${sections.join('\n')}\n`;
 }
 
-function readDocFromRef(fullPath: string, docIndex: number): { docText: string; preamble: string; docs: string[] } | null {
-  if (!existsSync(fullPath)) return null;
-  const raw = readFileSync(fullPath, 'utf-8');
-  const { preamble, docs } = splitMultiDoc(raw);
-  if (docIndex < 0 || docIndex >= docs.length) return null;
-  const docText = docs[docIndex]?.trim();
-  if (!docText) return null;
-  return { docText, preamble, docs };
-}
-
 // GET /api/scenarios — list scenarios visible to the caller (DB-authoritative)
 scenariosRouter.get('/', async (_req, res) => {
   try {
@@ -345,14 +335,25 @@ scenariosRouter.post('/update-doc', async (req, res) => {
   const changedBy = getRequestAuth(req)?.username ?? null;
 
   try {
-    if (shouldWriteScenarioFiles() && existsSync(resolvedPath.fullPath)) {
-      const source = readDocFromRef(resolvedPath.fullPath, targetDocIndex);
-      if (!source) {
-        const docCount = splitMultiDoc(readFileSync(resolvedPath.fullPath, 'utf-8')).docs.length;
-        return res.status(400).json({ error: `docIndex ${targetDocIndex} out of range (file has ${docCount} docs)` });
+    if (shouldWriteScenarioFiles()) {
+      // Single read instead of existsSync()-then-write, so there is no
+      // time-of-check/time-of-use race (CodeQL js/file-system-race). A missing
+      // file is not an error here: the DB upsert below is authoritative.
+      let rawFile: string | null;
+      try {
+        rawFile = readFileSync(resolvedPath.fullPath, 'utf-8');
+      } catch (readErr) {
+        if ((readErr as NodeJS.ErrnoException).code === 'ENOENT') rawFile = null;
+        else throw readErr;
       }
-      source.docs[targetDocIndex] = normalized.doc.yamlContent;
-      writeFileSync(resolvedPath.fullPath, joinMultiDoc(source.preamble, source.docs), 'utf-8');
+      if (rawFile !== null) {
+        const { preamble, docs } = splitMultiDoc(rawFile);
+        if (targetDocIndex >= docs.length) {
+          return res.status(400).json({ error: `docIndex ${targetDocIndex} out of range (file has ${docs.length} docs)` });
+        }
+        docs[targetDocIndex] = normalized.doc.yamlContent;
+        writeFileSync(resolvedPath.fullPath, joinMultiDoc(preamble, docs), 'utf-8');
+      }
     }
 
     await upsertScenarioState(normalized.doc, sourceRef, 'edit', changedBy);
