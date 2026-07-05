@@ -10,11 +10,16 @@ type PlatformId = 'bedrock' | 'langchain' | 'copilot' | 'foundry' | 'strands';
 interface SubFunction {
   id: string;
   label: string;
+  // User-defined (custom) function: carries a free-text description threaded to the LLM.
+  custom?: boolean;
+  description?: string;
 }
 interface Domain {
   id: string;
   label: string;
   subFunctions: SubFunction[];
+  custom?: boolean;
+  description?: string;
 }
 interface QuestionOption {
   value: string;
@@ -88,6 +93,16 @@ export function GuardrailAdvisorPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [domainId, setDomainId] = useState<string | null>(null);
   const [subFunctionId, setSubFunctionId] = useState<string | null>(null);
+  // User-defined (custom) entries, held client-side for this session only. Custom
+  // functions are keyed by the domain they belong to (curated or custom).
+  const [customDomains, setCustomDomains] = useState<Domain[]>([]);
+  const [customFunctions, setCustomFunctions] = useState<Record<string, SubFunction[]>>({});
+  const [showDomainForm, setShowDomainForm] = useState(false);
+  const [domainDraftLabel, setDomainDraftLabel] = useState('');
+  const [domainDraftDesc, setDomainDraftDesc] = useState('');
+  const [showFunctionForm, setShowFunctionForm] = useState(false);
+  const [functionDraftLabel, setFunctionDraftLabel] = useState('');
+  const [functionDraftDesc, setFunctionDraftDesc] = useState('');
 
   // Step 2
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -97,6 +112,9 @@ export function GuardrailAdvisorPage() {
   // Step 3
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [platform, setPlatform] = useState<PlatformId>('bedrock');
+  // True when the chosen domain or function was user-defined — there's no curated
+  // baseline, so the whole recommendation set is AI-generated (flagged in the UI).
+  const [customSession, setCustomSession] = useState(false);
 
   // Step 4
   const [configs, setConfigs] = useState<FormattedConfig[]>([]);
@@ -115,9 +133,22 @@ export function GuardrailAdvisorPage() {
       .catch((err) => setError(errorMessage(err)));
   }, []);
 
+  // Curated taxonomy + locally-added custom domains.
+  const allDomains = useMemo(() => [...domains, ...customDomains], [domains, customDomains]);
+
   const selectedDomain = useMemo(
-    () => domains.find((d) => d.id === domainId) ?? null,
-    [domains, domainId],
+    () => allDomains.find((d) => d.id === domainId) ?? null,
+    [allDomains, domainId],
+  );
+
+  // A domain's functions = its (curated) sub-functions plus any custom ones added to it.
+  const functionCount = useCallback(
+    (d: Domain) => d.subFunctions.length + (customFunctions[d.id]?.length ?? 0),
+    [customFunctions],
+  );
+  const selectedFunctions = useMemo(
+    () => (selectedDomain ? [...selectedDomain.subFunctions, ...(customFunctions[selectedDomain.id] ?? [])] : []),
+    [selectedDomain, customFunctions],
   );
 
   // Curated (verified) guardrails grouped by severity; AI-suggested ones are shown
@@ -136,14 +167,81 @@ export function GuardrailAdvisorPage() {
     [recommendations],
   );
 
+  // AI-suggested guardrails grouped by severity too — for a custom domain these are the
+  // domain-specific expansion on top of the verified universal baseline. Ranking them
+  // REQUIRED → RECOMMENDED → OPTIONAL matches the curated layout, while each card keeps
+  // its "verify citations" marker (never relabelled as curated).
+  const aiGrouped = useMemo(
+    () =>
+      SEVERITY_ORDER.map((severity) => ({
+        severity,
+        items: aiSuggested.filter((r) => r.severity === severity),
+      })).filter((g) => g.items.length > 0),
+    [aiSuggested],
+  );
+
+  // Slugify a label into a safe `custom-…` id. The prefix guarantees the id never
+  // collides with a curated `domain:subFunction` knowledge-base key, and the result
+  // matches the server's `^[a-z0-9-]+$` validation.
+  const customSlug = (label: string): string => {
+    const base = label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50);
+    return `custom-${base || 'entry'}`;
+  };
+
+  const addCustomDomain = () => {
+    const label = domainDraftLabel.trim();
+    const description = domainDraftDesc.trim();
+    if (!label || !description) return;
+    const id = customSlug(label);
+    setCustomDomains((prev) => [...prev.filter((d) => d.id !== id), { id, label, subFunctions: [], custom: true, description }]);
+    setDomainId(id);
+    setSubFunctionId(null);
+    setShowDomainForm(false);
+    setShowFunctionForm(false);
+    setDomainDraftLabel('');
+    setDomainDraftDesc('');
+  };
+
+  const addCustomFunction = () => {
+    if (!domainId) return;
+    const label = functionDraftLabel.trim();
+    const description = functionDraftDesc.trim();
+    if (!label || !description) return;
+    const id = customSlug(label);
+    setCustomFunctions((prev) => ({
+      ...prev,
+      [domainId]: [...(prev[domainId] ?? []).filter((f) => f.id !== id), { id, label, custom: true, description }],
+    }));
+    setSubFunctionId(id);
+    setShowFunctionForm(false);
+    setFunctionDraftLabel('');
+    setFunctionDraftDesc('');
+  };
+
   const startSession = useCallback(async () => {
     if (!domainId || !subFunctionId) return;
     setBusy(true);
     setError(null);
     try {
+      const domain = allDomains.find((d) => d.id === domainId) ?? null;
+      const fn = selectedFunctions.find((f) => f.id === subFunctionId) ?? null;
+      setCustomSession(Boolean(domain?.custom || fn?.custom));
+      const body: Record<string, string> = { domain: domainId, subFunction: subFunctionId };
+      if (domain?.custom) {
+        body.domainLabel = domain.label;
+        if (domain.description) body.domainDescription = domain.description;
+      }
+      if (fn?.custom) {
+        body.subFunctionLabel = fn.label;
+        if (fn.description) body.subFunctionDescription = fn.description;
+      }
       const data = (await apiFetch('/api/guardrail-advisor/sessions', {
         method: 'POST',
-        body: JSON.stringify({ domain: domainId, subFunction: subFunctionId }),
+        body: JSON.stringify(body),
       })) as { sessionId: string; questions: ClarifyingQuestion[] };
       setSessionId(data.sessionId);
       setQuestions(data.questions ?? []);
@@ -154,7 +252,7 @@ export function GuardrailAdvisorPage() {
     } finally {
       setBusy(false);
     }
-  }, [domainId, subFunctionId]);
+  }, [domainId, subFunctionId, allDomains, selectedFunctions]);
 
   const getRecommendations = useCallback(async () => {
     if (!sessionId) return;
@@ -199,6 +297,15 @@ export function GuardrailAdvisorPage() {
     setError(null);
     setDomainId(null);
     setSubFunctionId(null);
+    setCustomDomains([]);
+    setCustomFunctions({});
+    setShowDomainForm(false);
+    setDomainDraftLabel('');
+    setDomainDraftDesc('');
+    setShowFunctionForm(false);
+    setFunctionDraftLabel('');
+    setFunctionDraftDesc('');
+    setCustomSession(false);
     setSessionId(null);
     setQuestions([]);
     setAnswers({});
@@ -248,6 +355,94 @@ export function GuardrailAdvisorPage() {
       }
     },
     [domainId, subFunctionId],
+  );
+
+  // One AI-suggested guardrail card (violet, dashed, with the citation-verification
+  // affordance). Rendered inside each severity group so the AI baseline reads like the
+  // curated core while staying clearly marked as unverified.
+  const renderAiCard = (rec: Recommendation) => (
+    <div key={rec.id} className="card space-y-2 border-dashed border-violet-200 bg-violet-50/30">
+      <div className="flex items-start justify-between gap-3">
+        <h4 className="text-sm font-semibold text-slate-900">{rec.title}</h4>
+        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
+          {rec.guardrailType}
+        </span>
+      </div>
+      <p className="text-sm leading-6 text-slate-600">{rec.rationale}</p>
+      {rec.regulations.length > 0 && (
+        <div className="space-y-2 pt-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {!verifications[rec.id]?.results && (
+              <span className="text-[11px] font-medium uppercase tracking-wide text-amber-600">
+                Unverified basis:
+              </span>
+            )}
+            {rec.regulations.map((reg) => {
+              const verdict = verifications[rec.id]?.results?.find((v) => v.citation === reg);
+              if (!verdict) {
+                return (
+                  <span
+                    key={reg}
+                    title="AI-suggested citation — verify before relying on it"
+                    className="inline-flex items-center rounded-full border border-dashed border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+                  >
+                    {reg}?
+                  </span>
+                );
+              }
+              const cls =
+                verdict.status === 'verified'
+                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-200/70'
+                  : verdict.status === 'corrected'
+                    ? 'bg-amber-50 text-amber-700 ring-amber-200/70'
+                    : verdict.status === 'not-found'
+                      ? 'bg-rose-50 text-rose-700 ring-rose-200/70'
+                      : 'bg-slate-100 text-slate-600 ring-slate-200/70';
+              const label =
+                verdict.status === 'verified'
+                  ? `${reg} ✓`
+                  : verdict.status === 'corrected'
+                    ? `${reg} → ${verdict.correctedCitation ?? 'see source'}`
+                    : verdict.status === 'not-found'
+                      ? `${reg} ✗ not found`
+                      : `${reg} — unverified`;
+              const pill = (
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${cls}`}
+                  title={verdict.note}
+                >
+                  {label}
+                </span>
+              );
+              return verdict.sourceUrl ? (
+                <a key={reg} href={verdict.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:opacity-80">
+                  {pill}
+                </a>
+              ) : (
+                <span key={reg}>{pill}</span>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+              disabled={verifications[rec.id]?.loading}
+              onClick={() => verifyRecCitations(rec)}
+            >
+              {verifications[rec.id]?.loading
+                ? 'Verifying…'
+                : verifications[rec.id]?.results
+                  ? 'Re-verify citations'
+                  : 'Verify citations'}
+            </button>
+            {verifications[rec.id]?.error && (
+              <span className="text-[11px] text-rose-600">{verifications[rec.id]?.error}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 
   return (
@@ -305,13 +500,14 @@ export function GuardrailAdvisorPage() {
             <p className="text-sm text-slate-500">Then pick the agent's function.</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {domains.map((d) => (
+            {allDomains.map((d) => (
               <button
                 key={d.id}
                 type="button"
                 onClick={() => {
                   setDomainId(d.id);
                   setSubFunctionId(null);
+                  setShowFunctionForm(false);
                 }}
                 className={`rounded-2xl border px-4 py-4 text-left transition-all ${
                   domainId === d.id
@@ -319,31 +515,162 @@ export function GuardrailAdvisorPage() {
                     : 'border-slate-200/80 bg-white hover:shadow-md'
                 }`}
               >
-                <div className="text-sm font-semibold text-slate-900">{d.label}</div>
-                <div className="mt-1 text-xs text-slate-500">{d.subFunctions.length} functions</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-900">{d.label}</span>
+                  {d.custom && (
+                    <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-200/70">
+                      Custom
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">{functionCount(d)} functions</div>
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowDomainForm((v) => !v)}
+              className={`rounded-2xl border border-dashed px-4 py-4 text-left transition-all ${
+                showDomainForm
+                  ? 'border-violet-400 bg-violet-50/40'
+                  : 'border-slate-300 bg-white hover:border-violet-300 hover:bg-violet-50/30'
+              }`}
+            >
+              <div className="text-sm font-semibold text-violet-700">+ Add custom domain</div>
+              <div className="mt-1 text-xs text-slate-500">Describe a domain not listed here</div>
+            </button>
           </div>
+
+          {showDomainForm && (
+            <div className="space-y-3 rounded-2xl border border-violet-200 bg-violet-50/30 p-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">Domain name</label>
+                <input
+                  type="text"
+                  value={domainDraftLabel}
+                  maxLength={80}
+                  onChange={(e) => setDomainDraftLabel(e.target.value)}
+                  placeholder="e.g. Education"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Description <span className="font-normal text-slate-400">— what does this domain cover? (helps the AI)</span>
+                </label>
+                <textarea
+                  value={domainDraftDesc}
+                  maxLength={2000}
+                  rows={3}
+                  onChange={(e) => setDomainDraftDesc(e.target.value)}
+                  placeholder="e.g. K-12 online learning platform serving students, parents and teachers across the EU."
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary px-3 py-1.5 text-xs"
+                  onClick={() => setShowDomainForm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                  disabled={!domainDraftLabel.trim() || !domainDraftDesc.trim()}
+                  onClick={addCustomDomain}
+                >
+                  Add domain
+                </button>
+              </div>
+            </div>
+          )}
 
           {selectedDomain && (
             <div className="space-y-3">
               <h4 className="text-sm font-semibold text-slate-700">Function</h4>
               <div className="flex flex-wrap gap-2">
-                {selectedDomain.subFunctions.map((sf) => (
+                {selectedFunctions.map((sf) => (
                   <button
                     key={sf.id}
                     type="button"
                     onClick={() => setSubFunctionId(sf.id)}
-                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                       subFunctionId === sf.id
                         ? 'bg-blue-600 text-white'
                         : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     {sf.label}
+                    {sf.custom && (
+                      <span
+                        className={`rounded-full px-1 text-[10px] font-semibold uppercase tracking-wide ${
+                          subFunctionId === sf.id ? 'bg-white/25 text-white' : 'bg-violet-50 text-violet-700'
+                        }`}
+                      >
+                        Custom
+                      </span>
+                    )}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setShowFunctionForm((v) => !v)}
+                  className={`rounded-full border border-dashed px-3 py-1.5 text-sm font-medium transition-colors ${
+                    showFunctionForm
+                      ? 'border-violet-400 bg-violet-50/60 text-violet-700'
+                      : 'border-slate-300 text-violet-700 hover:bg-violet-50/40'
+                  }`}
+                >
+                  + Add custom function
+                </button>
               </div>
+
+              {showFunctionForm && (
+                <div className="space-y-3 rounded-2xl border border-violet-200 bg-violet-50/30 p-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700">Function name</label>
+                    <input
+                      type="text"
+                      value={functionDraftLabel}
+                      maxLength={80}
+                      onChange={(e) => setFunctionDraftLabel(e.target.value)}
+                      placeholder="e.g. AI Homework Tutor"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Description <span className="font-normal text-slate-400">— what does this agent do? (helps the AI)</span>
+                    </label>
+                    <textarea
+                      value={functionDraftDesc}
+                      maxLength={2000}
+                      rows={3}
+                      onChange={(e) => setFunctionDraftDesc(e.target.value)}
+                      placeholder="e.g. Helps students with maths homework, explains steps, never gives final exam answers."
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary px-3 py-1.5 text-xs"
+                      onClick={() => setShowFunctionForm(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                      disabled={!functionDraftLabel.trim() || !functionDraftDesc.trim()}
+                      onClick={addCustomFunction}
+                    >
+                      Add function
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -437,6 +764,13 @@ export function GuardrailAdvisorPage() {
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Recommended guardrails</h3>
               <p className="text-sm text-slate-500">{recommendations.length} guardrails, ranked by severity.</p>
+              {customSession && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Custom domain: a{' '}
+                  <span className="font-medium text-slate-700">verified universal AI-safety baseline</span> plus
+                  AI-generated, domain-specific suggestions below.
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <label className="text-sm text-slate-600" htmlFor="platform">
@@ -499,99 +833,45 @@ export function GuardrailAdvisorPage() {
           ))}
 
           {aiSuggested.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200/70">
-                  ✨ AI-SUGGESTED
-                </span>
-                <span className="text-xs text-amber-600">{aiSuggested.length} · verify citations before relying on these</span>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200/70">
+                    ✨ AI-SUGGESTED
+                  </span>
+                  <span className="text-xs text-amber-600">{aiSuggested.length} · verify citations before relying on these</span>
+                </div>
+                {customSession && (
+                  <p className="rounded-lg bg-violet-50/60 px-3 py-2 text-xs leading-5 text-violet-900/80 ring-1 ring-violet-200/60">
+                    <span className="font-semibold">Domain-specific suggestions.</span> Generated from your
+                    description to complement the verified baseline above. Treat the citations as unverified until
+                    you check them.
+                  </p>
+                )}
               </div>
-              <div className="grid gap-3">
-                {aiSuggested.map((rec) => (
-                  <div key={rec.id} className="card space-y-2 border-dashed border-violet-200 bg-violet-50/30">
-                    <div className="flex items-start justify-between gap-3">
-                      <h4 className="text-sm font-semibold text-slate-900">{rec.title}</h4>
-                      <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
-                        {rec.guardrailType}
-                      </span>
-                    </div>
-                    <p className="text-sm leading-6 text-slate-600">{rec.rationale}</p>
-                    {rec.regulations.length > 0 && (
-                      <div className="space-y-2 pt-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {!verifications[rec.id]?.results && (
-                            <span className="text-[11px] font-medium uppercase tracking-wide text-amber-600">
-                              Unverified basis:
-                            </span>
-                          )}
-                          {rec.regulations.map((reg) => {
-                            const verdict = verifications[rec.id]?.results?.find((v) => v.citation === reg);
-                            if (!verdict) {
-                              return (
-                                <span
-                                  key={reg}
-                                  title="AI-suggested citation — verify before relying on it"
-                                  className="inline-flex items-center rounded-full border border-dashed border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
-                                >
-                                  {reg}?
-                                </span>
-                              );
-                            }
-                            const cls =
-                              verdict.status === 'verified'
-                                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200/70'
-                                : verdict.status === 'corrected'
-                                  ? 'bg-amber-50 text-amber-700 ring-amber-200/70'
-                                  : verdict.status === 'not-found'
-                                    ? 'bg-rose-50 text-rose-700 ring-rose-200/70'
-                                    : 'bg-slate-100 text-slate-600 ring-slate-200/70';
-                            const label =
-                              verdict.status === 'verified'
-                                ? `${reg} ✓`
-                                : verdict.status === 'corrected'
-                                  ? `${reg} → ${verdict.correctedCitation ?? 'see source'}`
-                                  : verdict.status === 'not-found'
-                                    ? `${reg} ✗ not found`
-                                    : `${reg} — unverified`;
-                            const pill = (
-                              <span
-                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${cls}`}
-                                title={verdict.note}
-                              >
-                                {label}
-                              </span>
-                            );
-                            return verdict.sourceUrl ? (
-                              <a key={reg} href={verdict.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:opacity-80">
-                                {pill}
-                              </a>
-                            ) : (
-                              <span key={reg}>{pill}</span>
-                            );
-                          })}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="rounded-md border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50"
-                            disabled={verifications[rec.id]?.loading}
-                            onClick={() => verifyRecCitations(rec)}
-                          >
-                            {verifications[rec.id]?.loading
-                              ? 'Verifying…'
-                              : verifications[rec.id]?.results
-                                ? 'Re-verify citations'
-                                : 'Verify citations'}
-                          </button>
-                          {verifications[rec.id]?.error && (
-                            <span className="text-[11px] text-rose-600">{verifications[rec.id]?.error}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
+              {aiGrouped.map((group) => (
+                <div key={group.severity} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${severityBadgeClass(group.severity)}`}
+                    >
+                      {group.severity}
+                    </span>
+                    <span className="text-xs text-slate-500">{group.items.length}</span>
                   </div>
-                ))}
-              </div>
+                  <div className="grid gap-3">{group.items.map(renderAiCard)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {recommendations.length === 0 && (
+            <div className="card border-dashed text-center">
+              <p className="text-sm font-semibold text-slate-700">No recommendations were generated.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                For a custom domain the recommendations come from the AI suggester, which can return
+                nothing if it timed out or is disabled. Go back and try again, or refine the description.
+              </p>
             </div>
           )}
 
