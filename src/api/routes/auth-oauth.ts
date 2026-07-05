@@ -6,7 +6,7 @@ import axios from 'axios';
 import { prisma } from '../../db/client.js';
 import { storeOAuthState, getOAuthState } from '../../lib/cache.js';
 import { generateSecureToken } from '../../lib/password.js';
-import { captureSessionMetadata } from '../middleware-auth.js';
+import { captureSessionMetadata, rateLimitAuth } from '../middleware-auth.js';
 import { createAndSetOAuthSession } from '../auth.js';
 
 export const authOAuthRouter = Router();
@@ -56,7 +56,7 @@ const GITHUB_EMAILS_URL = 'https://api.github.com/user/emails';
 
 // ── Google ────────────────────────────────────────────────────────────────────
 
-authOAuthRouter.get('/oauth/google/login', async (_req: Request, res: Response) => {
+authOAuthRouter.get('/oauth/google/login', rateLimitAuth(20, 60000), async (_req: Request, res: Response) => {
   try {
     if (!process.env['GOOGLE_CLIENT_ID']) {
       return res.redirect(`${UI_BASE()}?error=google_not_configured`);
@@ -79,6 +79,7 @@ authOAuthRouter.get('/oauth/google/login', async (_req: Request, res: Response) 
 
 authOAuthRouter.get(
   '/oauth/google/callback',
+  rateLimitAuth(20, 60000),
   captureSessionMetadata,
   async (req: Request, res: Response) => {
     try {
@@ -128,7 +129,7 @@ authOAuthRouter.get(
 
 // ── GitHub ────────────────────────────────────────────────────────────────────
 
-authOAuthRouter.get('/oauth/github/login', async (_req: Request, res: Response) => {
+authOAuthRouter.get('/oauth/github/login', rateLimitAuth(20, 60000), async (_req: Request, res: Response) => {
   try {
     if (!process.env['GITHUB_CLIENT_ID']) {
       return res.redirect(`${UI_BASE()}?error=github_not_configured`);
@@ -150,6 +151,7 @@ authOAuthRouter.get('/oauth/github/login', async (_req: Request, res: Response) 
 
 authOAuthRouter.get(
   '/oauth/github/callback',
+  rateLimitAuth(20, 60000),
   captureSessionMetadata,
   async (req: Request, res: Response) => {
     try {
@@ -213,7 +215,7 @@ authOAuthRouter.get(
  * Redirects to Google to link a Google account to the currently signed-in user.
  * Stores the current user's ID in the OAuth state so the callback knows who to link.
  */
-authOAuthRouter.get('/link/google', async (req: Request, res: Response) => {
+authOAuthRouter.get('/link/google', rateLimitAuth(20, 60000), async (req: Request, res: Response) => {
   try {
     if (!process.env['GOOGLE_CLIENT_ID']) {
       return res.redirect(`${UI_BASE()}?error=google_not_configured`);
@@ -236,6 +238,7 @@ authOAuthRouter.get('/link/google', async (req: Request, res: Response) => {
 
 authOAuthRouter.get(
   '/link/google/callback',
+  rateLimitAuth(20, 60000),
   async (req: Request, res: Response) => {
     try {
       const { code, state, error } = req.query;
@@ -284,7 +287,7 @@ authOAuthRouter.get(
  * GET /auth/link/github
  * Same pattern for GitHub.
  */
-authOAuthRouter.get('/link/github', async (_req: Request, res: Response) => {
+authOAuthRouter.get('/link/github', rateLimitAuth(20, 60000), async (_req: Request, res: Response) => {
   try {
     if (!process.env['GITHUB_CLIENT_ID']) {
       return res.redirect(`${UI_BASE()}?error=github_not_configured`);
@@ -306,6 +309,7 @@ authOAuthRouter.get('/link/github', async (_req: Request, res: Response) => {
 
 authOAuthRouter.get(
   '/link/github/callback',
+  rateLimitAuth(20, 60000),
   async (req: Request, res: Response) => {
     try {
       const { code, state, error } = req.query;

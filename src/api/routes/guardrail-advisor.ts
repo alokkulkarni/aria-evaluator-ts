@@ -31,6 +31,7 @@ import {
 } from '../../shared/guardrail-advisor.js';
 import { recordAuditEventSafe } from '../audit-log.js';
 import { getRequestAuth, requireAdminAuth, requireAuth } from '../auth.js';
+import { rateLimitAuth } from '../middleware-auth.js';
 
 export const guardrailAdvisorRouter = Router();
 
@@ -377,7 +378,7 @@ guardrailAdvisorRouter.post('/sessions/:id/format', requireAuth, async (req, res
 
 // POST /verify — verify an AI-suggested guardrail's citations against authoritative
 // web sources (LLM proposes the source, server fetches it, match → grounded verdict).
-guardrailAdvisorRouter.post('/verify', requireAuth, async (req, res) => {
+guardrailAdvisorRouter.post('/verify', rateLimitAuth(10, 60000), requireAuth, async (req, res) => {
   const parsed = verifyCitationsSchema.safeParse(req.body);
   if (!parsed.success) {
     fail(res, 400, 'citations (1–12 non-empty strings) are required');
