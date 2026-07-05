@@ -430,7 +430,9 @@ export class ConnectChatAdapter implements BaseAdapter {
             detectedFrom: msg.content,
             reason,
           };
-          console.log(`\n  ⚡ Escalation detected (${reason}): "${msg.content.substring(0, 80)}…"`);
+          // Do not log transcript content to stdout (PII — see CLAUDE.md); the
+          // reason keyword is sufficient signal.
+          console.log(`\n  ⚡ Escalation detected (${reason})`);
           break;
         }
       }
