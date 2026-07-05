@@ -2,13 +2,14 @@ import { Router, type Response } from 'express';
 
 import { prisma } from '../../db/client.js';
 import { loadDomainTaxonomy } from '../../guardrail/data.js';
-import { getRecommendations } from '../../guardrail/engine.js';
+import { getRecommendations, getUniversalBaseline } from '../../guardrail/engine.js';
 import { generateQuestions } from '../../guardrail/clarifier.js';
 import { suggestGuardrails } from '../../guardrail/suggester.js';
 import { verifyCitations } from '../../guardrail/citation-verifier.js';
 import {
   AI_SUGGESTED_ID_PREFIX,
   type ClarifyingAnswers,
+  type GuardrailContext,
   type GuardrailRecommendation,
   type GuardrailSeverity,
 } from '../../guardrail/types.js';
@@ -102,13 +103,30 @@ guardrailAdvisorRouter.post('/sessions', requireAuth, async (req, res) => {
     fail(res, 400, 'domain and subFunction are required');
     return;
   }
-  const { domain, subFunction } = parsed.data;
+  const { domain, subFunction, domainLabel, domainDescription, subFunctionLabel, subFunctionDescription } =
+    parsed.data;
+  // Free-text context for a user-defined (custom) domain/function — grounds the
+  // clarifier now and the AI suggester at /recommend (persisted on the session).
+  const context: GuardrailContext = {
+    domainLabel,
+    domainDescription,
+    subFunctionLabel,
+    subFunctionDescription,
+  };
   const auth = getRequestAuth(req);
   try {
     const session = await prisma.guardrailAdvisorSession.create({
-      data: { domain, subFunction, tenantId: auth?.tenantId ?? '' },
+      data: {
+        domain,
+        subFunction,
+        tenantId: auth?.tenantId ?? '',
+        domainLabel: domainLabel ?? null,
+        domainDescription: domainDescription ?? null,
+        subFunctionLabel: subFunctionLabel ?? null,
+        subFunctionDescription: subFunctionDescription ?? null,
+      },
     });
-    const questions = await generateQuestions(domain, subFunction);
+    const questions = await generateQuestions(domain, subFunction, context);
     await recordAuditEventSafe(req, 'guardrail-advisor.session.create', session.id, { domain, subFunction });
     res.status(201).json({ sessionId: session.id, questions });
   } catch (err) {
@@ -132,12 +150,28 @@ guardrailAdvisorRouter.post('/sessions/:id/recommend', requireAuth, async (req, 
       return;
     }
 
-    // Curated, deterministic core (always present) + LLM-suggested expansion
-    // (fails closed to [] — never blocks the recommend response).
-    const curated = await getRecommendations(session.domain, session.subFunction, answers);
+    // Hybrid recommender: a verified curated core + an LLM-suggested expansion (which
+    // fails closed to [] — never blocks the recommend response).
+    //   • Taxonomy entry → curated core is its domain-specific knowledge-base set.
+    //   • Custom (user-defined) entry → no domain-specific set, so the curated core is
+    //     the verified UNIVERSAL baseline (applies to any agent), and the suggester runs
+    //     in "comprehensive" mode to generate the domain-specific guardrails on top
+    //     (grounded by the session's free-text description, de-duped against the baseline).
+    const context: GuardrailContext = {
+      domainLabel: session.domainLabel ?? undefined,
+      domainDescription: session.domainDescription ?? undefined,
+      subFunctionLabel: session.subFunctionLabel ?? undefined,
+      subFunctionDescription: session.subFunctionDescription ?? undefined,
+    };
+    const isCustom = Boolean(session.subFunctionDescription || session.domainDescription);
+    const curated = isCustom
+      ? getUniversalBaseline(answers)
+      : await getRecommendations(session.domain, session.subFunction, answers);
     const suggested =
-      curated.length > 0
-        ? await suggestGuardrails(session.domain, session.subFunction, answers, curated)
+      curated.length > 0 || isCustom
+        ? await suggestGuardrails(session.domain, session.subFunction, answers, curated, context, {
+            comprehensive: isCustom,
+          })
         : [];
     const recommendations = [...curated, ...suggested];
 
@@ -275,6 +309,10 @@ guardrailAdvisorRouter.get('/sessions/:id', requireAuth, async (req, res) => {
         id: session.id,
         domain: session.domain,
         subFunction: session.subFunction,
+        domainLabel: session.domainLabel,
+        domainDescription: session.domainDescription,
+        subFunctionLabel: session.subFunctionLabel,
+        subFunctionDescription: session.subFunctionDescription,
         jurisdiction: session.jurisdiction,
         userFacing: session.userFacing,
         dataTypes: safeJsonArray(session.dataTypes),

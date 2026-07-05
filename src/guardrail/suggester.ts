@@ -8,7 +8,12 @@
 import { z } from 'zod';
 
 import { BedrockJudgeProvider } from '../judge/providers/bedrock.js';
-import { AI_SUGGESTED_ID_PREFIX, type ClarifyingAnswers, type GuardrailRecommendation } from './types.js';
+import {
+  AI_SUGGESTED_ID_PREFIX,
+  type ClarifyingAnswers,
+  type GuardrailContext,
+  type GuardrailRecommendation,
+} from './types.js';
 
 const SUGGESTER_MODEL_ID =
   process.env['GUARDRAIL_SUGGESTER_MODEL_ID']?.trim() || 'anthropic.claude-haiku-4-5-20251001-v1:0';
@@ -18,8 +23,11 @@ const SUGGESTER_MODEL_ID =
 // long here; a Haiku call generating several detailed guardrails runs ~6–10s.)
 const SUGGESTER_TIMEOUT_MS = Number(process.env['GUARDRAIL_SUGGESTER_TIMEOUT_MS']) || 15000;
 
-// Fewer, higher-relevance additions — also keeps generation (and latency) down.
+// Fewer, higher-relevance additions on top of a curated set — also keeps generation
+// (and latency) down. For a custom domain/function with no curated entry the suggester
+// is the ONLY source, so it may return more (it's generating the whole set, not a top-up).
 const MAX_SUGGESTIONS = 4;
+const MAX_FROM_SCRATCH = 8;
 
 function suggestionsEnabled(): boolean {
   return (process.env['GUARDRAIL_AI_SUGGESTIONS'] ?? 'on').toLowerCase() !== 'off';
@@ -55,7 +63,8 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'guardrail';
 }
 
-const SYSTEM_PROMPT = [
+// "Expansion" framing — adds to an already-curated set (the common case).
+const ADDITIONAL_SYSTEM_PROMPT = [
   'You propose ADDITIONAL AI guardrails for a specific agent, on top of an already-curated set.',
   'Suggest guardrails that are genuinely specific to the domain, sub-function, and the clarifying answers',
   '— do NOT restate or rephrase any guardrail in the "already covered" list.',
@@ -66,21 +75,48 @@ const SYSTEM_PROMPT = [
   'If unsure, leave "regulations" empty rather than guessing — these are flagged to the user as unverified.',
 ].join('\n');
 
+// "From scratch" framing — used for a user-defined (custom) domain/function with no
+// curated entry, where this is the ONLY source of recommendations. Lean on the
+// user-supplied description to build a comprehensive set.
+const FROM_SCRATCH_SYSTEM_PROMPT = [
+  'You propose AI guardrails for a user-defined agent that is NOT in any curated catalogue.',
+  'Use the provided domain/sub-function description to build a comprehensive set of guardrails',
+  'genuinely specific to this agent, the clarifying answers, and any regulations that apply to it.',
+  'Cover topic/scope limits, PII & data protection, accuracy/hallucination, human oversight, and',
+  'jurisdiction-specific obligations where relevant.',
+  'Respond with ONLY a JSON array (no prose, no markdown fences). Each element:',
+  '{ "type": string, "title": string, "description": string, "rationale": string, "regulations": string[], "severity": "REQUIRED"|"RECOMMENDED"|"OPTIONAL" }',
+  'Assign a deliberate severity spread: REQUIRED for legal/safety-critical controls, RECOMMENDED for',
+  'important best practices, OPTIONAL for nice-to-haves — do not mark everything the same.',
+  `Return at most ${MAX_FROM_SCRATCH} of the most relevant, non-duplicative guardrails.`,
+  'CITATIONS: only include a regulation in "regulations" if you are confident it genuinely applies.',
+  'If unsure, leave "regulations" empty rather than guessing — these are flagged to the user as unverified.',
+].join('\n');
+
 function buildUserPrompt(
   domain: string,
   subFunction: string,
   answers: ClarifyingAnswers,
   existing: GuardrailRecommendation[],
+  context?: GuardrailContext,
 ): string {
-  const covered = existing.map((e) => `- ${e.title} (${e.guardrailType})`).join('\n') || '- (none)';
-  return [
-    `Domain: ${domain}`,
-    `Sub-function: ${subFunction}`,
-    `Clarifying answers: ${JSON.stringify(answers)}`,
-    'Already covered (do NOT restate these):',
-    covered,
-    'Return the JSON array of additional guardrails.',
-  ].join('\n');
+  const lines = [`Domain: ${domain}`, `Sub-function: ${subFunction}`];
+  if (context?.domainLabel) lines.push(`Domain label: ${context.domainLabel}`);
+  if (context?.domainDescription) lines.push(`Domain description: ${context.domainDescription}`);
+  if (context?.subFunctionLabel) lines.push(`Sub-function label: ${context.subFunctionLabel}`);
+  if (context?.subFunctionDescription)
+    lines.push(`Sub-function description: ${context.subFunctionDescription}`);
+  lines.push(`Clarifying answers: ${JSON.stringify(answers)}`);
+  // Only list the "already covered" set when there is one — for a from-scratch custom
+  // agent there is nothing to avoid restating.
+  if (existing.length > 0) {
+    lines.push('Already covered (do NOT restate these):');
+    lines.push(existing.map((e) => `- ${e.title} (${e.guardrailType})`).join('\n'));
+    lines.push('Return the JSON array of additional guardrails.');
+  } else {
+    lines.push('Return the JSON array of guardrails for this agent.');
+  }
+  return lines.join('\n');
 }
 
 function extractJsonArray(text: string): string | null {
@@ -90,7 +126,11 @@ function extractJsonArray(text: string): string | null {
   return text.slice(start, end + 1);
 }
 
-function parseSuggestions(text: string, existing: GuardrailRecommendation[]): GuardrailRecommendation[] {
+function parseSuggestions(
+  text: string,
+  existing: GuardrailRecommendation[],
+  max: number,
+): GuardrailRecommendation[] {
   const json = extractJsonArray(text);
   if (!json) return [];
 
@@ -107,7 +147,7 @@ function parseSuggestions(text: string, existing: GuardrailRecommendation[]): Gu
   const out: GuardrailRecommendation[] = [];
 
   for (const item of raw) {
-    if (out.length >= MAX_SUGGESTIONS) break;
+    if (out.length >= max) break;
     const parsed = suggestionSchema.safeParse(item);
     if (!parsed.success) continue;
 
@@ -141,7 +181,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Propose additional, answer-tailored guardrails beyond the curated `existing` set.
+ * Propose answer-tailored guardrails. With a non-empty `existing` (curated) set this
+ * adds to it; with an empty set — a user-defined (custom) domain/function — it generates
+ * the whole set "from scratch" using `context`'s free-text description, returning more.
  * Returns [] on any failure/timeout or when disabled (GUARDRAIL_AI_SUGGESTIONS=off).
  */
 export async function suggestGuardrails(
@@ -149,21 +191,33 @@ export async function suggestGuardrails(
   subFunction: string,
   answers: ClarifyingAnswers,
   existing: GuardrailRecommendation[],
+  context?: GuardrailContext,
+  opts?: { comprehensive?: boolean },
 ): Promise<GuardrailRecommendation[]> {
   if (!suggestionsEnabled()) return [];
+  // "Comprehensive" mode generates the full domain-specific set (used for custom
+  // domains, where this is the main source) rather than a few additions on top of a
+  // curated core. Defaults to true when there's no `existing` set to expand on. The
+  // `existing` set is still used for de-duplication in either mode.
+  const comprehensive = opts?.comprehensive ?? existing.length === 0;
+  const max = comprehensive ? MAX_FROM_SCRATCH : MAX_SUGGESTIONS;
+  // Comprehensive generates the whole set (up to 8 detailed guardrails) and the parser
+  // is all-or-nothing — a truncated JSON array parses to [] and the user gets nothing.
+  // Give it headroom; the expansion path stays lean.
+  const maxTokens = comprehensive ? 2400 : 1200;
   try {
     const provider = new BedrockJudgeProvider();
     const resp = await withTimeout(
       provider.complete({
         modelId: SUGGESTER_MODEL_ID,
-        systemPrompt: SYSTEM_PROMPT,
-        userPrompt: buildUserPrompt(domain, subFunction, answers, existing),
+        systemPrompt: comprehensive ? FROM_SCRATCH_SYSTEM_PROMPT : ADDITIONAL_SYSTEM_PROMPT,
+        userPrompt: buildUserPrompt(domain, subFunction, answers, existing, context),
         temperature: 0.3,
-        maxTokens: 1200,
+        maxTokens,
       }),
       SUGGESTER_TIMEOUT_MS,
     );
-    return parseSuggestions(resp.text, existing);
+    return parseSuggestions(resp.text, existing, max);
   } catch {
     return [];
   }

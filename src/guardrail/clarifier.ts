@@ -4,7 +4,7 @@
 import { z } from 'zod';
 
 import { BedrockJudgeProvider } from '../judge/providers/bedrock.js';
-import type { ClarifyingQuestion } from './types.js';
+import type { ClarifyingQuestion, GuardrailContext } from './types.js';
 
 // The spec named claude-3-haiku; we use the codebase's current Haiku (Claude Haiku
 // 4.5) from the judge model registry — cheap and fast, and a valid Bedrock id.
@@ -71,6 +71,8 @@ export const FALLBACK_QUESTIONS: ClarifyingQuestion[] = [
 const SYSTEM_PROMPT = [
   'You are a compliance assistant that helps configure AI guardrails.',
   'Generate between 3 and 5 clarifying questions tailored to the given domain and sub-function.',
+  'The domain / sub-function may be user-defined; when a description is provided, use it to',
+  'ground the questions for that specific agent.',
   'Cover jurisdiction, user type, data sensitivity (PII), and autonomy where relevant.',
   'Respond with ONLY a JSON array (no prose, no markdown fences). Each element must be:',
   '{ "id": string, "text": string, "type": "single-choice" | "multi-choice" | "text", "options"?: [{ "value": string, "label": string }] }',
@@ -83,8 +85,15 @@ const SYSTEM_PROMPT = [
   '- autonomy → one of: read-only, advisory, transactional, agentic',
 ].join('\n');
 
-function buildUserPrompt(domain: string, subFunction: string): string {
-  return `Domain: ${domain}\nSub-function: ${subFunction}\nReturn the JSON array of clarifying questions.`;
+function buildUserPrompt(domain: string, subFunction: string, context?: GuardrailContext): string {
+  const lines = [`Domain: ${domain}`, `Sub-function: ${subFunction}`];
+  if (context?.domainLabel) lines.push(`Domain label: ${context.domainLabel}`);
+  if (context?.domainDescription) lines.push(`Domain description: ${context.domainDescription}`);
+  if (context?.subFunctionLabel) lines.push(`Sub-function label: ${context.subFunctionLabel}`);
+  if (context?.subFunctionDescription)
+    lines.push(`Sub-function description: ${context.subFunctionDescription}`);
+  lines.push('Return the JSON array of clarifying questions.');
+  return lines.join('\n');
 }
 
 /** Extract the first JSON array substring, tolerating markdown fences / prose. */
@@ -116,17 +125,19 @@ function parseQuestions(text: string): ClarifyingQuestion[] | null {
   return valid.slice(0, 5);
 }
 
-/** Generate 3–5 clarifying questions for a domain + sub-function. */
+/** Generate 3–5 clarifying questions for a domain + sub-function. `context` carries
+ *  free-text label/description for user-defined (custom) domains/functions. */
 export async function generateQuestions(
   domain: string,
   subFunction: string,
+  context?: GuardrailContext,
 ): Promise<ClarifyingQuestion[]> {
   try {
     const provider = new BedrockJudgeProvider();
     const resp = await provider.complete({
       modelId: CLARIFIER_MODEL_ID,
       systemPrompt: SYSTEM_PROMPT,
-      userPrompt: buildUserPrompt(domain, subFunction),
+      userPrompt: buildUserPrompt(domain, subFunction, context),
       temperature: 0.2,
       maxTokens: 1024,
     });
