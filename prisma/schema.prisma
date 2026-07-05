@@ -767,3 +767,37 @@ model GuardrailRecommendationRecord {
 
   @@index([sessionId])
 }
+
+// A saved, reusable custom domain for the Guardrail Advisor (workspace/tenant-scoped).
+// Anyone in the tenant can create; only admins delete. `slug` is the "custom-…" id
+// used as the domain id in the wizard and on the session.
+model CustomGuardrailDomain {
+  id          String   @id @default(cuid())
+  tenantId    String   @default("")
+  slug        String   // "custom-<label>"
+  label       String
+  description String
+  createdBy   String?  // userId who created it (attribution)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+// A saved, reusable custom function. `domainSlug` is the parent domain id — either a
+// curated taxonomy id ("banking") or a custom domain slug ("custom-…").
+model CustomGuardrailFunction {
+  id          String   @id @default(cuid())
+  tenantId    String   @default("")
+  domainSlug  String
+  slug        String   // "custom-<label>"
+  label       String
+  description String
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, domainSlug, slug])
+  @@index([tenantId])
+}

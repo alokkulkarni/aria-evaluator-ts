@@ -13,15 +13,24 @@ import {
   type GuardrailRecommendation,
   type GuardrailSeverity,
 } from '../../guardrail/types.js';
+import {
+  createCustomDomain,
+  createCustomFunction,
+  deleteCustomDomain,
+  deleteCustomFunction,
+  listCustomEntries,
+} from '../../guardrail/custom-entries.js';
 import { formatGuardrailForPlatform } from '../../rag/formatter.js';
 import {
+  createCustomDomainSchema,
+  createCustomFunctionSchema,
   createSessionSchema,
   formatSchema,
   recommendSchema,
   verifyCitationsSchema,
 } from '../../shared/guardrail-advisor.js';
 import { recordAuditEventSafe } from '../audit-log.js';
-import { getRequestAuth, requireAuth } from '../auth.js';
+import { getRequestAuth, requireAdminAuth, requireAuth } from '../auth.js';
 
 export const guardrailAdvisorRouter = Router();
 
@@ -95,6 +104,100 @@ function rowToRecommendation(row: RecommendationRecordRow): GuardrailRecommendat
 guardrailAdvisorRouter.get('/domains', (_req, res) => {
   res.json(loadDomainTaxonomy());
 });
+
+// ── Saved custom domains/functions (workspace-scoped; admin-only delete) ─────────
+
+// GET /custom-domains — the tenant's saved custom domains + functions.
+guardrailAdvisorRouter.get('/custom-domains', requireAuth, async (req, res) => {
+  const tenantId = getRequestAuth(req)?.tenantId ?? '';
+  try {
+    res.json(await listCustomEntries(tenantId));
+  } catch (err) {
+    fail(res, 500, (err as Error).message);
+  }
+});
+
+// POST /custom-domains — save a reusable custom domain (any member).
+guardrailAdvisorRouter.post('/custom-domains', requireAuth, async (req, res) => {
+  const parsed = createCustomDomainSchema.safeParse(req.body);
+  if (!parsed.success) {
+    fail(res, 400, 'label and description are required');
+    return;
+  }
+  const auth = getRequestAuth(req);
+  try {
+    const domain = await createCustomDomain(
+      auth?.tenantId ?? '',
+      auth?.userId ?? null,
+      parsed.data.label,
+      parsed.data.description,
+    );
+    await recordAuditEventSafe(req, 'guardrail-advisor.custom-domain.create', domain.id, {
+      label: domain.label,
+    });
+    res.status(201).json({ domain });
+  } catch (err) {
+    fail(res, 500, (err as Error).message);
+  }
+});
+
+// POST /custom-functions — save a reusable custom function under a domain (any member).
+guardrailAdvisorRouter.post('/custom-functions', requireAuth, async (req, res) => {
+  const parsed = createCustomFunctionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    fail(res, 400, 'domainId, label and description are required');
+    return;
+  }
+  const auth = getRequestAuth(req);
+  try {
+    const fn = await createCustomFunction(
+      auth?.tenantId ?? '',
+      auth?.userId ?? null,
+      parsed.data.domainId,
+      parsed.data.label,
+      parsed.data.description,
+    );
+    await recordAuditEventSafe(req, 'guardrail-advisor.custom-function.create', fn.id, {
+      domainId: fn.domainId,
+      label: fn.label,
+    });
+    res.status(201).json({ function: fn });
+  } catch (err) {
+    fail(res, 500, (err as Error).message);
+  }
+});
+
+// DELETE /custom-domains/:slug — remove a saved custom domain + its functions (admin only).
+guardrailAdvisorRouter.delete('/custom-domains/:slug', requireAuth, requireAdminAuth, async (req, res) => {
+  const slug = readId(req.params.slug);
+  const tenantId = getRequestAuth(req)?.tenantId ?? '';
+  try {
+    await deleteCustomDomain(tenantId, slug);
+    await recordAuditEventSafe(req, 'guardrail-advisor.custom-domain.delete', slug, {});
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, 500, (err as Error).message);
+  }
+});
+
+// DELETE /custom-functions/:domainId/:slug — remove a saved custom function (admin only).
+guardrailAdvisorRouter.delete(
+  '/custom-functions/:domainId/:slug',
+  requireAuth,
+  requireAdminAuth,
+  async (req, res) => {
+    const domainId = readId(req.params.domainId);
+    const slug = readId(req.params.slug);
+    const tenantId = getRequestAuth(req)?.tenantId ?? '';
+    try {
+      await deleteCustomFunction(tenantId, domainId, slug);
+      await recordAuditEventSafe(req, 'guardrail-advisor.custom-function.delete', slug, { domainId });
+      res.json({ ok: true });
+    } catch (err) {
+      fail(res, 500, (err as Error).message);
+    }
+  },
+);
 
 // POST /sessions — start a session and return clarifying questions.
 guardrailAdvisorRouter.post('/sessions', requireAuth, async (req, res) => {

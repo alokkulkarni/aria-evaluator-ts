@@ -45,7 +45,23 @@ export const verifyCitationsSchema = z.object({
   context: z.string().max(500).optional(),
 });
 
+// Saved (persisted) custom domains/functions. The server slugifies `label` into the
+// `custom-…` id, so the client only sends the human-readable label + description.
+export const createCustomDomainSchema = z.object({
+  label: z.string().min(1).max(80),
+  description: z.string().min(1).max(2000),
+});
+
+export const createCustomFunctionSchema = z.object({
+  // Parent domain id — a curated taxonomy id ("banking") or a custom domain slug.
+  domainId: slugId,
+  label: z.string().min(1).max(80),
+  description: z.string().min(1).max(2000),
+});
+
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 export type RecommendInput = z.infer<typeof recommendSchema>;
 export type FormatInput = z.infer<typeof formatSchema>;
 export type VerifyCitationsInput = z.infer<typeof verifyCitationsSchema>;
+export type CreateCustomDomainInput = z.infer<typeof createCustomDomainSchema>;
+export type CreateCustomFunctionInput = z.infer<typeof createCustomFunctionSchema>;

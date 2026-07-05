@@ -530,7 +530,7 @@ export default function App() {
         {page === 'calibration' && <CalibrationPage />}
         {page === 'analysis' && <AnalysisPage />}
         {page === 'schedules' && <SchedulesPage />}
-      {page === 'guardrail-advisor' && <GuardrailAdvisorPage />}
+      {page === 'guardrail-advisor' && <GuardrailAdvisorPage isAdmin={user.role === 'admin'} />}
         {page === 'transcripts' && <TranscriptsPage initialFilename={initialTranscriptFile} />}
         {page === 'reports' && <ReportsPage />}
         {page === 'users' && <UsersPage />}

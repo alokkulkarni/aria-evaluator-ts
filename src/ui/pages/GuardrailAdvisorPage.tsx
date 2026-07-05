@@ -84,7 +84,7 @@ function errorMessage(err: unknown): string {
 
 const STEP_LABELS = ['Domain', 'Questions', 'Recommendations', 'Configs'];
 
-export function GuardrailAdvisorPage() {
+export function GuardrailAdvisorPage({ isAdmin = false }: { isAdmin?: boolean }) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,7 +93,7 @@ export function GuardrailAdvisorPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [domainId, setDomainId] = useState<string | null>(null);
   const [subFunctionId, setSubFunctionId] = useState<string | null>(null);
-  // User-defined (custom) entries, held client-side for this session only. Custom
+  // User-defined (custom) entries — saved per workspace and loaded on mount. Custom
   // functions are keyed by the domain they belong to (curated or custom).
   const [customDomains, setCustomDomains] = useState<Domain[]>([]);
   const [customFunctions, setCustomFunctions] = useState<Record<string, SubFunction[]>>({});
@@ -131,6 +131,39 @@ export function GuardrailAdvisorPage() {
     apiFetch('/api/guardrail-advisor/domains')
       .then((data) => setDomains((data as { domains: Domain[] }).domains ?? []))
       .catch((err) => setError(errorMessage(err)));
+  }, []);
+
+  // Load the workspace's saved custom domains/functions so they persist across visits.
+  useEffect(() => {
+    apiFetch('/api/guardrail-advisor/custom-domains')
+      .then((data) => {
+        const saved = data as {
+          domains: { id: string; label: string; description: string }[];
+          functions: { id: string; label: string; description: string; domainId: string }[];
+        };
+        setCustomDomains(
+          (saved.domains ?? []).map((d) => ({
+            id: d.id,
+            label: d.label,
+            description: d.description,
+            subFunctions: [],
+            custom: true,
+          })),
+        );
+        const byDomain: Record<string, SubFunction[]> = {};
+        for (const f of saved.functions ?? []) {
+          (byDomain[f.domainId] ??= []).push({
+            id: f.id,
+            label: f.label,
+            description: f.description,
+            custom: true,
+          });
+        }
+        setCustomFunctions(byDomain);
+      })
+      .catch(() => {
+        // Non-fatal: the wizard still works with just the curated taxonomy.
+      });
   }, []);
 
   // Curated taxonomy + locally-added custom domains.
@@ -180,46 +213,100 @@ export function GuardrailAdvisorPage() {
     [aiSuggested],
   );
 
-  // Slugify a label into a safe `custom-…` id. The prefix guarantees the id never
-  // collides with a curated `domain:subFunction` knowledge-base key, and the result
-  // matches the server's `^[a-z0-9-]+$` validation.
-  const customSlug = (label: string): string => {
-    const base = label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 50);
-    return `custom-${base || 'entry'}`;
-  };
-
-  const addCustomDomain = () => {
+  // Persist a custom domain (workspace-scoped) and select it. The server derives the
+  // `custom-…` id from the label and returns it.
+  const addCustomDomain = async () => {
     const label = domainDraftLabel.trim();
     const description = domainDraftDesc.trim();
     if (!label || !description) return;
-    const id = customSlug(label);
-    setCustomDomains((prev) => [...prev.filter((d) => d.id !== id), { id, label, subFunctions: [], custom: true, description }]);
-    setDomainId(id);
-    setSubFunctionId(null);
-    setShowDomainForm(false);
-    setShowFunctionForm(false);
-    setDomainDraftLabel('');
-    setDomainDraftDesc('');
+    setBusy(true);
+    setError(null);
+    try {
+      const data = (await apiFetch('/api/guardrail-advisor/custom-domains', {
+        method: 'POST',
+        body: JSON.stringify({ label, description }),
+      })) as { domain: { id: string; label: string; description: string } };
+      const d = data.domain;
+      setCustomDomains((prev) => [
+        ...prev.filter((x) => x.id !== d.id),
+        { id: d.id, label: d.label, description: d.description, subFunctions: [], custom: true },
+      ]);
+      setDomainId(d.id);
+      setSubFunctionId(null);
+      setShowDomainForm(false);
+      setShowFunctionForm(false);
+      setDomainDraftLabel('');
+      setDomainDraftDesc('');
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const addCustomFunction = () => {
+  const addCustomFunction = async () => {
     if (!domainId) return;
     const label = functionDraftLabel.trim();
     const description = functionDraftDesc.trim();
     if (!label || !description) return;
-    const id = customSlug(label);
-    setCustomFunctions((prev) => ({
-      ...prev,
-      [domainId]: [...(prev[domainId] ?? []).filter((f) => f.id !== id), { id, label, custom: true, description }],
-    }));
-    setSubFunctionId(id);
-    setShowFunctionForm(false);
-    setFunctionDraftLabel('');
-    setFunctionDraftDesc('');
+    setBusy(true);
+    setError(null);
+    try {
+      const data = (await apiFetch('/api/guardrail-advisor/custom-functions', {
+        method: 'POST',
+        body: JSON.stringify({ domainId, label, description }),
+      })) as { function: { id: string; label: string; description: string; domainId: string } };
+      const f = data.function;
+      setCustomFunctions((prev) => ({
+        ...prev,
+        [f.domainId]: [
+          ...(prev[f.domainId] ?? []).filter((x) => x.id !== f.id),
+          { id: f.id, label: f.label, description: f.description, custom: true },
+        ],
+      }));
+      setSubFunctionId(f.id);
+      setShowFunctionForm(false);
+      setFunctionDraftLabel('');
+      setFunctionDraftDesc('');
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Admin-only: remove a saved custom domain (and its functions) or a single function.
+  const removeCustomDomain = async (id: string) => {
+    setError(null);
+    try {
+      await apiFetch(`/api/guardrail-advisor/custom-domains/${id}`, { method: 'DELETE' });
+      setCustomDomains((prev) => prev.filter((d) => d.id !== id));
+      setCustomFunctions((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (domainId === id) {
+        setDomainId(null);
+        setSubFunctionId(null);
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
+
+  const removeCustomFunction = async (domain: string, id: string) => {
+    setError(null);
+    try {
+      await apiFetch(`/api/guardrail-advisor/custom-functions/${domain}/${id}`, { method: 'DELETE' });
+      setCustomFunctions((prev) => ({
+        ...prev,
+        [domain]: (prev[domain] ?? []).filter((f) => f.id !== id),
+      }));
+      if (subFunctionId === id) setSubFunctionId(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   };
 
   const startSession = useCallback(async () => {
@@ -297,8 +384,7 @@ export function GuardrailAdvisorPage() {
     setError(null);
     setDomainId(null);
     setSubFunctionId(null);
-    setCustomDomains([]);
-    setCustomFunctions({});
+    // Saved custom domains/functions persist across runs — don't clear them here.
     setShowDomainForm(false);
     setDomainDraftLabel('');
     setDomainDraftDesc('');
@@ -501,30 +587,42 @@ export function GuardrailAdvisorPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {allDomains.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => {
-                  setDomainId(d.id);
-                  setSubFunctionId(null);
-                  setShowFunctionForm(false);
-                }}
-                className={`rounded-2xl border px-4 py-4 text-left transition-all ${
-                  domainId === d.id
-                    ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-500/40'
-                    : 'border-slate-200/80 bg-white hover:shadow-md'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{d.label}</span>
-                  {d.custom && (
-                    <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-200/70">
-                      Custom
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1 text-xs text-slate-500">{functionCount(d)} functions</div>
-              </button>
+              <div key={d.id} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDomainId(d.id);
+                    setSubFunctionId(null);
+                    setShowFunctionForm(false);
+                  }}
+                  className={`w-full rounded-2xl border px-4 py-4 text-left transition-all ${
+                    domainId === d.id
+                      ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-500/40'
+                      : 'border-slate-200/80 bg-white hover:shadow-md'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-900">{d.label}</span>
+                    {d.custom && (
+                      <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-200/70">
+                        Custom
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">{functionCount(d)} functions</div>
+                </button>
+                {d.custom && isAdmin && (
+                  <button
+                    type="button"
+                    title="Delete this saved custom domain"
+                    aria-label={`Delete custom domain ${d.label}`}
+                    onClick={() => removeCustomDomain(d.id)}
+                    className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-slate-400 ring-1 ring-slate-200 hover:bg-rose-50 hover:text-rose-600"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             ))}
             <button
               type="button"
@@ -591,27 +689,39 @@ export function GuardrailAdvisorPage() {
               <h4 className="text-sm font-semibold text-slate-700">Function</h4>
               <div className="flex flex-wrap gap-2">
                 {selectedFunctions.map((sf) => (
-                  <button
-                    key={sf.id}
-                    type="button"
-                    onClick={() => setSubFunctionId(sf.id)}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                      subFunctionId === sf.id
-                        ? 'bg-blue-600 text-white'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {sf.label}
-                    {sf.custom && (
-                      <span
-                        className={`rounded-full px-1 text-[10px] font-semibold uppercase tracking-wide ${
-                          subFunctionId === sf.id ? 'bg-white/25 text-white' : 'bg-violet-50 text-violet-700'
-                        }`}
+                  <span key={sf.id} className="inline-flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setSubFunctionId(sf.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                        subFunctionId === sf.id
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {sf.label}
+                      {sf.custom && (
+                        <span
+                          className={`rounded-full px-1 text-[10px] font-semibold uppercase tracking-wide ${
+                            subFunctionId === sf.id ? 'bg-white/25 text-white' : 'bg-violet-50 text-violet-700'
+                          }`}
+                        >
+                          Custom
+                        </span>
+                      )}
+                    </button>
+                    {sf.custom && isAdmin && (
+                      <button
+                        type="button"
+                        title="Delete this saved custom function"
+                        aria-label={`Delete custom function ${sf.label}`}
+                        onClick={() => removeCustomFunction(domainId ?? '', sf.id)}
+                        className="ml-1 flex h-5 w-5 items-center justify-center rounded-full text-slate-400 ring-1 ring-slate-200 hover:bg-rose-50 hover:text-rose-600"
                       >
-                        Custom
-                      </span>
+                        ×
+                      </button>
                     )}
-                  </button>
+                  </span>
                 ))}
                 <button
                   type="button"
