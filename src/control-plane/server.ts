@@ -823,6 +823,31 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(enforceOrigin);
 
+// In-memory per-IP rate limiter for unauthenticated auth endpoints (brute-force
+// / account-enumeration / unbounded-signup protection). Per-instance; a shared
+// store would be the durable fit for multi-instance deployments.
+const authRateBuckets = new Map<string, { count: number; resetTime: number }>();
+function rateLimit(maxRequests: number, windowMs: number) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const ip = (req.ip || req.socket.remoteAddress || 'unknown') as string;
+    const now = Date.now();
+    let bucket = authRateBuckets.get(ip);
+    if (!bucket || now > bucket.resetTime) bucket = { count: 0, resetTime: now + windowMs };
+    if (bucket.count >= maxRequests) {
+      res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      return;
+    }
+    bucket.count++;
+    authRateBuckets.set(ip, bucket);
+    if (authRateBuckets.size > 10000) {
+      for (const [key, value] of authRateBuckets.entries()) {
+        if (now > value.resetTime) authRateBuckets.delete(key);
+      }
+    }
+    next();
+  };
+}
+
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -844,7 +869,7 @@ app.get('/packages', (_req, res) => {
   res.json({ packages: PACKAGES });
 });
 
-app.post('/auth/register', async (req, res) => {
+app.post('/auth/register', rateLimit(5, 60000), async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid registration payload' });
@@ -983,7 +1008,7 @@ app.post('/auth/oauth', async (req, res) => {
   });
 });
 
-app.post('/auth/login', async (req, res) => {
+app.post('/auth/login', rateLimit(10, 60000), async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid login payload' });

@@ -278,6 +278,7 @@ authCredentialsRouter.post(
  */
 authCredentialsRouter.post(
   '/password-change',
+  rateLimitAuth(5, 60000), // scrypt verify is CPU-expensive — cap per IP
   requireAuth,
   async (req: Request, res: Response) => {
     try {

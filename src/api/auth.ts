@@ -7,6 +7,7 @@ import { getCachedAuthSession, cacheAuthSession, invalidateCachedAuthSession } f
 import { runAsSystem, runWithTenant } from '../lib/tenant-context.js';
 import { recordAuditEventSafe } from './audit-log.js';
 import { getWebsiteSignInUrl, getWebsiteSignOutUrl } from './control-plane.js';
+import { rateLimitAuth } from './middleware-auth.js';
 import { checkUserQuota } from '../shared/quota-enforcement.js';
 
 const SECURE_SESSION_COOKIE_NAME = '__Host-aria_session';
@@ -786,7 +787,7 @@ authRouter.post('/login', async (req, res) => {
   }
 });
 
-authRouter.post('/change-password', async (req, res) => {
+authRouter.post('/change-password', rateLimitAuth(5, 60000), async (req, res) => {
   try {
     const auth = getRequestAuth(req);
     if (!auth) {
