@@ -58,6 +58,10 @@ jobs:
           format: "sarif"
           output: "trivy-${{ matrix.component }}.sarif"
           severity: "CRITICAL,HIGH,MEDIUM"
+          # Only report vulnerabilities that have a fix available. Unfixed base-image
+          # OS-package CVEs (Debian/Alpine "will-not-fix" backlog) are pure noise in
+          # the Security tab — they flooded it with hundreds of un-actionable alerts.
+          ignore-unfixed: true
 
       - name: Upload SARIF to Security tab
         if: steps.check.outputs.exists == 'true'
@@ -73,6 +77,7 @@ jobs:
           image-ref: ghcr.io/${{ github.repository }}/${{ matrix.component }}:latest
           format: "table"
           severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
 
   # ── Summary ─────────────────────────────────────────────────────────────────
   report:
