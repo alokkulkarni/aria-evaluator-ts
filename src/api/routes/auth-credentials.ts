@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, validatePasswordStrength } from '../../li
 import { generateTokenPair, logoutUser } from '../token-manager.js';
 import { requireAuth, rateLimitAuth, captureSessionMetadata } from '../middleware-auth.js';
 import { storeSession } from '../../lib/cache.js';
+import { sanitizeLogValue } from '../../lib/log-safe.js';
 
 export const authCredentialsRouter = Router();
 
@@ -359,7 +360,7 @@ async function logAuthEvent(
   try {
     // In a real implementation, store in AuditLog table
     console.info(
-      `[Auth] Action=${action} User=${userOrEmail} Result=${result} IP=${ipAddress}`
+      `[Auth] Action=${action} User=${sanitizeLogValue(userOrEmail)} Result=${result} IP=${sanitizeLogValue(ipAddress ?? '')}`
     );
   } catch (error) {
     console.error('[Auth] Failed to log event:', error);

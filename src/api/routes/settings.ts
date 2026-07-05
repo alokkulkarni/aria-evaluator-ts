@@ -7,6 +7,7 @@ import {
 } from '../runtime-settings.js';
 import { recordAuditEventSafe } from '../audit-log.js';
 import { getModelsForRegion } from '../../shared/judge-config.js';
+import { sanitizeLogValue } from '../../lib/log-safe.js';
 
 export const settingsRouter = Router();
 
@@ -33,9 +34,10 @@ settingsRouter.get('/judge-models', (req, res) => {
       effective['AWS_REGION'] ||
       'eu-west-2'
     ).trim();
-    console.log(`[API] /judge-models endpoint - region: ${region}`);
+    const safeRegion = sanitizeLogValue(region);
+    console.log(`[API] /judge-models endpoint - region: ${safeRegion}`);
     const models = getModelsForRegion(region);
-    console.log(`[API] /judge-models - returning ${models.length} model groups for region ${region}`);
+    console.log(`[API] /judge-models - returning ${models.length} model groups for region ${safeRegion}`);
     res.json({ region, models });
   } catch (err) {
     console.error('[API] /judge-models error:', err);
