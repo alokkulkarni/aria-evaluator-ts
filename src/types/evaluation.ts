@@ -27,11 +27,35 @@ export interface TurnContribution {
   score: number;
 }
 
+/** The risk families for which the judge emits explicit reasons + fixes. */
+export type RiskCategory = 'bias' | 'hallucination';
+export type RiskSeverity = 'low' | 'medium' | 'high';
+
+/**
+ * Actionable explanation attached to a risk-bearing dimension when the judge
+ * detects a material problem. `bias` rides on `bias_and_fairness`; `hallucination`
+ * rides on `correctness` and `faithfulness`. Purely additive — never affects the
+ * dimension score or pass/fail. Absent when no material risk was detected.
+ */
+export interface RiskInsight {
+  category: RiskCategory;
+  detected: boolean;
+  severity: RiskSeverity;
+  /** Specific reasons the risk was flagged — highlighted in the UI. */
+  reasons: string[];
+  /** Concrete improvement actions to reduce the risk. */
+  suggestions: string[];
+  /** Offending quotes pulled from the transcript, when available. */
+  evidenceQuotes?: string[];
+}
+
 export interface DimensionScore {
   score: number;         // 0–10 (committee mean when multiple judges)
   justification: string;
   evidence?: string;
   gap?: string;          // Why the score is not 10/10 — populated by judge when score < 1.0
+  /** Bias/hallucination reasons + fixes — present only when a material risk is detected. */
+  riskInsight?: RiskInsight;
   /** Per-judge votes that produced this score (present for committee runs). */
   judgeVotes?: JudgeVote[];
   /** max−min across judge votes, in 0–10 units. */

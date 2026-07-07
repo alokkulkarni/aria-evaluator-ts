@@ -81,6 +81,27 @@ describe('ReportGenerator HTML explainability', () => {
     expect(html).toContain('8 re-scores');
   });
 
+  it('renders a bias/hallucination risk insight when present', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aria-report-'));
+    const data = build();
+    data.results[0]!.dimensionScores['correctness']!.riskInsight = {
+      category: 'hallucination',
+      detected: true,
+      severity: 'high',
+      reasons: ['Invented an APR figure not present in retrieved data'],
+      suggestions: ['Restrict the agent to quoting retrieved rates only'],
+      evidenceQuotes: ['your APR is 3.2%'],
+    };
+    const { htmlPath } = new ReportGenerator(dir).generate(data);
+    const html = readFileSync(htmlPath, 'utf-8');
+    expect(html).toContain('Hallucination risk');
+    expect(html).toContain('How to improve');
+    expect(html).toContain('Invented an APR figure not present in retrieved data');
+    expect(html).toContain('Restrict the agent to quoting retrieved rates only');
+    expect(html).toContain('your APR is 3.2%');
+    expect(html).toContain('risk-high');
+  });
+
   it('omits explainability blocks when data is absent', () => {
     const dir = mkdtempSync(join(tmpdir(), 'aria-report-'));
     const data = build();

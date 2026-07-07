@@ -70,6 +70,23 @@ describe('aggregateMemberScores', () => {
     expect(dimensionScores.correctness!.judgeVotes).toBeUndefined();
   });
 
+  it('carries the risk insight from the representative member', () => {
+    const insight = {
+      category: 'bias' as const,
+      detected: true,
+      severity: 'high' as const,
+      reasons: ['Used postcode as a proxy'],
+      suggestions: ['Strip demographic proxies'],
+    };
+    const members: MemberOutcome[] = [
+      { judge: judgeA, dimensionScores: { bias_and_fairness: { score: 4, justification: 'r', riskInsight: insight } } },
+      { judge: judgeB, dimensionScores: { bias_and_fairness: { score: 6, justification: 'r' } } },
+    ];
+    // mean = 5 → representative is the member whose score is closest (4, judgeA) so its insight rides along.
+    const { dimensionScores } = aggregateMemberScores(members, 2);
+    expect(dimensionScores.bias_and_fairness!.riskInsight).toEqual(insight);
+  });
+
   it('measures agreement only over the scoring dimensions when provided', () => {
     const members: MemberOutcome[] = [
       { judge: judgeA, dimensionScores: { guardrail_compliance: ds(10), helpfulness: ds(8) } },

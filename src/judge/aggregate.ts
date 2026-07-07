@@ -157,6 +157,7 @@ export function aggregateMemberScores(
       justification,
       evidence: repDs?.evidence,
       gap: repDs?.gap,
+      ...(repDs?.riskInsight ? { riskInsight: repDs.riskInsight } : {}),
       ...(votes.length > 1 ? { judgeVotes: votes, spread, disagreement } : {}),
       ...(turnContributions ? { turnContributions } : {}),
     };

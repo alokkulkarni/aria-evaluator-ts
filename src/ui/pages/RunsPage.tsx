@@ -598,14 +598,67 @@ function TranscriptChatView({ url }: { url: string }) {
 
 interface ReportJudgeVote { judgeId: string; provider: string; modelId: string; score: number; justification?: string }
 interface ReportTurnContribution { turnIndex: number; role: string; contentPreview: string; score: number }
+interface ReportRiskInsight {
+  category: 'bias' | 'hallucination';
+  detected: boolean;
+  severity: 'low' | 'medium' | 'high';
+  reasons: string[];
+  suggestions: string[];
+  evidenceQuotes?: string[];
+}
 interface ReportDimScore {
   score: number;
   justification: string;
   evidence?: string;
+  riskInsight?: ReportRiskInsight;
   judgeVotes?: ReportJudgeVote[];
   spread?: number;
   disagreement?: boolean;
   turnContributions?: ReportTurnContribution[];
+}
+
+// Highlights detected bias/hallucination with the specific reasons the judge
+// flagged it and concrete suggestions to fix it. Rendered only when present.
+function RiskInsightBlock({ insight }: { insight: ReportRiskInsight }) {
+  if (!insight.detected || (insight.reasons.length === 0 && insight.suggestions.length === 0)) return null;
+  const label = insight.category === 'bias' ? 'Bias' : 'Hallucination';
+  const sevClass =
+    insight.severity === 'high'
+      ? 'bg-red-50 border-red-300 text-red-800'
+      : insight.severity === 'medium'
+        ? 'bg-amber-50 border-amber-300 text-amber-800'
+        : 'bg-yellow-50 border-yellow-200 text-yellow-800';
+  return (
+    <div className={`mt-1.5 rounded border px-2 py-1.5 ${sevClass}`}>
+      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide">
+        <span>⚠ {label} risk</span>
+        <span className="rounded bg-white/60 px-1 py-px text-[9px] font-semibold">{insight.severity}</span>
+      </div>
+      {insight.reasons.length > 0 && (
+        <div className="mt-1">
+          <p className="text-[10px] font-semibold uppercase opacity-70">Why flagged</p>
+          <ul className="ml-3 list-disc text-[11px] leading-relaxed">
+            {insight.reasons.map((r, i) => <li key={i}>{r}</li>)}
+          </ul>
+        </div>
+      )}
+      {insight.suggestions.length > 0 && (
+        <div className="mt-1">
+          <p className="text-[10px] font-semibold uppercase opacity-70">How to improve</p>
+          <ul className="ml-3 list-disc text-[11px] leading-relaxed">
+            {insight.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+          </ul>
+        </div>
+      )}
+      {insight.evidenceQuotes && insight.evidenceQuotes.length > 0 && (
+        <div className="mt-1 space-y-0.5">
+          {insight.evidenceQuotes.map((q, i) => (
+            <p key={i} className="border-l-2 border-current/40 pl-2 text-[11px] italic opacity-80">“{q}”</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Dimensions for which on-demand turn-level Shapley attribution is available
@@ -858,6 +911,7 @@ function ReportView({ url, runId }: { url: string; runId?: string }) {
               {ds.evidence && (
                 <p className="text-[11px] text-slate-400 mt-1 italic border-l-2 border-slate-200 pl-2">{ds.evidence}</p>
               )}
+              {ds.riskInsight && <RiskInsightBlock insight={ds.riskInsight} />}
               {ds.judgeVotes && ds.judgeVotes.length > 1 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {ds.judgeVotes.map((v) => (
