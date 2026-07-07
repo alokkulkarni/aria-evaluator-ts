@@ -5,7 +5,7 @@ import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { appPaths } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
-import type { EvalResult, TurnContribution } from '../types/evaluation.js';
+import type { EvalResult, TurnContribution, RiskInsight } from '../types/evaluation.js';
 import type { TurnShapleyExplanation } from '../judge/explain/turn-shapley.js';
 import { ALL_DIMENSIONS_BY_ID } from '../judge/dimensions.js';
 
@@ -177,6 +177,17 @@ export class ReportGenerator {
     .evidence-block { margin-top: 8px; }
     .evidence-label { display: block; font-size: 11px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
     .evidence-quote { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 10px; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #4a5568; margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
+    /* Risk insights — bias / hallucination reasons + improvement suggestions */
+    .risk-block { margin-top: 8px; border-radius: 6px; padding: 8px 12px; border: 1px solid; }
+    .risk-high { background: #fff5f5; border-color: #fc8181; color: #9b2c2c; }
+    .risk-medium { background: #fffaf0; border-color: #f6ad55; color: #9c4221; }
+    .risk-low { background: #fffff0; border-color: #ecc94b; color: #975a16; }
+    .risk-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .risk-sev { font-size: 9px; font-weight: 600; background: rgba(255,255,255,.6); border-radius: 3px; padding: 1px 4px; margin-left: 6px; }
+    .risk-sub { font-size: 10px; font-weight: 700; text-transform: uppercase; opacity: .7; margin: 6px 0 2px; }
+    .risk-block ul { margin: 0 0 0 16px; padding: 0; }
+    .risk-block li { font-size: 12px; line-height: 1.5; margin-bottom: 2px; }
+    .risk-quote { font-style: italic; font-size: 11px; opacity: .85; border-left: 2px solid currentColor; padding-left: 8px; margin-top: 4px; }
     /* Explainability — per-turn contributions (Phase 1) + turn Shapley (Phase 2) */
     .turn-attrib { margin-top: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 10px 12px; }
     .ta-title { font-size: 12px; font-weight: 700; color: #2d3748; margin-bottom: 4px; }
@@ -396,6 +407,28 @@ export class ReportGenerator {
     </div>`;
   }
 
+  /** Render a bias/hallucination risk insight: reasons flagged + how to improve. */
+  private renderRiskInsight(insight: RiskInsight): string {
+    if (!insight.detected || (insight.reasons.length === 0 && insight.suggestions.length === 0)) return '';
+    const label = insight.category === 'bias' ? 'Bias' : 'Hallucination';
+    const sevClass = insight.severity === 'high' ? 'risk-high' : insight.severity === 'low' ? 'risk-low' : 'risk-medium';
+    const reasons = insight.reasons.length
+      ? `<div class="risk-sub">Why flagged</div><ul>${insight.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`
+      : '';
+    const suggestions = insight.suggestions.length
+      ? `<div class="risk-sub">How to improve</div><ul>${insight.suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>`
+      : '';
+    const quotes = (insight.evidenceQuotes ?? [])
+      .map((q) => `<div class="risk-quote">${escapeHtml(q)}</div>`)
+      .join('');
+    return `<div class="risk-block ${sevClass}">
+      <div class="risk-head">⚠ ${label} risk<span class="risk-sev">${escapeHtml(insight.severity)}</span></div>
+      ${reasons}
+      ${suggestions}
+      ${quotes}
+    </div>`;
+  }
+
   private renderDimensionTable(
     results: EvalResult[],
     explanations?: Record<string, Record<string, TurnShapleyExplanation>>,
@@ -465,6 +498,7 @@ export class ReportGenerator {
             const evidenceLines = ds.evidence
               ? ds.evidence.split('\n').map((line) => `<div class="evidence-quote">${escapeHtml(line)}</div>`).join('')
               : '';
+            const riskBlock = ds.riskInsight ? this.renderRiskInsight(ds.riskInsight) : '';
 
             // Explainability: per-turn contributions (Phase 1) + baked Shapley (Phase 2).
             const turnBars = (ds.turnContributions?.length ?? 0) > 1
@@ -478,6 +512,7 @@ export class ReportGenerator {
                 ${gapBlock}
                 ${justLines ? `<div class="reasoning-block"><ul>${justLines}</ul></div>` : ''}
                 ${evidenceLines ? `<div class="evidence-block"><span class="evidence-label">📎 Evidence</span>${evidenceLines}</div>` : ''}
+                ${riskBlock}
                 ${turnBars}
                 ${shapBars}
               </div>`;
