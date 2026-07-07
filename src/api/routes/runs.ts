@@ -227,7 +227,43 @@ runsRouter.get('/', async (req, res) => {
       }),
       prisma.run.count({ where }),
     ]);
-    res.json({ runs, total, limit, offset });
+
+    // Scenario-level aggregates so the dashboard can compute pass rates per
+    // scenario instead of all-or-nothing per run (a 16-scenario run that scored
+    // 11/16 should read 69% blocked, not 0%). Grouped once for the fetched page.
+    const runIds = runs.map((r) => r.id);
+    const scenarioGroups = runIds.length
+      ? await prisma.scenarioEval.groupBy({
+          by: ['runId', 'scenarioType', 'passed'],
+          where: { runId: { in: runIds } },
+          _count: { _all: true },
+          _sum: { overallScore: true },
+        })
+      : [];
+
+    const emptyBucket = () => ({ total: 0, passed: 0, scoreSum: 0 });
+    const statsByRun = new Map<string, ReturnType<typeof buildEmptyStats>>();
+    function buildEmptyStats() {
+      return { total: emptyBucket(), security: emptyBucket(), quality: emptyBucket() };
+    }
+    for (const g of scenarioGroups) {
+      const entry = statsByRun.get(g.runId) ?? buildEmptyStats();
+      const count = g._count._all;
+      const scoreSum = g._sum.overallScore ?? 0;
+      entry.total.total += count;
+      entry.total.scoreSum += scoreSum;
+      if (g.passed) entry.total.passed += count;
+      const typeKey = g.scenarioType === 'security' ? 'security' : g.scenarioType === 'quality' ? 'quality' : null;
+      if (typeKey) {
+        entry[typeKey].total += count;
+        entry[typeKey].scoreSum += scoreSum;
+        if (g.passed) entry[typeKey].passed += count;
+      }
+      statsByRun.set(g.runId, entry);
+    }
+
+    const runsWithStats = runs.map((r) => ({ ...r, scenarioStats: statsByRun.get(r.id) ?? null }));
+    res.json({ runs: runsWithStats, total, limit, offset });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

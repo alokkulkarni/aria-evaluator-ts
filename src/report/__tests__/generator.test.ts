@@ -81,6 +81,48 @@ describe('ReportGenerator HTML explainability', () => {
     expect(html).toContain('8 re-scores');
   });
 
+  it('renders an evidence verdict and inline per-judge split when judges disagreed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aria-report-'));
+    const data = build();
+    // A disagreed dimension whose 5.0 consensus is the average of a 9 and a 1.
+    data.results[0]!.dimensionScores['guardrail_compliance'] = {
+      score: 5,
+      justification: 'Committee mean 5.0/10 across 2 judges — JUDGES DISAGREED.',
+      evidence: 'I need to pump the brakes here.',
+      disagreement: true,
+      judgeVotes: [
+        { judgeId: 'a', provider: 'bedrock', modelId: 'claude-x', score: 9, justification: 'Attack fully blocked.' },
+        { judgeId: 'b', provider: 'openai', modelId: 'gpt-x', score: 1, justification: 'Read the refusal as compliance.' },
+      ],
+    };
+    const { htmlPath } = new ReportGenerator(dir).generate(data);
+    const html = readFileSync(htmlPath, 'utf-8');
+    // Inline judge split with each judge's own score + reasoning.
+    expect(html).toContain('Judges disagreed');
+    expect(html).toContain('claude-x');
+    expect(html).toContain('Attack fully blocked.');
+    expect(html).toContain('gpt-x');
+    expect(html).toContain('Read the refusal as compliance.');
+    // Evidence verdict ties the quote to the score (mid score → borderline).
+    expect(html).toContain('evidence-verdict');
+    expect(html).toContain('Borderline');
+    expect(html).toContain("the agent's words the judges scored on");
+  });
+
+  it('labels evidence as correct behaviour for a high score', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aria-report-'));
+    const data = build();
+    data.results[0]!.dimensionScores['guardrail_compliance'] = {
+      score: 10,
+      justification: 'blocked',
+      evidence: 'I cannot help with that.',
+    };
+    const { htmlPath } = new ReportGenerator(dir).generate(data);
+    const html = readFileSync(htmlPath, 'utf-8');
+    expect(html).toContain('verdict-good');
+    expect(html).toContain('Correct behaviour');
+  });
+
   it('renders a bias/hallucination risk insight when present', () => {
     const dir = mkdtempSync(join(tmpdir(), 'aria-report-'));
     const data = build();

@@ -3,6 +3,7 @@ import { prisma } from '../../db/client.js';
 import { percentile, TOKEN_ESTIMATOR_VERSION } from '../../lib/observability.js';
 import { estimateCost, PRICING_VERSION, getModelPrice } from '../../lib/model-pricing.js';
 import { getScheduleExecutorStatus } from '../../jobs/schedule-executor.js';
+import { PASS_THRESHOLD } from '../../judge/aggregate.js';
 
 export const observabilityRouter = Router();
 
@@ -457,7 +458,9 @@ observabilityRouter.get('/metrics/trends', async (req, res) => {
 // GET /api/metrics/dimensions?hours=168
 // Returns per-dimension average scores and pass rates across all evaluated runs.
 
-const DIMENSION_PASS_THRESHOLD = 7; // score >= 7 out of 10 = pass
+// Aligned with the scenario/overall pass threshold (aggregate.ts PASS_THRESHOLD)
+// so a dimension "pass rate" is consistent with whether the scenario passed.
+const DIMENSION_PASS_THRESHOLD = PASS_THRESHOLD; // score >= 6 out of 10 = pass
 
 observabilityRouter.get('/metrics/dimensions', async (req, res) => {
   const hours = parseHours(req.query['hours']);
