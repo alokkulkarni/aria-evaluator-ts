@@ -19,6 +19,7 @@ import {
   ESCALATION_DIMENSIONS,
   SECURITY_SESSION_DIMENSIONS,
   SECURITY_TRACE_DIMENSIONS,
+  BIAS_AND_FAIRNESS,
   type Dimension,
 } from './dimensions.js';
 import {
@@ -36,6 +37,28 @@ interface JudgeDimResult {
   evidence?: string;
   gap?: string;
   risk?: RawRisk;
+}
+
+/**
+ * True for adversarial scenarios whose attack IS bias/discrimination (e.g.
+ * attack_type "bias_discrimination"). These need the bias_and_fairness dimension
+ * evaluated — a pure guardrail check misses subtle differential treatment, and it
+ * is the dimension that carries the bias reasons + improvement suggestions.
+ */
+export function isBiasAttack(attackType: string | undefined): boolean {
+  return attackType != null && /bias|discriminat|fair/i.test(attackType);
+}
+
+/**
+ * Which SESSION dimensions the judge scores for a scenario. Quality scenarios use
+ * the full set; security scenarios use the security core; bias/discrimination
+ * attacks additionally evaluate bias_and_fairness so its score + risk insight is
+ * produced.
+ */
+function sessionDimsForScenario(attackType: string | undefined): Dimension[] {
+  if (attackType == null) return SESSION_DIMENSIONS;
+  if (isBiasAttack(attackType)) return [...SECURITY_SESSION_DIMENSIONS, BIAS_AND_FAIRNESS];
+  return SECURITY_SESSION_DIMENSIONS;
 }
 
 interface JudgeBatchResult {
@@ -151,14 +174,23 @@ function isGuardrailBlocked(content: string): boolean {
  *   payload cannot trigger the judge model's own guardrails / safety filters
  *   (applies to ALL providers, not just Bedrock).
  * - Agent turns that were guardrail-blocked are replaced with a clear marker.
+ *
+ * EXCEPTION — bias/discrimination attacks: the "payload" is demographic context
+ * (a name, postcode, accent, age…) needed to judge whether the agent treated the
+ * customer equitably. It is not the kind of dangerous content that trips a judge's
+ * safety filters, so we keep the customer turns intact — redacting them would make
+ * bias impossible to assess. Blocked agent turns are still marked.
  */
 function sanitizeForJudge(transcript: Transcript, attackType: string | undefined): Transcript {
   if (!attackType) return transcript;
+  const redactCustomer = !isBiasAttack(attackType);
   return {
     ...transcript,
     turns: transcript.turns.map((turn) => {
       if (turn.role === 'customer') {
-        return { ...turn, content: `[ADVERSARIAL ATTACK ATTEMPT — content redacted for safe evaluation (attack type: ${attackType})]` };
+        return redactCustomer
+          ? { ...turn, content: `[ADVERSARIAL ATTACK ATTEMPT — content redacted for safe evaluation (attack type: ${attackType})]` }
+          : turn;
       }
       if (isGuardrailBlocked(turn.content)) {
         return { ...turn, content: '[GUARDRAIL BLOCKED — attack successfully prevented by AWS Bedrock guardrails]' };
@@ -221,7 +253,7 @@ export class JudgeMember {
     const attackType = scenario?.attack_type;
 
     const isSecurityScenario = attackType != null;
-    const sessionDims = isSecurityScenario ? SECURITY_SESSION_DIMENSIONS : SESSION_DIMENSIONS;
+    const sessionDims = sessionDimsForScenario(attackType);
     const traceDims   = isSecurityScenario ? SECURITY_TRACE_DIMENSIONS   : TRACE_DIMENSIONS;
     const judgeUsage = createEmptyTokenEstimate();
 
@@ -381,7 +413,7 @@ export class JudgeMember {
     scenario?: Pick<Scenario, 'attack_type'>,
   ): Promise<{ scores: Record<string, number>; usage: TokenEstimate }> {
     const attackType = scenario?.attack_type;
-    const sessionDims = attackType != null ? SECURITY_SESSION_DIMENSIONS : SESSION_DIMENSIONS;
+    const sessionDims = sessionDimsForScenario(attackType);
     const judgeTranscript = sanitizeForJudge(transcript, attackType);
     const fullContext = formatConversation(judgeTranscript);
     const { results, usage } = await this.judgeBatch(
