@@ -25,6 +25,7 @@
     "cli:copilot": "tsx src/cli/run-copilot.ts",
     "cli:custom": "tsx src/cli/run-custom.ts",
     "cli:openapi": "tsx src/cli/run-openapi.ts",
+    "cli:websocket": "tsx src/cli/run-websocket.ts",
     "cli:guardrail-crawl": "tsx src/cli/run-guardrail-crawl.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
