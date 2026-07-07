@@ -43,6 +43,27 @@ export interface ProviderTypeDef {
   fields: ProviderFieldDef[];
 }
 
+/**
+ * Voice (bidirectional-audio WebSocket) fields, shared by every provider that can
+ * run voice through the generic voice adapter (custom, strands, openapi,
+ * websocket). Keyed by the same env-var names the voice adapter reads from
+ * process.env, so voice is a single, provider-agnostic mechanism: pick a protocol
+ * and point it at a voice WebSocket endpoint.
+ */
+export const VOICE_WS_FIELDS: ProviderFieldDef[] = [
+  { key: 'CUSTOM_VOICE_PROTOCOL', label: 'Voice Protocol', placeholder: 'deepgram', hint: 'Protocol to use: "deepgram" (Deepgram Voice Agent API), "agentcore" (AWS Bedrock AgentCore), or "generic-json" (custom JSON WebSocket).', channel: 'voice' },
+  { key: 'DEEPGRAM_VOICE_WS_URL', label: 'Deepgram WS URL', placeholder: 'wss://agent.deepgram.com/agent', hint: 'Deepgram Voice Agent WebSocket URL. Required when protocol is "deepgram".', channel: 'voice' },
+  { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key', placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', hint: 'Your Deepgram API key used as the authentication token. Required when protocol is "deepgram".', sensitive: true, channel: 'voice' },
+  { key: 'DEEPGRAM_VOICE_SETTINGS_JSON', label: 'Deepgram Settings JSON', placeholder: '{"type":"Settings","audio":{...},"agent":{...}}', hint: 'Override the default Deepgram Settings message sent after connection. Leave blank to use built-in defaults (nova-3 + gpt-4o-mini).', channel: 'voice' },
+  { key: 'CUSTOM_VOICE_WS_URL', label: 'Generic Voice WS URL', placeholder: 'wss://api.example.com/voice', hint: 'WebSocket URL for generic-json or agentcore voice protocol. Required when protocol is not "deepgram".', channel: 'voice' },
+  { key: 'CUSTOM_VOICE_WS_AUTH_HEADER_NAME', label: 'Generic WS Auth Header Name', placeholder: 'Authorization', hint: 'HTTP header name for WebSocket authentication, e.g. "Authorization" or "X-Api-Key".', channel: 'voice' },
+  { key: 'CUSTOM_VOICE_WS_AUTH_HEADER_VALUE', label: 'Generic WS Auth Header Value', placeholder: 'Bearer eyJ...', hint: 'Value for the authentication header, e.g. "Bearer <token>" or your API key.', sensitive: true, channel: 'voice' },
+  { key: 'CUSTOM_VOICE_WS_INIT_JSON', label: 'Generic WS Init JSON', placeholder: '{"type":"init","version":"1"}', hint: 'JSON message sent immediately after the WebSocket connection opens (handshake/init). Leave blank if not required.', channel: 'voice' },
+  { key: 'CUSTOM_VOICE_WS_SEND_TEMPLATE', label: 'Generic WS Send Template', placeholder: '{"type":"message","content":"{{message}}"}', hint: 'JSON template for outgoing messages. Use {{message}} as the placeholder; it will be JSON-string-escaped before insertion.', channel: 'voice' },
+  { key: 'CUSTOM_VOICE_WS_AGENT_EVENT_TYPES', label: 'Agent Event Types', placeholder: 'agent,assistant,message,ConversationText', hint: 'Comma-separated list of event "type" values to treat as agent speech. Frames with other types are ignored.', channel: 'voice' },
+  { key: 'CUSTOM_VOICE_WS_MESSAGE_PATH', label: 'Agent Message Path', placeholder: 'content', hint: 'Dot-notation path to extract the spoken text from the JSON event, e.g. "content" or "data.transcript".', channel: 'voice' },
+];
+
 export const PROVIDER_DEFS: Record<RunProvider, ProviderTypeDef> = {
   connect: {
     type: 'connect',
@@ -95,7 +116,7 @@ export const PROVIDER_DEFS: Record<RunProvider, ProviderTypeDef> = {
   strands: {
     type: 'strands',
     label: 'Strands / AgentCore',
-    description: 'Evaluate an AWS Strands agent or Bedrock AgentCore endpoint over HTTP. Supports no-auth, Bearer token, and AWS SigV4 signing.',
+    description: 'Evaluate an AWS Strands agent or Bedrock AgentCore endpoint over HTTP (chat), or over a bidirectional-audio WebSocket (voice — e.g. Nova Sonic / AgentCore audio). Supports no-auth, Bearer token, and AWS SigV4 signing for chat.',
     fields: [
       { key: 'STRANDS_ENDPOINT', label: 'Endpoint URL', placeholder: 'https://runtime.agentcore.us-east-1.amazonaws.com/runtimes/.../invoke', hint: 'HTTP(S) URL of your Strands or AgentCore endpoint. Receives POST requests with conversation payload.', required: true },
       { key: 'STRANDS_METHOD', label: 'HTTP Method', placeholder: 'POST', hint: 'HTTP verb to use when calling the endpoint. POST or PUT. Defaults to POST.' },
@@ -108,6 +129,8 @@ export const PROVIDER_DEFS: Record<RunProvider, ProviderTypeDef> = {
       { key: 'STRANDS_HISTORY_FIELD', label: 'History Field', placeholder: 'history', hint: 'Request body field name for conversation history (turn array). Defaults to "history".' },
       { key: 'STRANDS_SESSION_ID_FIELD', label: 'Session ID Field', placeholder: 'sessionId', hint: 'Request body field name for the session identifier. Defaults to "sessionId".' },
       { key: 'STRANDS_HEADERS_JSON', label: 'Extra Headers JSON', placeholder: '{"X-Api-Key":"abc123"}', hint: 'Additional HTTP headers as a JSON object. These are merged with auth headers on every request.' },
+      // Voice (WebSocket) — fill these to run this provider on the voice channel.
+      ...VOICE_WS_FIELDS,
     ],
   },
   copilot: {
@@ -132,24 +155,14 @@ export const PROVIDER_DEFS: Record<RunProvider, ProviderTypeDef> = {
       { key: 'CUSTOM_CHAT_MESSAGE_FIELD', label: 'Chat Message Field', placeholder: 'message', hint: 'JSON body field name for the outgoing user message. Defaults to "message".', channel: 'chat' },
       { key: 'CUSTOM_CHAT_RESPONSE_FIELD', label: 'Chat Response Field', placeholder: 'reply', hint: 'JSON response field path for the agent reply. Supports dot-notation, e.g. "data.reply". Defaults to "reply".', channel: 'chat' },
       { key: 'CUSTOM_CHAT_HEADERS_JSON', label: 'Chat Extra Headers JSON', placeholder: '{"X-Api-Key":"abc123"}', hint: 'Additional HTTP headers sent on every request, as a JSON object.', channel: 'chat' },
-      // Voice (WebSocket)
-      { key: 'CUSTOM_VOICE_PROTOCOL', label: 'Voice Protocol', placeholder: 'deepgram', hint: 'Protocol to use: "deepgram" (Deepgram Voice Agent API), "agentcore" (AWS Bedrock AgentCore), or "generic-json" (custom JSON WebSocket).', channel: 'voice' },
-      { key: 'DEEPGRAM_VOICE_WS_URL', label: 'Deepgram WS URL', placeholder: 'wss://agent.deepgram.com/agent', hint: 'Deepgram Voice Agent WebSocket URL. Required when protocol is "deepgram".', channel: 'voice' },
-      { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key', placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', hint: 'Your Deepgram API key used as the authentication token. Required when protocol is "deepgram".', sensitive: true, channel: 'voice' },
-      { key: 'DEEPGRAM_VOICE_SETTINGS_JSON', label: 'Deepgram Settings JSON', placeholder: '{"type":"Settings","audio":{...},"agent":{...}}', hint: 'Override the default Deepgram Settings message sent after connection. Leave blank to use built-in defaults (nova-3 + gpt-4o-mini).', channel: 'voice' },
-      { key: 'CUSTOM_VOICE_WS_URL', label: 'Generic Voice WS URL', placeholder: 'wss://api.example.com/voice', hint: 'WebSocket URL for generic-json or agentcore voice protocol. Required when protocol is not "deepgram".', channel: 'voice' },
-      { key: 'CUSTOM_VOICE_WS_AUTH_HEADER_NAME', label: 'Generic WS Auth Header Name', placeholder: 'Authorization', hint: 'HTTP header name for WebSocket authentication, e.g. "Authorization" or "X-Api-Key".', channel: 'voice' },
-      { key: 'CUSTOM_VOICE_WS_AUTH_HEADER_VALUE', label: 'Generic WS Auth Header Value', placeholder: 'Bearer eyJ...', hint: 'Value for the authentication header, e.g. "Bearer <token>" or your API key.', sensitive: true, channel: 'voice' },
-      { key: 'CUSTOM_VOICE_WS_INIT_JSON', label: 'Generic WS Init JSON', placeholder: '{"type":"init","version":"1"}', hint: 'JSON message sent immediately after the WebSocket connection opens (handshake/init). Leave blank if not required.', channel: 'voice' },
-      { key: 'CUSTOM_VOICE_WS_SEND_TEMPLATE', label: 'Generic WS Send Template', placeholder: '{"type":"message","content":"{{message}}"}', hint: 'JSON template for outgoing messages. Use {{message}} as the placeholder; it will be JSON-string-escaped before insertion.', channel: 'voice' },
-      { key: 'CUSTOM_VOICE_WS_AGENT_EVENT_TYPES', label: 'Agent Event Types', placeholder: 'agent,assistant,message,ConversationText', hint: 'Comma-separated list of event "type" values to treat as agent speech. Frames with other types are ignored.', channel: 'voice' },
-      { key: 'CUSTOM_VOICE_WS_MESSAGE_PATH', label: 'Agent Message Path', placeholder: 'content', hint: 'Dot-notation path to extract the spoken text from the JSON event, e.g. "content" or "data.transcript".', channel: 'voice' },
+      // Voice (WebSocket) — shared voice-endpoint fields
+      ...VOICE_WS_FIELDS,
     ],
   },
   openapi: {
     type: 'openapi',
     label: 'OpenAPI',
-    description: 'Evaluate any chat endpoint described by an OpenAPI spec. Supports HTTP with bearer, API key, or basic authentication.',
+    description: 'Evaluate any chat endpoint described by an OpenAPI spec (HTTP with bearer, API key, or basic auth). For voice, point the voice fields at a bidirectional-audio WebSocket endpoint — plain HTTP cannot stream audio.',
     fields: [
       { key: 'OPENAPI_SPEC_URL', label: 'OpenAPI Spec URL', placeholder: 'https://api.example.com/openapi.yaml', hint: 'URL to fetch the OpenAPI 3.x spec. Used for documentation and field-name discovery only — not required at evaluation runtime.' },
       { key: 'OPENAPI_ENDPOINT_URL', label: 'Chat Endpoint URL', placeholder: 'http://host.docker.internal:8765/chat', hint: 'Full URL of the chat endpoint from the spec. This is the URL that receives each evaluation turn.', required: true },
@@ -160,12 +173,14 @@ export const PROVIDER_DEFS: Record<RunProvider, ProviderTypeDef> = {
       { key: 'OPENAPI_HEADERS_JSON', label: 'Extra Headers JSON', placeholder: '{"X-Custom":"value"}', hint: 'Additional HTTP headers to include on every request, as a JSON object.' },
       { key: 'OPENAPI_MESSAGE_FIELD', label: 'Message Field', placeholder: 'message', hint: 'JSON body field name for the outgoing user message. Defaults to "message".' },
       { key: 'OPENAPI_RESPONSE_FIELD', label: 'Response Field Path', placeholder: 'reply', hint: 'Dot-notation path to extract the agent reply from the JSON response. Defaults to "reply".' },
+      // Voice (WebSocket) — fill these to run this provider on the voice channel.
+      ...VOICE_WS_FIELDS,
     ],
   },
   websocket: {
     type: 'websocket',
-    label: 'WebSocket Chat (ws / wss)',
-    description: 'Evaluate a chat agent over a persistent WebSocket connection. Supports plain ws:// and secure wss:// with optional authentication headers and custom JSON frame formats.',
+    label: 'WebSocket (chat / voice)',
+    description: 'Evaluate an agent over a persistent WebSocket. Use the chat fields for text frames, or the voice fields for a bidirectional-audio WebSocket (deepgram / agentcore / generic-json).',
     fields: [
       { key: 'WS_CHAT_URL', label: 'WebSocket URL', placeholder: 'wss://api.example.com/chat', hint: 'Full WebSocket endpoint URL using ws:// (plain) or wss:// (TLS) scheme.', required: true },
       { key: 'WS_CHAT_AUTH_HEADER_NAME', label: 'Auth Header Name', placeholder: 'Authorization', hint: 'HTTP header name sent during the WebSocket upgrade handshake for authentication, e.g. "Authorization" or "X-Api-Key".' },
@@ -175,6 +190,8 @@ export const PROVIDER_DEFS: Record<RunProvider, ProviderTypeDef> = {
       { key: 'WS_CHAT_SEND_TEMPLATE', label: 'Send Template', placeholder: '{"type":"message","text":"{{message}}"}', hint: 'JSON template for outgoing messages. Use {{message}} as the placeholder — the text is JSON-escaped before insertion. Leave blank to send raw text frames.' },
       { key: 'WS_CHAT_AGENT_EVENT_TYPES', label: 'Agent Event Types', placeholder: 'agent,assistant,message', hint: 'Comma-separated list of JSON "type" field values to accept as agent replies. Leave blank to accept all incoming frames.' },
       { key: 'WS_CHAT_MESSAGE_PATH', label: 'Response Message Path', placeholder: 'body.text', hint: 'Dot-notation path to extract reply text from JSON frames, e.g. "body.text" or "data.content". Leave blank to treat the entire frame as raw text.' },
+      // Voice (WebSocket) — fill these to run this provider on the voice channel.
+      ...VOICE_WS_FIELDS,
     ],
   },
 };
