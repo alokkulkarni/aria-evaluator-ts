@@ -1,6 +1,6 @@
 {
   "name": "aria-evaluator-ts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ARIA Evaluator — TypeScript/Node.js with Playwright voice + React UI",
   "type": "module",
   "engines": {
