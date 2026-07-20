@@ -737,6 +737,30 @@ docker run --rm -p 8765:8000 \
 
 ---
 
+### Task 6: Gate a CI Run Against a Baseline
+
+The CLI can fail a CI build when quality regresses (`src/lib/regression-gate.ts` — reuses `detectRegression` from `src/lib/metrics.ts`, file-based baseline so CI needs no database).
+
+**Steps**:
+1. Bless a baseline from a known-good run (commit the JSON or keep it as a CI artifact):
+   ```bash
+   npx tsx src/cli/run.ts --scenario banking --gate-baseline baselines/banking.json --update-baseline
+   ```
+
+2. Gate subsequent CI runs:
+   ```bash
+   npx tsx src/cli/run.ts --scenario banking --gate-baseline baselines/banking.json
+   # optional: --min-pass-rate 90        absolute floor, works without a baseline
+   # optional: --fail-on low|medium|critical   severity threshold (default medium)
+   # optional: --fail-on-drift           fail when the judge committee changed since bless
+   ```
+
+3. Branch on exit codes: `0` = pass, `3` = quality gate failed, `1` = operational error (so CI can retry infra failures but not regressions).
+
+**Notes**: severity comes from `detectRegression` thresholds (pass-rate drop ≥5pp → CRITICAL, avg or per-dimension score drop >0.5 → MEDIUM, latency +20% → LOW). A changed judge committee (`judgeConfigHash` mismatch) prints a "scores may not be comparable" warning — re-bless after intentional judge changes.
+
+---
+
 ## Running the Project
 
 ### Development (Local)

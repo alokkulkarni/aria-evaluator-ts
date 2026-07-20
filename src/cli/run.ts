@@ -4,7 +4,7 @@
 
 import 'dotenv/config';
 import { parseArgs } from 'node:util';
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { readdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ScenarioRunner } from '../conversation/runner.js';
@@ -30,6 +30,16 @@ import {
   filterScenariosByTags,
   parseTagsCsv,
 } from '../conversation/scenario-loader.js';
+import { BudgetTracker, estimateRunCostUsd } from '../lib/budget.js';
+import {
+  EXIT_GATE_FAILED,
+  buildGateBaseline,
+  evaluateGate,
+  parseGateBaselineFile,
+  snapshotFromResults,
+  type GateBaselineFile,
+  type GateSeverity,
+} from '../lib/regression-gate.js';
 import type { Scenario } from '../types/scenario.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult } from '../types/evaluation.js';
@@ -81,6 +91,12 @@ console.log(`
     Custom (voice):                npx tsx src/cli/run.ts --provider custom --channel voice --scenario banking/account_query
     Tagged suite only:             npx tsx src/cli/run.ts --tags smoke,regression
     Re-evaluate saved:             npx tsx src/cli/run.ts --transcript transcripts/foo.json
+    Judge budget cap:              npx tsx src/cli/run.ts --max-budget-usd 5   (or RUN_BUDGET_USD setting)
+
+  CI regression gate (exit 0 = pass, ${EXIT_GATE_FAILED} = quality gate failed, 1 = operational error):
+    Absolute pass-rate floor:      npx tsx src/cli/run.ts --scenario banking --min-pass-rate 90
+    Compare vs baseline:           npx tsx src/cli/run.ts --scenario banking --gate-baseline baselines/banking.json [--fail-on low|medium|critical] [--fail-on-drift]
+    Bless a new baseline:          npx tsx src/cli/run.ts --scenario banking --gate-baseline baselines/banking.json --update-baseline
 `);
 
 const { values: args } = parseArgs({
@@ -94,6 +110,12 @@ const { values: args } = parseArgs({
     'no-eval':          { type: 'boolean', default: false },
     'scenarios-dir':    { type: 'string', default: '../aria-evaluator/scenarios' },
     headless:           { type: 'boolean', default: true },
+    'max-budget-usd':   { type: 'string' },
+    'gate-baseline':    { type: 'string' },
+    'update-baseline':  { type: 'boolean', default: false },
+    'min-pass-rate':    { type: 'string' },
+    'fail-on':          { type: 'string', default: 'medium' },
+    'fail-on-drift':    { type: 'boolean', default: false },
   },
   strict: false,
 });
@@ -107,6 +129,50 @@ const scenariosDir = resolve(args['scenarios-dir'] as string);
 // --tags smoke,regression → only scenarios carrying at least one of these tags (OR semantics)
 const tagsCsv = args['tags'] as string | undefined;
 const requestedTags = parseTagsCsv(tagsCsv);
+
+// Judge-spend budget cap: --max-budget-usd flag, or RUN_BUDGET_USD from the
+// portal's runtime settings (passed through as env for executor-spawned runs).
+const budgetRaw = (args['max-budget-usd'] as string | undefined) ?? process.env['RUN_BUDGET_USD'];
+let budgetCapUsd: number | undefined;
+if (budgetRaw != null && budgetRaw.trim() !== '') {
+  const parsed = Number(budgetRaw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(`  ✗ Invalid budget: ${budgetRaw}. Use a positive USD amount, e.g. --max-budget-usd 5`);
+    process.exit(1);
+  }
+  budgetCapUsd = parsed;
+}
+
+// ── CI regression-gate flags ────────────────────────────────────────────────
+const gateBaselinePath = args['gate-baseline'] ? resolve(args['gate-baseline'] as string) : undefined;
+const updateBaseline = args['update-baseline'] as boolean;
+const failOnDrift = args['fail-on-drift'] as boolean;
+const failOnRaw = (args['fail-on'] as string).toLowerCase();
+const minPassRateRaw = args['min-pass-rate'] as string | undefined;
+const gatingRequested = gateBaselinePath != null || minPassRateRaw != null;
+
+if (!['low', 'medium', 'critical'].includes(failOnRaw)) {
+  console.error(`  ✗ Invalid --fail-on value: ${failOnRaw}. Use low, medium, or critical.`);
+  process.exit(1);
+}
+const failOn = failOnRaw as GateSeverity;
+
+let minPassRate: number | undefined;
+if (minPassRateRaw != null) {
+  minPassRate = Number(minPassRateRaw);
+  if (!Number.isFinite(minPassRate) || minPassRate < 0 || minPassRate > 100) {
+    console.error(`  ✗ Invalid --min-pass-rate: ${minPassRateRaw}. Use a number between 0 and 100.`);
+    process.exit(1);
+  }
+}
+if (updateBaseline && gateBaselinePath == null) {
+  console.error('  ✗ --update-baseline requires --gate-baseline <path> (where to write the baseline).');
+  process.exit(1);
+}
+if ((gatingRequested || updateBaseline) && (conversationOnly || noEval)) {
+  console.error('  ✗ Regression gating needs evaluation results — remove --no-eval / --conversation-only.');
+  process.exit(1);
+}
 
 const missing = validateProviderEnv(provider, channel);
 if (missing.length > 0) {
@@ -149,11 +215,22 @@ console.log(`📂 Running ${scenarioFiles.length} scenario file(s) on channel: $
 const runner = new ScenarioRunner();
 const allTranscripts: Transcript[] = [];
 const allResults: EvalResult[] = [];
-const judge = conversationOnly || noEval ? null : new JudgePanel(getJudgeCommitteeConfig());
+const committee = getJudgeCommitteeConfig();
+const judge = conversationOnly || noEval ? null : new JudgePanel(committee);
 const runId = randomUUID();
 let tagMatchedCount = 0;
 
+const budget = new BudgetTracker(judge ? budgetCapUsd : undefined);
+if (judge && budgetCapUsd != null) {
+  const estimate = estimateRunCostUsd(1, committee.judges);
+  const perScenario = estimate.perScenarioUsd != null ? `$${estimate.perScenarioUsd.toFixed(4)}` : 'unknown';
+  console.log(`💰 Judge budget: $${budgetCapUsd.toFixed(2)} (rough estimate ≈ ${perScenario}/scenario across ${committee.judges.length} judge(s))`);
+} else if (!judge && budgetCapUsd != null) {
+  console.warn('  ⚠  Budget cap ignored: no judge runs with --no-eval / --conversation-only.');
+}
+
 for (const file of scenarioFiles) {
+  if (budget.exceeded) break;
   console.log(`\n── ${file} ──`);
 
   let scenarios: Scenario[];
@@ -199,12 +276,14 @@ for (const file of scenarioFiles) {
     await runParallelChatBatch(filtered, provider, judge, allTranscripts, allResults);
   } else {
     for (const scenario of filtered) {
+      if (budget.exceeded) break;
       const adapter = createChatAdapter(provider);
       const transcript = await runner.run(scenario, adapter);
       allTranscripts.push(transcript);
       if (judge) {
         const result = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
         allResults.push(result);
+        budget.add(result);
       }
     }
   }
@@ -213,6 +292,13 @@ for (const file of scenarioFiles) {
 if (requestedTags.length > 0 && tagMatchedCount === 0) {
   console.error(`\n✗ No scenarios matched the requested tags: ${requestedTags.join(', ')}`);
   process.exit(1);
+}
+
+if (budget.exceeded) {
+  console.warn(
+    `\n⚠  Judge budget cap $${budget.capUsd!.toFixed(2)} reached (spent ≈ $${budget.spentUsd.toFixed(4)}). ` +
+      `Remaining scenarios were skipped; completed results are reported below.`,
+  );
 }
 
 if (allTranscripts.length === 0) {
@@ -245,6 +331,58 @@ if (allResults.length > 0) {
   }
 }
 
+// ── CI regression gate ──────────────────────────────────────────────────────
+if (gatingRequested || updateBaseline) {
+  const snapshot = snapshotFromResults(allResults, allTranscripts);
+  const currentJudgeConfigHash = allResults.find((r) => r.judgeConfigHash)?.judgeConfigHash ?? null;
+
+  if (updateBaseline) {
+    if (allResults.length === 0) {
+      console.error('  ✗ Cannot update the baseline: no evaluation results were produced.');
+      process.exit(1);
+    }
+    const baseline = buildGateBaseline(allResults, allTranscripts, {
+      name: (args['scenario'] as string | undefined) ?? 'ci-baseline',
+      judgeConfigHash: currentJudgeConfigHash,
+    });
+    writeFileSync(gateBaselinePath!, JSON.stringify(baseline, null, 2) + '\n');
+    console.log(
+      `\n📌 Baseline updated: ${gateBaselinePath} — ${baseline.totalRuns} run(s), ` +
+        `pass rate ${(baseline.passRate * 100).toFixed(1)}%, avg score ${baseline.avgScore.toFixed(1)}/10`,
+    );
+    process.exit(0);
+  }
+
+  let baselineFile: GateBaselineFile | null = null;
+  if (gateBaselinePath != null) {
+    if (!existsSync(gateBaselinePath)) {
+      console.error(`  ✗ Gate baseline not found: ${gateBaselinePath}. Create it with --update-baseline.`);
+      process.exit(1);
+    }
+    try {
+      baselineFile = parseGateBaselineFile(readFileSync(gateBaselinePath, 'utf-8'));
+    } catch (err) {
+      console.error(`  ✗ ${(err as Error).message} (${gateBaselinePath})`);
+      process.exit(1);
+    }
+  }
+
+  const decision = evaluateGate(baselineFile, snapshot, {
+    minPassRate,
+    failOn,
+    failOnDrift,
+    currentJudgeConfigHash,
+  });
+  for (const warning of decision.warnings) console.warn(`  ⚠  ${warning}`);
+  if (decision.passed) {
+    console.log(`\n🟢 Regression gate PASSED${decision.severity ? ` (regression severity: ${decision.severity})` : ''}.`);
+    process.exit(0);
+  }
+  console.error('\n🔴 Regression gate FAILED:');
+  for (const reason of decision.reasons) console.error(`  ✗ ${reason}`);
+  process.exit(EXIT_GATE_FAILED);
+}
+
 async function runParallelChatBatch(
   scenarios: Scenario[],
   provider: EvaluatorProvider,
@@ -262,6 +400,9 @@ async function runParallelChatBatch(
 
   async function worker(): Promise<void> {
     while (true) {
+      // Stop claiming new scenarios once the judge budget is exhausted —
+      // in-flight scenarios finish; their results are kept.
+      if (budget.exceeded) return;
       // Claim the next scenario index atomically
       const idx = nextIdx++;
       if (idx >= scenarios.length) return;
@@ -281,6 +422,7 @@ async function runParallelChatBatch(
         if (judge) {
           const evalResult = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
           rSlots[idx] = evalResult;
+          budget.add(evalResult);
           const status = evalResult.passed ? '✅' : '❌';
           console.log(`  ${status} [parallel ${idx + 1}/${scenarios.length}] done: ${label} (score ${evalResult.overallScore}/10)`);
         } else {
@@ -332,6 +474,8 @@ async function runVoiceBatch(
       if (judge) {
         const result = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
         results.push(result);
+        budget.add(result);
+        if (budget.exceeded) break;
       }
 
       const sharedSessionEnded = hasSharedVoiceSessionEnded(sharedAdapter, transcript);

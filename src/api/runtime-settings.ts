@@ -23,6 +23,7 @@ import {
   type JudgeCommitteeConfig,
 } from '../shared/judge-committee.js';
 import { getUsageLimits } from '../shared/usage-limits.js';
+import { parseNotifierConfig, type NotifierConfig } from '../lib/notifier.js';
 
 const SETTINGS_FILE = appPaths.runtimeSettingsFile;
 export const REDACTED_SECRET_VALUE = '***';
@@ -55,6 +56,12 @@ export const EDITABLE_SETTING_KEYS = [
   'GEMINI_API_KEY',
   // Calibration data import (gated LMSYS Chatbot Arena dataset)
   'HUGGINGFACE_TOKEN',
+  // Outbound notifications (webhook — Slack-compatible payload)
+  'NOTIFY_WEBHOOK_URL',
+  'NOTIFY_EVENTS',
+  'NOTIFY_WEBHOOK_SECRET',
+  // Judge-spend budget cap per run (USD). Blank = no cap.
+  'RUN_BUDGET_USD',
 
   'CONNECT_INSTANCE_ID',
   'CONNECT_REGION',
@@ -166,6 +173,7 @@ export const SECRET_SETTING_KEYS = new Set<EditableSettingKey>([
   'ANTHROPIC_API_KEY',
   'GEMINI_API_KEY',
   'HUGGINGFACE_TOKEN',
+  'NOTIFY_WEBHOOK_SECRET',
 ]);
 
 // The deployment's tenant (process env) keys the shared settings row. For a
@@ -369,6 +377,31 @@ export function getJudgeCommitteeConfig(): JudgeCommitteeConfig {
 
 export function isJudgeWeightingEnabled(): boolean {
   return (getEffectiveSettings()['JUDGE_WEIGHTING_ENABLED']?.trim().toLowerCase() ?? '') === 'true';
+}
+
+/**
+ * Resolve the outbound-notification config from runtime settings (falling back
+ * to process env for headless deployments). Returns null when notifications
+ * are unconfigured — callers pass the result straight to sendNotification().
+ */
+/**
+ * Per-run judge-spend cap in USD from runtime settings (env fallback for
+ * headless deployments). Undefined = no cap.
+ */
+export function getRunBudgetUsd(): number | undefined {
+  const raw = getEffectiveSettings()['RUN_BUDGET_USD'] || process.env['RUN_BUDGET_USD'];
+  if (raw == null || raw.trim() === '') return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+export function getNotifierConfig(): NotifierConfig | null {
+  const effective = getEffectiveSettings();
+  return parseNotifierConfig({
+    webhookUrl: effective['NOTIFY_WEBHOOK_URL'] || process.env['NOTIFY_WEBHOOK_URL'],
+    events: effective['NOTIFY_EVENTS'] || process.env['NOTIFY_EVENTS'],
+    secret: effective['NOTIFY_WEBHOOK_SECRET'] || process.env['NOTIFY_WEBHOOK_SECRET'],
+  });
 }
 
 export interface CalibrationThresholds {
