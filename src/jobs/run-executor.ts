@@ -12,7 +12,10 @@ import {
 
 import { prisma } from '../db/client.js';
 import { getNotifierConfig, getRunBudgetUsd, getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
-import { sendNotification } from '../lib/notifier.js';
+import { sendNotification, shouldNotify } from '../lib/notifier.js';
+import { computeScenarioMetrics, detectRegression, type RunMetricsInput } from '../lib/metrics.js';
+import { detectJudgeDrift } from '../lib/judge-drift.js';
+import { buildRegressionAlertEvent, shouldAlertRegression } from '../lib/regression-alert.js';
 import {
   buildProviderEnvOverlay,
   getInstanceNickname,
@@ -578,6 +581,11 @@ async function ingestRunArtifacts(
         });
       }
 
+      // Post-run regression check vs the scenario's latest baseline (the
+      // notification half of the baseline/drift feature; the UI half is the
+      // Baselines & Drift page). Never fatal to the run.
+      await notifyRegressionSafe(runId);
+
       // Guardrail failures are safety events, not just low scores — push them to
       // the configured webhook. Best-effort: sendNotification never throws.
       const failedSecurity = securityResults.filter((result) => !result.passed);
@@ -673,6 +681,98 @@ async function ingestRunArtifacts(
   }
 
   return { reportJsonRef, reportHtmlRef };
+}
+
+/**
+ * Compare recent metrics for this run's scenario against its latest baseline
+ * and push a regression_detected notification on MEDIUM/CRITICAL severity.
+ * Mirrors the GET /api/regression/status query (src/api/routes/regression.ts).
+ * Skips silently when: notifications are off / the event is disabled, the run
+ * has no scenarioId (multi-scenario portal runs), or no baseline exists.
+ */
+async function notifyRegressionSafe(runId: string): Promise<void> {
+  try {
+    const config = getNotifierConfig();
+    if (!config || !shouldNotify(config, 'regression_detected')) return;
+
+    const run = await prisma.run.findUnique({
+      where: { id: runId },
+      select: { scenarioId: true, scenarioName: true },
+    });
+    if (!run?.scenarioId) return;
+
+    const baseline = await prisma.baseline.findFirst({
+      where: { scenarioId: run.scenarioId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!baseline) return;
+
+    const runs = await prisma.run.findMany({
+      where: {
+        scenarioId: run.scenarioId,
+        createdAt: { gte: baseline.createdAt },
+        evalResult: { is: { judgeModel: baseline.judgeModel } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: {
+        evalResult: {
+          select: {
+            passed: true,
+            overallScore: true,
+            createdAt: true,
+            dimensionScores: true,
+            judgeConfigHash: true,
+          },
+        },
+      },
+    });
+    const runsWithResults = runs.filter((r) => r.evalResult);
+    if (runsWithResults.length === 0) return;
+
+    let baselineDimIds: string[];
+    try {
+      baselineDimIds = JSON.parse(baseline.dimensionIdsJson) as string[];
+    } catch {
+      return;
+    }
+
+    const metricsInput: RunMetricsInput[] = runsWithResults.map((r) => ({
+      run: r,
+      evalResults: r.evalResult
+        ? [
+            {
+              score: r.evalResult.overallScore,
+              passed: r.evalResult.passed,
+              createdAt: r.evalResult.createdAt,
+              dimensionScoresJson: r.evalResult.dimensionScores,
+            },
+          ]
+        : [],
+    }));
+
+    const report = detectRegression(baseline, computeScenarioMetrics(metricsInput, baselineDimIds));
+    if (!shouldAlertRegression(report)) return;
+
+    const judgeDrift = detectJudgeDrift(
+      baseline.judgeConfigHash,
+      runsWithResults.map((r) => r.evalResult?.judgeConfigHash),
+    );
+
+    appendRunLogLine(runId, `⚠ Regression detected vs baseline "${baseline.name}" (severity ${report.severity}).`);
+    await sendNotification(
+      config,
+      buildRegressionAlertEvent({
+        scenarioName: run.scenarioName,
+        baselineName: baseline.name,
+        runId,
+        report,
+        judgeDriftDetected: judgeDrift.detected,
+      }),
+    );
+  } catch (err) {
+    appendRunLogLine(runId, `⚠ Regression check skipped: ${(err as Error).message}`);
+  }
 }
 
 async function finalizeJob(
