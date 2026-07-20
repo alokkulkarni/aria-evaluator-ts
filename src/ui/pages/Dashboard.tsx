@@ -24,10 +24,22 @@ interface Run {
     scenarioType?: string;
     judgeTokenTotalEstimate?: number | null;
   } | null;
+  /** Per-scenario aggregates (from scenarioEval) so metrics are scenario-level, not all-or-nothing per run. */
+  scenarioStats?: {
+    total: ScenarioBucket;
+    security: ScenarioBucket;
+    quality: ScenarioBucket;
+  } | null;
   telemetry?: {
     provider?: string;
     tokenTotalEstimate?: number | null;
   } | null;
+}
+
+interface ScenarioBucket {
+  total: number;
+  passed: number;
+  scoreSum: number;
 }
 
 interface ObservabilityMetrics {
@@ -131,9 +143,30 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
   const passed = runs.filter((r) => r.evalResult?.passed === true).length;
   const failed = runs.filter((r) => r.evalResult?.passed === false).length;
 
-  // Use strict equality so 'mixed' runs are excluded from both buckets.
-  const qualityRuns = runs.filter((r) => r.evalResult?.scenarioType === 'quality');
-  const securityRuns = runs.filter((r) => r.evalResult?.scenarioType === 'security');
+  // Scenario-level aggregation: pass rates are computed per scenario (not
+  // all-or-nothing per run), so a 16-scenario run that scored 11/16 reads 69%,
+  // and mixed-type runs contribute each scenario to its own bucket. Falls back
+  // to run-level (1 scenario) for older runs without scenarioEval rows.
+  const agg = useMemo(() => {
+    const zero = (): ScenarioBucket => ({ total: 0, passed: 0, scoreSum: 0 });
+    const all = zero(), security = zero(), quality = zero();
+    const add = (b: ScenarioBucket, s: ScenarioBucket) => {
+      b.total += s.total; b.passed += s.passed; b.scoreSum += s.scoreSum;
+    };
+    for (const r of runs) {
+      if (r.scenarioStats) {
+        add(all, r.scenarioStats.total);
+        add(security, r.scenarioStats.security);
+        add(quality, r.scenarioStats.quality);
+      } else if (r.evalResult) {
+        const one: ScenarioBucket = { total: 1, passed: r.evalResult.passed ? 1 : 0, scoreSum: r.evalResult.overallScore ?? 0 };
+        add(all, one);
+        if (r.evalResult.scenarioType === 'security') add(security, one);
+        else if (r.evalResult.scenarioType === 'quality') add(quality, one);
+      }
+    }
+    return { all, security, quality };
+  }, [runs]);
 
   const scoredRuns = runs.filter((r) => r.evalResult?.overallScore != null && r.evalResult.overallScore > 0);
   const avgScore =
@@ -143,13 +176,13 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
 
   // Release readiness KPIs — scoped to the last 100 runs (API default limit).
   const readiness = useMemo(() => {
-    const securityBlocked = securityRuns.filter((r) => r.evalResult?.passed === true).length;
+    const securityBlocked = agg.security.passed; // security scenarios where the attack was blocked
     const attackBlockRate =
-      securityRuns.length > 0 ? Math.round((securityBlocked / securityRuns.length) * 100) : null;
+      agg.security.total > 0 ? Math.round((securityBlocked / agg.security.total) * 100) : null;
 
     const avgQualityScore =
-      qualityRuns.length > 0
-        ? Math.round((qualityRuns.reduce((a, r) => a + (r.evalResult?.overallScore ?? 0), 0) / qualityRuns.length) * 10)
+      agg.quality.total > 0
+        ? Math.round((agg.quality.scoreSum / agg.quality.total) * 10)
         : null;
 
     const completedCount = runs.filter((r) => r.status === 'completed').length;
@@ -157,10 +190,10 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
 
     // Derive a top insight from the data.
     const topInsight = (() => {
-      if (securityRuns.length > 0 && attackBlockRate != null && attackBlockRate < 80) {
+      if (agg.security.total > 0 && attackBlockRate != null && attackBlockRate < 80) {
         return `${100 - attackBlockRate}% of adversarial attacks were not blocked — review security scenario pass criteria.`;
       }
-      if (qualityRuns.length > 0 && avgQualityScore != null && avgQualityScore < 70) {
+      if (agg.quality.total > 0 && avgQualityScore != null && avgQualityScore < 70) {
         return 'Avg quality score is below 70% — consider tuning judge thresholds or reviewing failing scenarios.';
       }
       if (failed > 0) {
@@ -170,7 +203,7 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
     })();
 
     return { attackBlockRate, avgQualityScore, violationsBlocked: securityBlocked, completionRate, completedCount, topInsight };
-  }, [runs, qualityRuns, securityRuns, total, failed]);
+  }, [runs, agg, total, failed]);
 
   const recent = runs.slice(0, 5);
 
@@ -256,18 +289,18 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
                   label="Attack Block Rate"
                   value={readiness.attackBlockRate != null ? `${readiness.attackBlockRate}%` : '—'}
                   tone={readiness.attackBlockRate == null ? 'neutral' : readiness.attackBlockRate >= 80 ? 'green' : readiness.attackBlockRate >= 60 ? 'amber' : 'red'}
-                  sub={securityRuns.length > 0 ? `${readiness.violationsBlocked}/${securityRuns.length} security` : 'No security runs'}
+                  sub={agg.security.total > 0 ? `${readiness.violationsBlocked}/${agg.security.total} security scenarios` : 'No security scenarios'}
                 />
                 <KpiCard
                   label="Avg Quality Score"
                   value={readiness.avgQualityScore != null ? `${readiness.avgQualityScore}%` : '—'}
                   tone={readiness.avgQualityScore == null ? 'neutral' : readiness.avgQualityScore >= 70 ? 'green' : readiness.avgQualityScore >= 50 ? 'amber' : 'red'}
-                  sub={qualityRuns.length > 0 ? `${qualityRuns.length} quality runs` : 'No quality runs'}
+                  sub={agg.quality.total > 0 ? `${agg.quality.total} quality scenarios` : 'No quality scenarios'}
                 />
                 <KpiCard
                   label="Violations Blocked"
                   value={String(readiness.violationsBlocked)}
-                  tone={readiness.violationsBlocked > 0 ? 'green' : securityRuns.length > 0 ? 'red' : 'neutral'}
+                  tone={readiness.violationsBlocked > 0 ? 'green' : agg.security.total > 0 ? 'red' : 'neutral'}
                   sub="Attacks stopped"
                 />
               </div>
@@ -492,24 +525,24 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
               {[
                 {
                   label: 'Quality',
-                  count: qualityRuns.length,
-                  rate: qualityRuns.length > 0
-                    ? Math.round((qualityRuns.filter(r => r.evalResult?.passed === true).length / qualityRuns.length) * 100)
+                  count: agg.quality.total,
+                  rate: agg.quality.total > 0
+                    ? Math.round((agg.quality.passed / agg.quality.total) * 100)
                     : null,
                   color: 'bg-emerald-500',
                 },
                 {
                   label: 'Security',
-                  count: securityRuns.length,
-                  rate: securityRuns.length > 0
-                    ? Math.round((securityRuns.filter(r => r.evalResult?.passed === true).length / securityRuns.length) * 100)
+                  count: agg.security.total,
+                  rate: agg.security.total > 0
+                    ? Math.round((agg.security.passed / agg.security.total) * 100)
                     : null,
                   color: 'bg-cyan-500',
                 },
                 {
-                  label: 'All runs',
-                  count: total,
-                  rate: total > 0 ? Math.round((passed / total) * 100) : null,
+                  label: 'All scenarios',
+                  count: agg.all.total,
+                  rate: agg.all.total > 0 ? Math.round((agg.all.passed / agg.all.total) * 100) : null,
                   color: 'bg-blue-500',
                 },
               ].map((item) => (
@@ -532,8 +565,8 @@ export function Dashboard({ onNavigate, onNewRun }: Props) {
             </div>
 
             <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5 text-[10px] text-slate-500 leading-4">
-              <span className="font-semibold text-slate-700">Note:</span> Security pass = attack blocked.
-              Quality pass = score ≥ 6/10. Mixed-type runs excluded from breakdowns.
+              <span className="font-semibold text-slate-700">Note:</span> Rates are per scenario (not per run).
+              Security pass = attack blocked. Quality pass = score ≥ 6/10. Mixed runs contribute each scenario to its own type.
             </div>
 
             {/* Dimension Strengths & Weaknesses */}

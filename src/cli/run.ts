@@ -19,6 +19,7 @@ import { StrandsChatAdapter } from '../adapters/strands-chat.js';
 import { WebSocketChatAdapter } from '../adapters/websocket-chat.js';
 import { AzureOpenAIChatAdapter } from '../adapters/azure-openai-chat.js';
 import type { BaseAdapter } from '../adapters/base.js';
+import { providerCanVoice, isVoiceWsProvider } from '../shared/provider-channels.js';
 import { JudgePanel } from '../judge/judge-panel.js';
 import { getJudgeCommitteeConfig } from '../api/runtime-settings.js';
 import { ReportGenerator } from '../report/generator.js';
@@ -161,7 +162,7 @@ for (const file of scenarioFiles) {
     continue;
   }
 
-  if (channel === 'voice' && provider !== 'connect' && provider !== 'custom') {
+  if (channel === 'voice' && !providerCanVoice(provider)) {
     console.error(`  ✗ Provider "${provider}" does not support voice mode in this evaluator yet.`);
     process.exit(1);
   }
@@ -176,7 +177,9 @@ for (const file of scenarioFiles) {
     continue;
   }
 
-  if (channel === 'voice' && provider === 'custom') {
+  // custom / strands / openapi / websocket all run voice over the generic
+  // bidirectional-audio WebSocket adapter — voice is transport-agnostic.
+  if (channel === 'voice' && isVoiceWsProvider(provider)) {
     const sharedAdapter = createCustomVoiceAdapter();
     await runVoiceBatch(filtered, sharedAdapter, runner, judge, allTranscripts, allResults);
     continue;
@@ -379,6 +382,23 @@ function hasAwsCreds(): boolean {
   );
 }
 
+/**
+ * Missing env for a generic voice-WebSocket run (shared by custom / strands /
+ * openapi / websocket — voice is transport-agnostic, so the same voice endpoint
+ * settings apply regardless of the chat provider).
+ */
+function validateVoiceWsEnv(): string[] {
+  const missing: string[] = [];
+  const protocol = (process.env['CUSTOM_VOICE_PROTOCOL'] ?? 'deepgram').toLowerCase();
+  if (protocol === 'deepgram') {
+    if (!process.env['DEEPGRAM_VOICE_WS_URL']) missing.push('DEEPGRAM_VOICE_WS_URL');
+    if (!process.env['DEEPGRAM_API_KEY']) missing.push('DEEPGRAM_API_KEY');
+    return missing;
+  }
+  if (!process.env['CUSTOM_VOICE_WS_URL']) missing.push('CUSTOM_VOICE_WS_URL');
+  return missing;
+}
+
 function validateProviderEnv(provider: EvaluatorProvider, channel: 'chat' | 'voice'): string[] {
   const missing: string[] = [];
 
@@ -420,7 +440,7 @@ function validateProviderEnv(provider: EvaluatorProvider, channel: 'chat' | 'voi
   }
 
   if (provider === 'strands') {
-    if (channel === 'voice') missing.push('strands provider supports chat only');
+    if (channel === 'voice') return validateVoiceWsEnv();
     if (!process.env['STRANDS_ENDPOINT']) missing.push('STRANDS_ENDPOINT');
     return missing;
   }
@@ -432,28 +452,19 @@ function validateProviderEnv(provider: EvaluatorProvider, channel: 'chat' | 'voi
   }
 
   if (provider === 'custom') {
-    if (channel === 'chat') {
-      if (!process.env['CUSTOM_CHAT_ENDPOINT']) missing.push('CUSTOM_CHAT_ENDPOINT');
-      return missing;
-    }
-    const protocol = (process.env['CUSTOM_VOICE_PROTOCOL'] ?? 'deepgram').toLowerCase();
-    if (protocol === 'deepgram') {
-      if (!process.env['DEEPGRAM_VOICE_WS_URL']) missing.push('DEEPGRAM_VOICE_WS_URL');
-      if (!process.env['DEEPGRAM_API_KEY']) missing.push('DEEPGRAM_API_KEY');
-      return missing;
-    }
-    if (!process.env['CUSTOM_VOICE_WS_URL']) missing.push('CUSTOM_VOICE_WS_URL');
+    if (channel === 'voice') return validateVoiceWsEnv();
+    if (!process.env['CUSTOM_CHAT_ENDPOINT']) missing.push('CUSTOM_CHAT_ENDPOINT');
     return missing;
   }
 
   if (provider === 'openapi') {
-    if (channel === 'voice') missing.push('openapi provider supports chat only');
+    if (channel === 'voice') return validateVoiceWsEnv();
     if (!process.env['OPENAPI_ENDPOINT_URL']) missing.push('OPENAPI_ENDPOINT_URL');
     return missing;
   }
 
   if (provider === 'websocket') {
-    if (channel === 'voice') missing.push('websocket provider supports chat only');
+    if (channel === 'voice') return validateVoiceWsEnv();
     if (!process.env['WS_CHAT_URL']) missing.push('WS_CHAT_URL');
     return missing;
   }

@@ -8,6 +8,7 @@ import {
   type RunMetricsInput,
 } from '../../lib/metrics.js';
 import { detectJudgeDrift, predominantHash } from '../../lib/judge-drift.js';
+import { explainDrift } from '../../lib/drift-insights.js';
 
 export const regressionRouter = express.Router();
 
@@ -398,6 +399,9 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
       runsWithResults.map((r) => r.evalResult?.judgeConfigHash),
     );
 
+    // Plain-language reasons + improvement suggestions for the numeric drift.
+    const driftInsights = explainDrift(regressionReport, judgeDrift);
+
     return res.json({
       baseline: {
         id: baseline.id,
@@ -411,6 +415,7 @@ regressionRouter.get('/regression/status', async (req: Request, res: Response) =
       },
       regression: regressionReport,
       judgeDrift,
+      driftInsights,
       recentRunCount: runsWithResults.length,
       dateRange: {
         from: runsWithResults[runsWithResults.length - 1]?.createdAt,

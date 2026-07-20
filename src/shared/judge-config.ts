@@ -16,6 +16,19 @@ export const DEFAULT_JUDGE_TEMPERATURE = '0';
 export const DEFAULT_JUDGE_MAX_TOKENS = '1200';
 export const DEFAULT_JUDGE_REGION = 'eu-west-2';
 
+/**
+ * Hard ceiling for judge sampling temperature. Judges are scorers, not writers:
+ * anything above this makes repeated evaluations of the same transcript drift,
+ * which breaks baseline comparisons and regulator-facing reproducibility.
+ */
+export const MAX_JUDGE_TEMPERATURE = 0.2;
+
+/** Clamp a configured judge temperature into the deterministic scoring range [0, MAX_JUDGE_TEMPERATURE]. */
+export function clampJudgeTemperature(temperature: number): number {
+  if (!Number.isFinite(temperature) || temperature < 0) return 0;
+  return Math.min(temperature, MAX_JUDGE_TEMPERATURE);
+}
+
 // Regions shown in the UI region selector (those with models in MODEL_REGISTRY)
 export const JUDGE_SUPPORTED_REGIONS: Array<{ value: string; label: string }> = [
   { value: 'eu-west-2',      label: 'EU West 2 (London)' },

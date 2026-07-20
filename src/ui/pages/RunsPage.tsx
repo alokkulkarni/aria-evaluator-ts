@@ -3,6 +3,7 @@ import { ApiError, apiFetch, toApiUrl } from '../lib/api.js';
 import { usePlanGate } from '../lib/plan-gate.js';
 import { formatTokenCount } from '../lib/format.js';
 import { parseScenarioRef, domainLabel } from '../../shared/domains.js';
+import { supportedChannels, isChatOnlyProvider, isVoiceWsProvider } from '../../shared/provider-channels.js';
 import { fetchProviderInstances, type ProviderInstance } from '../lib/provider-instances.js';
 import { StatusBadge } from './Dashboard.js';
 import {
@@ -83,32 +84,10 @@ type Provider = 'connect' | 'lex' | 'azure' | 'strands' | 'copilot' | 'custom' |
 
 const ALL_PROVIDERS: ReadonlySet<string> = new Set<Provider>(['connect', 'lex', 'azure', 'strands', 'copilot', 'custom', 'openapi', 'websocket']);
 
-/** Providers that are chat-only bots and can never handle voice. */
-const CHAT_ONLY_PROVIDERS: ReadonlySet<Provider> = new Set(['lex', 'azure', 'strands', 'copilot', 'openapi', 'websocket']);
-
-function isChatOnlyBot(provider: Provider): boolean {
-  return CHAT_ONLY_PROVIDERS.has(provider);
-}
-
-/**
- * Returns the channels a provider supports.
- * - lex / azure / strands / copilot are bot providers — chat only.
- * - connect always supports both chat and voice.
- * - custom supports voice only when at least one voice setting is configured.
- */
-function supportedChannels(provider: Provider, settings: Record<string, string> = {}): Array<'chat' | 'voice'> {
-  if (isChatOnlyBot(provider)) return ['chat'];
-  if (provider === 'custom') {
-    const hasVoiceConfig = !!(
-      settings['CUSTOM_VOICE_PROTOCOL'] ||
-      settings['CUSTOM_VOICE_WS_URL'] ||
-      settings['DEEPGRAM_VOICE_WS_URL']
-    );
-    return hasVoiceConfig ? ['chat', 'voice'] : ['chat'];
-  }
-  // connect
-  return ['chat', 'voice'];
-}
+// Channel capability (which providers can run voice) lives in the shared,
+// unit-tested module src/shared/provider-channels.ts so the UI, API, and CLI
+// agree. connect + the voice-WS providers (custom, strands, openapi, websocket)
+// support voice; lex / azure / copilot are chat-only.
 
 function fileNameFromPath(rawPath: string): string {
   const normalized = rawPath.replace(/\\/g, '/');
@@ -598,14 +577,67 @@ function TranscriptChatView({ url }: { url: string }) {
 
 interface ReportJudgeVote { judgeId: string; provider: string; modelId: string; score: number; justification?: string }
 interface ReportTurnContribution { turnIndex: number; role: string; contentPreview: string; score: number }
+interface ReportRiskInsight {
+  category: 'bias' | 'hallucination';
+  detected: boolean;
+  severity: 'low' | 'medium' | 'high';
+  reasons: string[];
+  suggestions: string[];
+  evidenceQuotes?: string[];
+}
 interface ReportDimScore {
   score: number;
   justification: string;
   evidence?: string;
+  riskInsight?: ReportRiskInsight;
   judgeVotes?: ReportJudgeVote[];
   spread?: number;
   disagreement?: boolean;
   turnContributions?: ReportTurnContribution[];
+}
+
+// Highlights detected bias/hallucination with the specific reasons the judge
+// flagged it and concrete suggestions to fix it. Rendered only when present.
+function RiskInsightBlock({ insight }: { insight: ReportRiskInsight }) {
+  if (!insight.detected || (insight.reasons.length === 0 && insight.suggestions.length === 0)) return null;
+  const label = insight.category === 'bias' ? 'Bias' : 'Hallucination';
+  const sevClass =
+    insight.severity === 'high'
+      ? 'bg-red-50 border-red-300 text-red-800'
+      : insight.severity === 'medium'
+        ? 'bg-amber-50 border-amber-300 text-amber-800'
+        : 'bg-yellow-50 border-yellow-200 text-yellow-800';
+  return (
+    <div className={`mt-1.5 rounded border px-2 py-1.5 ${sevClass}`}>
+      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide">
+        <span>⚠ {label} risk</span>
+        <span className="rounded bg-white/60 px-1 py-px text-[9px] font-semibold">{insight.severity}</span>
+      </div>
+      {insight.reasons.length > 0 && (
+        <div className="mt-1">
+          <p className="text-[10px] font-semibold uppercase opacity-70">Why flagged</p>
+          <ul className="ml-3 list-disc text-[11px] leading-relaxed">
+            {insight.reasons.map((r, i) => <li key={i}>{r}</li>)}
+          </ul>
+        </div>
+      )}
+      {insight.suggestions.length > 0 && (
+        <div className="mt-1">
+          <p className="text-[10px] font-semibold uppercase opacity-70">How to improve</p>
+          <ul className="ml-3 list-disc text-[11px] leading-relaxed">
+            {insight.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+          </ul>
+        </div>
+      )}
+      {insight.evidenceQuotes && insight.evidenceQuotes.length > 0 && (
+        <div className="mt-1 space-y-0.5">
+          {insight.evidenceQuotes.map((q, i) => (
+            <p key={i} className="border-l-2 border-current/40 pl-2 text-[11px] italic opacity-80">“{q}”</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Dimensions for which on-demand turn-level Shapley attribution is available
@@ -858,6 +890,7 @@ function ReportView({ url, runId }: { url: string; runId?: string }) {
               {ds.evidence && (
                 <p className="text-[11px] text-slate-400 mt-1 italic border-l-2 border-slate-200 pl-2">{ds.evidence}</p>
               )}
+              {ds.riskInsight && <RiskInsightBlock insight={ds.riskInsight} />}
               {ds.judgeVotes && ds.judgeVotes.length > 1 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {ds.judgeVotes.map((v) => (
@@ -1047,7 +1080,6 @@ function NewRunModal({
   const [selectedScenarioRefs, setSelectedScenarioRefs] = useState<string[]>(initialScenarioRefs ?? []);
   const [channel, setChannel] = useState<'chat' | 'voice'>(initialChannel ?? 'chat');
   const [provider, setProvider] = useState<Provider>(seededProvider ?? 'connect');
-  const [providerSettings, setProviderSettings] = useState<Record<string, string>>({});
   const [providerInstances, setProviderInstances] = useState<ProviderInstance[]>([]);
   const [providerInstanceId, setProviderInstanceId] = useState<string | null>(initialProviderInstanceId ?? null);
   // Domain-first selection: one domain per run.
@@ -1093,7 +1125,6 @@ function NewRunModal({
             .filter((ref): ref is string => !!ref);
           if (recovered.length > 0) setSelectedScenarioRefs([...new Set(recovered)]);
         }
-        setProviderSettings(settingsMap);
         // Don't override a re-run's seeded provider with the global default.
         if (!seededProvider) {
           const defaultProvider = (settingsMap['EVAL_PROVIDER_DEFAULT'] ?? 'connect').toLowerCase();
@@ -1106,10 +1137,10 @@ function NewRunModal({
   }, []);
 
   useEffect(() => {
-    if (!supportedChannels(provider, providerSettings).includes(channel)) {
+    if (!supportedChannels(provider).includes(channel)) {
       setChannel('chat');
     }
-  }, [provider, channel, providerSettings]);
+  }, [provider, channel]);
 
   // Load configured instances for the selected provider type and pick one
   // (keep current if still valid -> seeded re-run instance -> default -> first).
@@ -1367,7 +1398,7 @@ function NewRunModal({
                 <button
                   key={p}
                   onClick={() => setProvider(p)}
-                  title={isChatOnlyBot(p) ? 'Chat only — this bot provider does not support voice' : undefined}
+                  title={isChatOnlyProvider(p) ? 'Chat only — this bot provider does not support voice' : undefined}
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors flex items-center gap-1 ${
                     provider === p
                       ? 'bg-slate-950 text-white border-slate-950 shadow-sm'
@@ -1383,7 +1414,7 @@ function NewRunModal({
                   {p === 'openapi' && <ProviderOpenApiIcon className="h-3.5 w-3.5" aria-hidden="true" />}
                   {p === 'websocket' && <ProviderBotIcon className="h-3.5 w-3.5" aria-hidden="true" />}
                   <span>{p}</span>
-                  {isChatOnlyBot(p) && (
+                  {isChatOnlyProvider(p) && (
                     <RunChatIcon
                       className={`h-3 w-3 shrink-0 ${provider === p ? 'text-blue-200' : 'text-slate-400'}`}
                       aria-label="chat only"
@@ -1418,7 +1449,7 @@ function NewRunModal({
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500 font-medium">Channel:</span>
-              {(supportedChannels(provider, providerSettings)).map((c) => (
+              {(supportedChannels(provider)).map((c) => (
                 <button
                   key={c}
                   onClick={() => setChannel(c)}
@@ -1436,14 +1467,14 @@ function NewRunModal({
                   </span>
                 </button>
               ))}
-              {isChatOnlyBot(provider) && (
+              {isChatOnlyProvider(provider) && (
                 <span className="text-xs text-slate-400 italic">
-                  Voice is not available for bot providers (lex, azure, strands, copilot, openapi, websocket)
+                  Voice is not available for chat-only bot providers (lex, azure, copilot)
                 </span>
               )}
-              {provider === 'custom' && !supportedChannels('custom', providerSettings).includes('voice') && (
+              {isVoiceWsProvider(provider) && (
                 <span className="text-xs text-slate-400 italic">
-                  Configure a voice protocol in Settings to enable voice
+                  Voice runs over a bidirectional-audio WebSocket — set the Voice fields (protocol + WS URL) on this provider instance in Settings.
                 </span>
               )}
             </div>

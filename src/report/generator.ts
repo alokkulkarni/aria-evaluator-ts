@@ -5,7 +5,7 @@ import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { appPaths } from '../runtime/paths.js';
 import type { Transcript } from '../types/transcript.js';
-import type { EvalResult, TurnContribution } from '../types/evaluation.js';
+import type { EvalResult, TurnContribution, RiskInsight, DimensionScore } from '../types/evaluation.js';
 import type { TurnShapleyExplanation } from '../judge/explain/turn-shapley.js';
 import { ALL_DIMENSIONS_BY_ID } from '../judge/dimensions.js';
 
@@ -177,6 +177,32 @@ export class ReportGenerator {
     .evidence-block { margin-top: 8px; }
     .evidence-label { display: block; font-size: 11px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
     .evidence-quote { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 10px; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #4a5568; margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
+    /* Evidence verdict — does the quote show correct or incorrect behaviour, and how it maps to the score */
+    .evidence-verdict { font-size: 12px; font-weight: 600; margin: 2px 0 6px; padding: 4px 8px; border-radius: 4px; }
+    .verdict-good { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+    .verdict-bad { background: #fff5f5; color: #9b2c2c; border: 1px solid #feb2b2; }
+    .verdict-mixed { background: #fffaf0; color: #975a16; border: 1px solid #fbd38d; }
+    /* Per-judge split shown inline when judges disagreed on a dimension */
+    .judge-split { margin-top: 8px; background: #fffaf0; border: 1px solid #fbd38d; border-radius: 6px; padding: 8px 10px; }
+    .judge-split-head { font-size: 11px; font-weight: 700; color: #975a16; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+    .judge-vote { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+    .judge-vote:last-child { margin-bottom: 0; }
+    .jv-model { font-weight: 700; color: #2d3748; }
+    .jv-score { font-weight: 700; margin: 0 6px; padding: 1px 5px; border-radius: 3px; background: #edf2f7; color: #4a5568; }
+    .jv-high { background: #c6f6d5; color: #22543d; }
+    .jv-low { background: #fed7d7; color: #742a2a; }
+    .jv-just { color: #4a5568; }
+    /* Risk insights — bias / hallucination reasons + improvement suggestions */
+    .risk-block { margin-top: 8px; border-radius: 6px; padding: 8px 12px; border: 1px solid; }
+    .risk-high { background: #fff5f5; border-color: #fc8181; color: #9b2c2c; }
+    .risk-medium { background: #fffaf0; border-color: #f6ad55; color: #9c4221; }
+    .risk-low { background: #fffff0; border-color: #ecc94b; color: #975a16; }
+    .risk-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .risk-sev { font-size: 9px; font-weight: 600; background: rgba(255,255,255,.6); border-radius: 3px; padding: 1px 4px; margin-left: 6px; }
+    .risk-sub { font-size: 10px; font-weight: 700; text-transform: uppercase; opacity: .7; margin: 6px 0 2px; }
+    .risk-block ul { margin: 0 0 0 16px; padding: 0; }
+    .risk-block li { font-size: 12px; line-height: 1.5; margin-bottom: 2px; }
+    .risk-quote { font-style: italic; font-size: 11px; opacity: .85; border-left: 2px solid currentColor; padding-left: 8px; margin-top: 4px; }
     /* Explainability — per-turn contributions (Phase 1) + turn Shapley (Phase 2) */
     .turn-attrib { margin-top: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 10px 12px; }
     .ta-title { font-size: 12px; font-weight: 700; color: #2d3748; margin-bottom: 4px; }
@@ -396,6 +422,66 @@ export class ReportGenerator {
     </div>`;
   }
 
+  /**
+   * A plain-language verdict tying the evidence to the score: did the agent do
+   * the right thing (high score) or go wrong (low score)? Makes a bare quote
+   * self-explanatory.
+   */
+  private renderEvidenceVerdict(score: number): string {
+    if (score >= 7) {
+      return `<div class="evidence-verdict verdict-good">✓ Correct behaviour — this is what earned the high score.</div>`;
+    }
+    if (score <= 4) {
+      return `<div class="evidence-verdict verdict-bad">✗ This is where the agent went wrong — it drove the score down.</div>`;
+    }
+    return `<div class="evidence-verdict verdict-mixed">◐ Borderline — only partially right, which is why the score sits in the middle${
+      '' /* disagreement detail rendered separately */
+    }.</div>`;
+  }
+
+  /**
+   * When judges disagreed on a dimension, show each judge's own score +
+   * reasoning inline, so a "5.0 — JUDGES DISAGREED" consensus is understandable
+   * (it's the average of, e.g., a 9 and a 1) rather than a mysterious mid-score.
+   */
+  private renderJudgeSplit(ds: DimensionScore): string {
+    const votes = ds.judgeVotes ?? [];
+    if (votes.length < 2 || !ds.disagreement) return '';
+    const rows = votes
+      .map((v) => {
+        const cls = v.score >= 7 ? 'jv-high' : v.score <= 4 ? 'jv-low' : '';
+        const just = v.justification ? `<span class="jv-just">${escapeHtml(v.justification)}</span>` : '';
+        return `<div class="judge-vote"><span class="jv-model">${escapeHtml(v.modelId)}</span><span class="jv-score ${cls}">${v.score}/10</span>${just}</div>`;
+      })
+      .join('');
+    return `<div class="judge-split">
+      <div class="judge-split-head">⚠ Judges disagreed — the ${ds.score.toFixed(1)}/10 is their average of these individual assessments:</div>
+      ${rows}
+    </div>`;
+  }
+
+  /** Render a bias/hallucination risk insight: reasons flagged + how to improve. */
+  private renderRiskInsight(insight: RiskInsight): string {
+    if (!insight.detected || (insight.reasons.length === 0 && insight.suggestions.length === 0)) return '';
+    const label = insight.category === 'bias' ? 'Bias' : 'Hallucination';
+    const sevClass = insight.severity === 'high' ? 'risk-high' : insight.severity === 'low' ? 'risk-low' : 'risk-medium';
+    const reasons = insight.reasons.length
+      ? `<div class="risk-sub">Why flagged</div><ul>${insight.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`
+      : '';
+    const suggestions = insight.suggestions.length
+      ? `<div class="risk-sub">How to improve</div><ul>${insight.suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>`
+      : '';
+    const quotes = (insight.evidenceQuotes ?? [])
+      .map((q) => `<div class="risk-quote">${escapeHtml(q)}</div>`)
+      .join('');
+    return `<div class="risk-block ${sevClass}">
+      <div class="risk-head">⚠ ${label} risk<span class="risk-sev">${escapeHtml(insight.severity)}</span></div>
+      ${reasons}
+      ${suggestions}
+      ${quotes}
+    </div>`;
+  }
+
   private renderDimensionTable(
     results: EvalResult[],
     explanations?: Record<string, Record<string, TurnShapleyExplanation>>,
@@ -465,6 +551,9 @@ export class ReportGenerator {
             const evidenceLines = ds.evidence
               ? ds.evidence.split('\n').map((line) => `<div class="evidence-quote">${escapeHtml(line)}</div>`).join('')
               : '';
+            const evidenceVerdict = ds.evidence ? this.renderEvidenceVerdict(scenarioScore) : '';
+            const judgeSplit = this.renderJudgeSplit(ds);
+            const riskBlock = ds.riskInsight ? this.renderRiskInsight(ds.riskInsight) : '';
 
             // Explainability: per-turn contributions (Phase 1) + baked Shapley (Phase 2).
             const turnBars = (ds.turnContributions?.length ?? 0) > 1
@@ -477,7 +566,9 @@ export class ReportGenerator {
                 ${scenarioLabel}
                 ${gapBlock}
                 ${justLines ? `<div class="reasoning-block"><ul>${justLines}</ul></div>` : ''}
-                ${evidenceLines ? `<div class="evidence-block"><span class="evidence-label">📎 Evidence</span>${evidenceLines}</div>` : ''}
+                ${evidenceLines ? `<div class="evidence-block"><span class="evidence-label">📎 Evidence — the agent's words the judges scored on</span>${evidenceVerdict}${evidenceLines}</div>` : ''}
+                ${judgeSplit}
+                ${riskBlock}
                 ${turnBars}
                 ${shapBars}
               </div>`;
