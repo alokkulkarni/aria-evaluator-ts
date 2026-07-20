@@ -11,6 +11,7 @@ description: >
   their products, then provide their current account balance and last 5 transactions.
 channel: chat
 mode: agent
+tags: [smoke]
 authenticated: true
 opening_message: "Hi, I'd like to check my current account balance and my recent transactions please"
 goal: >

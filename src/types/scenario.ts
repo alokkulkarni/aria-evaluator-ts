@@ -40,6 +40,13 @@ export interface Scenario {
    * in addition to generalists. See judge-committee.routeJudges.
    */
   domain?: string;
+  /**
+   * Cross-cutting suite labels spanning industry/directory boundaries
+   * (e.g. "smoke", "regression", "compliance"). Lowercase kebab-case is
+   * recommended but not enforced — the loader trims, lowercases, and dedupes
+   * entries at load time. Select tagged scenarios via the CLI `--tags` option.
+   */
+  tags?: string[];
   default_timeout_seconds?: number;
   turn_delay_seconds?: number;
   /**

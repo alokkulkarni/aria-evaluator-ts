@@ -27,6 +27,8 @@ import { explainTranscriptsForReport } from '../judge/explain/explain-run.js';
 import {
   loadScenariosFromFile,
   filterScenarios,
+  filterScenariosByTags,
+  parseTagsCsv,
 } from '../conversation/scenario-loader.js';
 import { BudgetTracker, estimateRunCostUsd } from '../lib/budget.js';
 import {
@@ -87,6 +89,7 @@ console.log(`
     Strands (chat):                npx tsx src/cli/run.ts --provider strands --scenario banking/account_query
     Copilot (chat):                npx tsx src/cli/run.ts --provider copilot --scenario banking/account_query
     Custom (voice):                npx tsx src/cli/run.ts --provider custom --channel voice --scenario banking/account_query
+    Tagged suite only:             npx tsx src/cli/run.ts --tags smoke,regression
     Re-evaluate saved:             npx tsx src/cli/run.ts --transcript transcripts/foo.json
     Judge budget cap:              npx tsx src/cli/run.ts --max-budget-usd 5   (or RUN_BUDGET_USD setting)
 
@@ -102,6 +105,7 @@ const { values: args } = parseArgs({
     scenario:           { type: 'string', short: 's' },
     channel:            { type: 'string', short: 'c', default: 'chat' },
     transcript:         { type: 'string', short: 't' },
+    tags:               { type: 'string' },
     'conversation-only': { type: 'boolean', default: false },
     'no-eval':          { type: 'boolean', default: false },
     'scenarios-dir':    { type: 'string', default: '../aria-evaluator/scenarios' },
@@ -122,6 +126,9 @@ const channel = (args['channel'] as string).toLowerCase() === 'voice' ? 'voice' 
 const conversationOnly = args['conversation-only'] as boolean;
 const noEval = args['no-eval'] as boolean;
 const scenariosDir = resolve(args['scenarios-dir'] as string);
+// --tags smoke,regression → only scenarios carrying at least one of these tags (OR semantics)
+const tagsCsv = args['tags'] as string | undefined;
+const requestedTags = parseTagsCsv(tagsCsv);
 
 // Judge-spend budget cap: --max-budget-usd flag, or RUN_BUDGET_USD from the
 // portal's runtime settings (passed through as env for executor-spawned runs).
@@ -211,6 +218,7 @@ const allResults: EvalResult[] = [];
 const committee = getJudgeCommitteeConfig();
 const judge = conversationOnly || noEval ? null : new JudgePanel(committee);
 const runId = randomUUID();
+let tagMatchedCount = 0;
 
 const budget = new BudgetTracker(judge ? budgetCapUsd : undefined);
 if (judge && budgetCapUsd != null) {
@@ -233,7 +241,8 @@ for (const file of scenarioFiles) {
     continue;
   }
 
-  const filtered = filterScenarios(scenarios, undefined);
+  const filtered = filterScenariosByTags(filterScenarios(scenarios, undefined), tagsCsv);
+  tagMatchedCount += filtered.length;
   if (filtered.length === 0) {
     console.log(`  ℹ  No scenarios in this file`);
     continue;
@@ -278,6 +287,11 @@ for (const file of scenarioFiles) {
       }
     }
   }
+}
+
+if (requestedTags.length > 0 && tagMatchedCount === 0) {
+  console.error(`\n✗ No scenarios matched the requested tags: ${requestedTags.join(', ')}`);
+  process.exit(1);
 }
 
 if (budget.exceeded) {
