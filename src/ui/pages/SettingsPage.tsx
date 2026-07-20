@@ -140,6 +140,33 @@ const GENERAL_SECTIONS: GeneralSectionDef[] = [
     ],
   },
   {
+    id: 'notifications',
+    title: 'Notifications',
+    icon: ProviderGlobeIcon,
+    description: 'Push run and safety events to an HTTPS webhook (Slack incoming webhooks work out of the box). Leave the URL blank to disable.',
+    fields: [
+      {
+        key: 'NOTIFY_WEBHOOK_URL',
+        label: 'Webhook URL',
+        placeholder: 'https://hooks.slack.com/services/…',
+        hint: 'HTTPS only — plaintext http URLs are rejected. The JSON payload carries a Slack-compatible "text" field plus a structured "event" object.',
+      },
+      {
+        key: 'NOTIFY_EVENTS',
+        label: 'Events (CSV)',
+        placeholder: 'run_failed, guardrail_failure, budget_exceeded, regression_detected',
+        hint: 'Comma-separated from: run_completed, run_failed, guardrail_failure, budget_exceeded, regression_detected. Blank = failures only; "all" enables everything (run_completed can be noisy).',
+      },
+      {
+        key: 'NOTIFY_WEBHOOK_SECRET',
+        label: 'Signing secret (optional)',
+        placeholder: 'whsec-…',
+        sensitive: true,
+        hint: 'When set, each delivery carries an X-ARIA-Signature header (HMAC-SHA256 of the body) so the receiver can verify authenticity.',
+      },
+    ],
+  },
+  {
     id: 'voice-timing',
     title: 'Voice Timing',
     icon: ProviderTimingIcon,
