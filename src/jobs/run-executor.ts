@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 
 import { prisma } from '../db/client.js';
-import { getNotifierConfig, getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
+import { getNotifierConfig, getRunBudgetUsd, getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
 import { sendNotification } from '../lib/notifier.js';
 import {
   buildProviderEnvOverlay,
@@ -561,6 +561,22 @@ async function ingestRunArtifacts(
         update: evalData,
         create: { runId, ...evalData },
       });
+
+      // Budget: the child CLI already stops launching scenarios when the cap is
+      // crossed (RUN_BUDGET_USD flows to it via the settings env); this is the
+      // operator-facing alert for the overrun itself.
+      const budgetCapUsd = getRunBudgetUsd();
+      if (budgetCapUsd != null && judgeCostUsd != null && judgeCostUsd > budgetCapUsd) {
+        appendRunLogLine(runId, `⚠ Judge budget cap $${budgetCapUsd.toFixed(2)} exceeded (spent ≈ $${judgeCostUsd.toFixed(4)}).`);
+        await sendNotification(getNotifierConfig(), {
+          type: 'budget_exceeded',
+          severity: 'warning',
+          title: 'Judge budget cap exceeded',
+          body: `Run spent ≈ $${judgeCostUsd.toFixed(4)} against a $${budgetCapUsd.toFixed(2)} cap; remaining scenarios were skipped.`,
+          runId,
+          data: { spentUsd: judgeCostUsd, capUsd: budgetCapUsd },
+        });
+      }
 
       // Guardrail failures are safety events, not just low scores — push them to
       // the configured webhook. Best-effort: sendNotification never throws.

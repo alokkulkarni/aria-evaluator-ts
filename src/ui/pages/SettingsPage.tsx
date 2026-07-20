@@ -137,6 +137,12 @@ const GENERAL_SECTIONS: GeneralSectionDef[] = [
         placeholder: '120',
         hint: 'Maximum seconds to wait for the agent to respond to each turn. Increase for slow or streaming endpoints. Defaults to 120.',
       },
+      {
+        key: 'RUN_BUDGET_USD',
+        label: 'Judge budget per run (USD)',
+        placeholder: '5.00',
+        hint: 'Judge-spend cap per evaluation run. When the accumulated judge cost crosses this cap the run stops launching new scenarios (completed results are kept) and a budget_exceeded notification fires. Blank = no cap.',
+      },
     ],
   },
   {
