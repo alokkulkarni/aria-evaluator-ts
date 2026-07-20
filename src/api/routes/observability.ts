@@ -4,6 +4,7 @@ import { percentile, TOKEN_ESTIMATOR_VERSION } from '../../lib/observability.js'
 import { estimateCost, PRICING_VERSION, getModelPrice } from '../../lib/model-pricing.js';
 import { getScheduleExecutorStatus } from '../../jobs/schedule-executor.js';
 import { PASS_THRESHOLD } from '../../judge/aggregate.js';
+import { bucketScenarioTrend } from '../../lib/scenario-trends.js';
 
 export const observabilityRouter = Router();
 
@@ -451,6 +452,68 @@ observabilityRouter.get('/metrics/trends', async (req, res) => {
       totalDataPoints: trend.length,
       totalRuns: runs.length,
     },
+  });
+});
+
+// ─── Per-Scenario Trends ──────────────────────────────────────────────────────
+// GET /api/metrics/scenario-trends?scenario=<scenarioName>&days=30
+// Returns UTC-day buckets of pass rate, average score, and per-dimension
+// averages for a single scenario.
+//
+// v1 limitation: runs are matched by Run.scenarioName equality only. Multi-
+// scenario portal runs store their per-scenario results in ScenarioEval rows
+// (keyed by scenarioName under a differently-named parent run), so those runs
+// are not included here; joining them without double-counting single-scenario
+// runs is left for a follow-up.
+
+observabilityRouter.get('/metrics/scenario-trends', async (req, res) => {
+  const rawScenario = req.query['scenario'];
+  if (typeof rawScenario !== 'string' || rawScenario.trim() === '') {
+    return res.status(400).json({ error: 'scenario query parameter is required' });
+  }
+  const scenario = rawScenario;
+
+  const days = parseDays(req.query['days']);
+  if (days == null) {
+    return res.status(400).json({ error: 'days must be an integer between 1 and 90' });
+  }
+
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const runs = await prisma.run.findMany({
+    where: {
+      scenarioName: scenario,
+      NOT: { status: 'deleted' },
+      completedAt: { gte: since },
+    },
+    select: {
+      completedAt: true,
+      evalResult: {
+        select: {
+          overallScore: true,
+          passed: true,
+          dimensionScores: true,
+        },
+      },
+    },
+    orderBy: { completedAt: 'asc' },
+  });
+
+  // Only evaluated runs contribute to the trend.
+  const rows = runs.flatMap((run) => {
+    if (!run.completedAt || !run.evalResult) return [];
+    return [{
+      completedAt: run.completedAt,
+      overallScore: run.evalResult.overallScore,
+      passed: run.evalResult.passed,
+      dimensionScores: run.evalResult.dimensionScores,
+    }];
+  });
+
+  return res.json({
+    scenario,
+    window: { days, since: since.toISOString(), until: new Date().toISOString() },
+    ...bucketScenarioTrend(rows, days),
   });
 });
 

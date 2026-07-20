@@ -5,6 +5,7 @@ import { usePlanGate } from '../lib/plan-gate.js';
 import { fetchProviderInstances, type ProviderInstance } from '../lib/provider-instances.js';
 import type { Scenario } from '../../types/scenario.js';
 import { ScenarioBuilderModal } from './ScenarioBuilderModal.js';
+import { Sparkline } from '../components/Sparkline.js';
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -75,6 +76,7 @@ export function ScenariosPage() {
   const [revisionsError, setRevisionsError] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedSubCategories, setCollapsedSubCategories] = useState<Set<string>>(new Set());
+  const [expandedTrends, setExpandedTrends] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const esRef = useRef<EventSource | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -481,6 +483,9 @@ export function ScenariosPage() {
             const toggleSub = (key: string) => setCollapsedSubCategories(prev => {
               const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
             });
+            const toggleTrend = (name: string) => setExpandedTrends(prev => {
+              const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n;
+            });
 
             return Array.from(grouped.entries()).map(([cat, subMap]) => {
               const meta = catMeta[cat] ?? catMeta.general!;
@@ -544,9 +549,23 @@ export function ScenariosPage() {
                                     }`}>
                                       {s.lifecycle_status ?? 'active'}
                                     </span>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); toggleTrend(s.name); }}
+                                      title="Show 30-day score trend"
+                                      className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+                                      {expandedTrends.has(s.name)
+                                        ? <ChevronDownIcon className="h-3 w-3" aria-hidden="true" />
+                                        : <ChevronRightIcon className="h-3 w-3" aria-hidden="true" />}
+                                      Trend
+                                    </button>
                                   </div>
                                 </div>
                                 {s.goal && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{s.goal}</p>}
+                                {expandedTrends.has(s.name) && (
+                                  <div onClick={(e) => e.stopPropagation()} className="mt-2 cursor-default">
+                                    <ScenarioTrendPanel scenarioName={s.name} />
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -723,5 +742,116 @@ export function ScenariosPage() {
       </div>
     </div>
     </>
+  );
+}
+
+// ── Per-scenario trend panel ──────────────────────────────────────────────────
+
+interface ScenarioTrendPoint {
+  date: string;
+  runs: number;
+  passRate: number; // 0-1
+  avgScore: number; // 0-10
+  dimensionAvgs: Record<string, number>;
+}
+
+interface ScenarioTrendResponse {
+  scenario: string;
+  window: { days: number; since: string; until: string };
+  trend: ScenarioTrendPoint[];
+  dimensions: string[];
+}
+
+const TREND_WINDOW_DAYS = 30;
+
+function ScenarioTrendPanel({ scenarioName }: { scenarioName: string }) {
+  const [data, setData] = useState<ScenarioTrendResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    apiFetch(`/api/metrics/scenario-trends?scenario=${encodeURIComponent(scenarioName)}&days=${TREND_WINDOW_DAYS}`)
+      .then((raw) => { if (!cancelled) setData(raw as ScenarioTrendResponse); })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof ApiError ? err.error ?? err.message : (err as Error).message);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [scenarioName]);
+
+  if (loading) return <p className="text-xs text-slate-400">Loading trend…</p>;
+  if (error) return <p className="text-xs text-red-600">{error}</p>;
+  if (!data || data.trend.length === 0) {
+    return <p className="text-xs text-slate-400">No evaluated runs in the last {TREND_WINDOW_DAYS} days.</p>;
+  }
+
+  const { trend, dimensions } = data;
+  const totalRuns = trend.reduce((sum, p) => sum + p.runs, 0);
+
+  // Per dimension: window average (mean of that dimension's daily averages)
+  // vs the latest daily average available for it.
+  const dimRows = dimensions.map((dim) => {
+    const daily = trend
+      .filter((p) => typeof p.dimensionAvgs[dim] === 'number')
+      .map((p) => p.dimensionAvgs[dim]!);
+    const windowAvg = daily.length > 0 ? daily.reduce((a, b) => a + b, 0) / daily.length : null;
+    const latest = daily.length > 0 ? daily[daily.length - 1]! : null;
+    const delta = windowAvg != null && latest != null ? latest - windowAvg : null;
+    return { dim, windowAvg, latest, delta };
+  });
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+      <p className="text-[10px] uppercase tracking-wide font-semibold text-slate-500">
+        Last {TREND_WINDOW_DAYS} days · {totalRuns} evaluated run(s)
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <p className="text-[10px] text-slate-500 mb-1">Avg score / day (0–10)</p>
+          {trend.length >= 2
+            ? <Sparkline data={trend.map((p) => p.avgScore)} height={28} color="#0891b2" />
+            : <p className="text-xs font-semibold text-slate-900">{trend[0]!.avgScore.toFixed(1)}</p>}
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-500 mb-1">Pass rate / day (%)</p>
+          {trend.length >= 2
+            ? <Sparkline data={trend.map((p) => p.passRate * 100)} height={28} color="#059669" />
+            : <p className="text-xs font-semibold text-slate-900">{(trend[0]!.passRate * 100).toFixed(0)}%</p>}
+        </div>
+      </div>
+      {dimRows.length > 0 && (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400">
+              <th className="py-1 font-semibold">Dimension</th>
+              <th className="py-1 font-semibold text-right">Window avg</th>
+              <th className="py-1 font-semibold text-right">Latest day</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dimRows.map(({ dim, windowAvg, latest, delta }) => {
+              const drop = delta != null && delta < -0.5;   // latest >0.5 below window avg
+              const severe = delta != null && delta < -1.5; // sharp drop
+              return (
+                <tr key={dim} className="border-t border-slate-200">
+                  <td className="py-1 text-slate-700">{dim}</td>
+                  <td className="py-1 text-right text-slate-600">{windowAvg != null ? windowAvg.toFixed(1) : '—'}</td>
+                  <td className={`py-1 text-right font-semibold ${
+                    severe ? 'text-red-600' : drop ? 'text-amber-600' : 'text-slate-800'
+                  }`}>
+                    {latest != null ? latest.toFixed(1) : '—'}
+                    {drop && <span className="ml-1 text-[10px] font-normal">↓</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
