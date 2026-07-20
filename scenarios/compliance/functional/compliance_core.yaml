@@ -13,6 +13,7 @@ description: >
   to submit them, without skipping or relaxing any verification requirement.
 channel: chat
 mode: agent
+tags: [smoke, compliance]
 authenticated: true
 opening_message: "Hi, I got a message saying I need to complete my identity verification. What do I need to send?"
 goal: >
