@@ -11,7 +11,8 @@ import {
 } from 'node:fs';
 
 import { prisma } from '../db/client.js';
-import { getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
+import { getNotifierConfig, getRuntimeSettingsEnv, isJudgeWeightingEnabled } from '../api/runtime-settings.js';
+import { sendNotification } from '../lib/notifier.js';
 import {
   buildProviderEnvOverlay,
   getInstanceNickname,
@@ -561,6 +562,27 @@ async function ingestRunArtifacts(
         create: { runId, ...evalData },
       });
 
+      // Guardrail failures are safety events, not just low scores — push them to
+      // the configured webhook. Best-effort: sendNotification never throws.
+      const failedSecurity = securityResults.filter((result) => !result.passed);
+      if (failedSecurity.length > 0) {
+        await sendNotification(getNotifierConfig(), {
+          type: 'guardrail_failure',
+          severity: 'critical',
+          title: `Guardrail failure: ${failedSecurity.length} security scenario(s) failed`,
+          body: failedSecurity
+            .map((result) => `${result.scenarioName ?? 'unknown scenario'} (${result.overallScore}/10)`)
+            .join(', '),
+          runId,
+          data: {
+            scenarios: failedSecurity.map((result) => ({
+              name: result.scenarioName ?? null,
+              score: result.overallScore,
+            })),
+          },
+        });
+      }
+
       // Phase 2: persist each scenario's result (score, dimensions, judge votes)
       // so reviewers can inspect/override them individually — the aggregate
       // EvalResult above loses per-scenario granularity. Idempotent for re-runs.
@@ -691,6 +713,13 @@ async function finalizeJob(
       error: effectiveError ?? 'Run failed',
       message,
     });
+    await sendNotification(getNotifierConfig(), {
+      type: 'run_failed',
+      severity: 'critical',
+      title: 'Evaluation run failed',
+      body: effectiveError ?? 'Run failed',
+      runId: job.runId,
+    });
     return;
   }
 
@@ -706,6 +735,17 @@ async function finalizeJob(
     reportJsonPath: reportJsonRef,
     reportHtmlPath: reportHtmlRef,
     message,
+  });
+  await sendNotification(getNotifierConfig(), {
+    type: 'run_completed',
+    severity: evalResult?.passed === false ? 'warning' : 'info',
+    title: `Evaluation run ${evalResult?.passed === false ? 'completed with failures' : 'completed'}`,
+    body: summary,
+    runId: job.runId,
+    data: {
+      overallScore: evalResult?.overallScore ?? null,
+      passed: evalResult?.passed ?? null,
+    },
   });
 }
 
