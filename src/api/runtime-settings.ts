@@ -60,6 +60,8 @@ export const EDITABLE_SETTING_KEYS = [
   'NOTIFY_WEBHOOK_URL',
   'NOTIFY_EVENTS',
   'NOTIFY_WEBHOOK_SECRET',
+  // Judge-spend budget cap per run (USD). Blank = no cap.
+  'RUN_BUDGET_USD',
 
   'CONNECT_INSTANCE_ID',
   'CONNECT_REGION',
@@ -382,6 +384,17 @@ export function isJudgeWeightingEnabled(): boolean {
  * to process env for headless deployments). Returns null when notifications
  * are unconfigured — callers pass the result straight to sendNotification().
  */
+/**
+ * Per-run judge-spend cap in USD from runtime settings (env fallback for
+ * headless deployments). Undefined = no cap.
+ */
+export function getRunBudgetUsd(): number | undefined {
+  const raw = getEffectiveSettings()['RUN_BUDGET_USD'] || process.env['RUN_BUDGET_USD'];
+  if (raw == null || raw.trim() === '') return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export function getNotifierConfig(): NotifierConfig | null {
   const effective = getEffectiveSettings();
   return parseNotifierConfig({

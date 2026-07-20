@@ -28,6 +28,7 @@ import {
   loadScenariosFromFile,
   filterScenarios,
 } from '../conversation/scenario-loader.js';
+import { BudgetTracker, estimateRunCostUsd } from '../lib/budget.js';
 import type { Scenario } from '../types/scenario.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult } from '../types/evaluation.js';
@@ -78,6 +79,7 @@ console.log(`
     Copilot (chat):                npx tsx src/cli/run.ts --provider copilot --scenario banking/account_query
     Custom (voice):                npx tsx src/cli/run.ts --provider custom --channel voice --scenario banking/account_query
     Re-evaluate saved:             npx tsx src/cli/run.ts --transcript transcripts/foo.json
+    Judge budget cap:              npx tsx src/cli/run.ts --max-budget-usd 5   (or RUN_BUDGET_USD setting)
 `);
 
 const { values: args } = parseArgs({
@@ -90,6 +92,7 @@ const { values: args } = parseArgs({
     'no-eval':          { type: 'boolean', default: false },
     'scenarios-dir':    { type: 'string', default: '../aria-evaluator/scenarios' },
     headless:           { type: 'boolean', default: true },
+    'max-budget-usd':   { type: 'string' },
   },
   strict: false,
 });
@@ -100,6 +103,19 @@ const channel = (args['channel'] as string).toLowerCase() === 'voice' ? 'voice' 
 const conversationOnly = args['conversation-only'] as boolean;
 const noEval = args['no-eval'] as boolean;
 const scenariosDir = resolve(args['scenarios-dir'] as string);
+
+// Judge-spend budget cap: --max-budget-usd flag, or RUN_BUDGET_USD from the
+// portal's runtime settings (passed through as env for executor-spawned runs).
+const budgetRaw = (args['max-budget-usd'] as string | undefined) ?? process.env['RUN_BUDGET_USD'];
+let budgetCapUsd: number | undefined;
+if (budgetRaw != null && budgetRaw.trim() !== '') {
+  const parsed = Number(budgetRaw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(`  ✗ Invalid budget: ${budgetRaw}. Use a positive USD amount, e.g. --max-budget-usd 5`);
+    process.exit(1);
+  }
+  budgetCapUsd = parsed;
+}
 
 const missing = validateProviderEnv(provider, channel);
 if (missing.length > 0) {
@@ -142,10 +158,21 @@ console.log(`📂 Running ${scenarioFiles.length} scenario file(s) on channel: $
 const runner = new ScenarioRunner();
 const allTranscripts: Transcript[] = [];
 const allResults: EvalResult[] = [];
-const judge = conversationOnly || noEval ? null : new JudgePanel(getJudgeCommitteeConfig());
+const committee = getJudgeCommitteeConfig();
+const judge = conversationOnly || noEval ? null : new JudgePanel(committee);
 const runId = randomUUID();
 
+const budget = new BudgetTracker(judge ? budgetCapUsd : undefined);
+if (judge && budgetCapUsd != null) {
+  const estimate = estimateRunCostUsd(1, committee.judges);
+  const perScenario = estimate.perScenarioUsd != null ? `$${estimate.perScenarioUsd.toFixed(4)}` : 'unknown';
+  console.log(`💰 Judge budget: $${budgetCapUsd.toFixed(2)} (rough estimate ≈ ${perScenario}/scenario across ${committee.judges.length} judge(s))`);
+} else if (!judge && budgetCapUsd != null) {
+  console.warn('  ⚠  Budget cap ignored: no judge runs with --no-eval / --conversation-only.');
+}
+
 for (const file of scenarioFiles) {
+  if (budget.exceeded) break;
   console.log(`\n── ${file} ──`);
 
   let scenarios: Scenario[];
@@ -190,15 +217,24 @@ for (const file of scenarioFiles) {
     await runParallelChatBatch(filtered, provider, judge, allTranscripts, allResults);
   } else {
     for (const scenario of filtered) {
+      if (budget.exceeded) break;
       const adapter = createChatAdapter(provider);
       const transcript = await runner.run(scenario, adapter);
       allTranscripts.push(transcript);
       if (judge) {
         const result = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
         allResults.push(result);
+        budget.add(result);
       }
     }
   }
+}
+
+if (budget.exceeded) {
+  console.warn(
+    `\n⚠  Judge budget cap $${budget.capUsd!.toFixed(2)} reached (spent ≈ $${budget.spentUsd.toFixed(4)}). ` +
+      `Remaining scenarios were skipped; completed results are reported below.`,
+  );
 }
 
 if (allTranscripts.length === 0) {
@@ -248,6 +284,9 @@ async function runParallelChatBatch(
 
   async function worker(): Promise<void> {
     while (true) {
+      // Stop claiming new scenarios once the judge budget is exhausted —
+      // in-flight scenarios finish; their results are kept.
+      if (budget.exceeded) return;
       // Claim the next scenario index atomically
       const idx = nextIdx++;
       if (idx >= scenarios.length) return;
@@ -267,6 +306,7 @@ async function runParallelChatBatch(
         if (judge) {
           const evalResult = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
           rSlots[idx] = evalResult;
+          budget.add(evalResult);
           const status = evalResult.passed ? '✅' : '❌';
           console.log(`  ${status} [parallel ${idx + 1}/${scenarios.length}] done: ${label} (score ${evalResult.overallScore}/10)`);
         } else {
@@ -318,6 +358,8 @@ async function runVoiceBatch(
       if (judge) {
         const result = await judge.evaluate(transcript, scenario.goal ?? scenario.name, scenario);
         results.push(result);
+        budget.add(result);
+        if (budget.exceeded) break;
       }
 
       const sharedSessionEnded = hasSharedVoiceSessionEnded(sharedAdapter, transcript);
