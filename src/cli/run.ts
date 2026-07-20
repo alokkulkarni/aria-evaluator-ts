@@ -4,7 +4,7 @@
 
 import 'dotenv/config';
 import { parseArgs } from 'node:util';
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { readdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ScenarioRunner } from '../conversation/runner.js';
@@ -28,6 +28,15 @@ import {
   loadScenariosFromFile,
   filterScenarios,
 } from '../conversation/scenario-loader.js';
+import {
+  EXIT_GATE_FAILED,
+  buildGateBaseline,
+  evaluateGate,
+  parseGateBaselineFile,
+  snapshotFromResults,
+  type GateBaselineFile,
+  type GateSeverity,
+} from '../lib/regression-gate.js';
 import type { Scenario } from '../types/scenario.js';
 import type { Transcript } from '../types/transcript.js';
 import type { EvalResult } from '../types/evaluation.js';
@@ -78,6 +87,11 @@ console.log(`
     Copilot (chat):                npx tsx src/cli/run.ts --provider copilot --scenario banking/account_query
     Custom (voice):                npx tsx src/cli/run.ts --provider custom --channel voice --scenario banking/account_query
     Re-evaluate saved:             npx tsx src/cli/run.ts --transcript transcripts/foo.json
+
+  CI regression gate (exit 0 = pass, ${EXIT_GATE_FAILED} = quality gate failed, 1 = operational error):
+    Absolute pass-rate floor:      npx tsx src/cli/run.ts --scenario banking --min-pass-rate 90
+    Compare vs baseline:           npx tsx src/cli/run.ts --scenario banking --gate-baseline baselines/banking.json [--fail-on low|medium|critical] [--fail-on-drift]
+    Bless a new baseline:          npx tsx src/cli/run.ts --scenario banking --gate-baseline baselines/banking.json --update-baseline
 `);
 
 const { values: args } = parseArgs({
@@ -90,6 +104,11 @@ const { values: args } = parseArgs({
     'no-eval':          { type: 'boolean', default: false },
     'scenarios-dir':    { type: 'string', default: '../aria-evaluator/scenarios' },
     headless:           { type: 'boolean', default: true },
+    'gate-baseline':    { type: 'string' },
+    'update-baseline':  { type: 'boolean', default: false },
+    'min-pass-rate':    { type: 'string' },
+    'fail-on':          { type: 'string', default: 'medium' },
+    'fail-on-drift':    { type: 'boolean', default: false },
   },
   strict: false,
 });
@@ -100,6 +119,37 @@ const channel = (args['channel'] as string).toLowerCase() === 'voice' ? 'voice' 
 const conversationOnly = args['conversation-only'] as boolean;
 const noEval = args['no-eval'] as boolean;
 const scenariosDir = resolve(args['scenarios-dir'] as string);
+
+// ── CI regression-gate flags ────────────────────────────────────────────────
+const gateBaselinePath = args['gate-baseline'] ? resolve(args['gate-baseline'] as string) : undefined;
+const updateBaseline = args['update-baseline'] as boolean;
+const failOnDrift = args['fail-on-drift'] as boolean;
+const failOnRaw = (args['fail-on'] as string).toLowerCase();
+const minPassRateRaw = args['min-pass-rate'] as string | undefined;
+const gatingRequested = gateBaselinePath != null || minPassRateRaw != null;
+
+if (!['low', 'medium', 'critical'].includes(failOnRaw)) {
+  console.error(`  ✗ Invalid --fail-on value: ${failOnRaw}. Use low, medium, or critical.`);
+  process.exit(1);
+}
+const failOn = failOnRaw as GateSeverity;
+
+let minPassRate: number | undefined;
+if (minPassRateRaw != null) {
+  minPassRate = Number(minPassRateRaw);
+  if (!Number.isFinite(minPassRate) || minPassRate < 0 || minPassRate > 100) {
+    console.error(`  ✗ Invalid --min-pass-rate: ${minPassRateRaw}. Use a number between 0 and 100.`);
+    process.exit(1);
+  }
+}
+if (updateBaseline && gateBaselinePath == null) {
+  console.error('  ✗ --update-baseline requires --gate-baseline <path> (where to write the baseline).');
+  process.exit(1);
+}
+if ((gatingRequested || updateBaseline) && (conversationOnly || noEval)) {
+  console.error('  ✗ Regression gating needs evaluation results — remove --no-eval / --conversation-only.');
+  process.exit(1);
+}
 
 const missing = validateProviderEnv(provider, channel);
 if (missing.length > 0) {
@@ -229,6 +279,58 @@ if (allResults.length > 0) {
   } else {
     console.log(`\n✅ Done. ${allTranscripts.length} transcript(s) saved.`);
   }
+}
+
+// ── CI regression gate ──────────────────────────────────────────────────────
+if (gatingRequested || updateBaseline) {
+  const snapshot = snapshotFromResults(allResults, allTranscripts);
+  const currentJudgeConfigHash = allResults.find((r) => r.judgeConfigHash)?.judgeConfigHash ?? null;
+
+  if (updateBaseline) {
+    if (allResults.length === 0) {
+      console.error('  ✗ Cannot update the baseline: no evaluation results were produced.');
+      process.exit(1);
+    }
+    const baseline = buildGateBaseline(allResults, allTranscripts, {
+      name: (args['scenario'] as string | undefined) ?? 'ci-baseline',
+      judgeConfigHash: currentJudgeConfigHash,
+    });
+    writeFileSync(gateBaselinePath!, JSON.stringify(baseline, null, 2) + '\n');
+    console.log(
+      `\n📌 Baseline updated: ${gateBaselinePath} — ${baseline.totalRuns} run(s), ` +
+        `pass rate ${(baseline.passRate * 100).toFixed(1)}%, avg score ${baseline.avgScore.toFixed(1)}/10`,
+    );
+    process.exit(0);
+  }
+
+  let baselineFile: GateBaselineFile | null = null;
+  if (gateBaselinePath != null) {
+    if (!existsSync(gateBaselinePath)) {
+      console.error(`  ✗ Gate baseline not found: ${gateBaselinePath}. Create it with --update-baseline.`);
+      process.exit(1);
+    }
+    try {
+      baselineFile = parseGateBaselineFile(readFileSync(gateBaselinePath, 'utf-8'));
+    } catch (err) {
+      console.error(`  ✗ ${(err as Error).message} (${gateBaselinePath})`);
+      process.exit(1);
+    }
+  }
+
+  const decision = evaluateGate(baselineFile, snapshot, {
+    minPassRate,
+    failOn,
+    failOnDrift,
+    currentJudgeConfigHash,
+  });
+  for (const warning of decision.warnings) console.warn(`  ⚠  ${warning}`);
+  if (decision.passed) {
+    console.log(`\n🟢 Regression gate PASSED${decision.severity ? ` (regression severity: ${decision.severity})` : ''}.`);
+    process.exit(0);
+  }
+  console.error('\n🔴 Regression gate FAILED:');
+  for (const reason of decision.reasons) console.error(`  ✗ ${reason}`);
+  process.exit(EXIT_GATE_FAILED);
 }
 
 async function runParallelChatBatch(
