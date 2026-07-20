@@ -19,7 +19,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https:",
-      "connect-src 'self' https://accounts.google.com https://github.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com",
+      "connect-src 'self' https://accounts.google.com https://github.com https://api.github.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com",
       "frame-src https://accounts.google.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
